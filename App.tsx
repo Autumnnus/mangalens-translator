@@ -1,10 +1,11 @@
-import { Eye, Settings } from "lucide-react";
+import { BookOpen, Edit3, Sliders } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CategoryManagerModal from "./components/CategoryManagerModal";
 import ComparisonView from "./components/ComparisonView";
 import ConfirmModal from "./components/ConfirmModal";
 import NewSeriesModal from "./components/NewSeriesModal";
 import SeriesSidebar from "./components/SeriesSidebar";
+import SettingsModal from "./components/SettingsModal";
 import ViewModeControls from "./components/ViewModeControls";
 import { GeminiService } from "./services/gemini";
 import {
@@ -74,6 +75,7 @@ const App: React.FC = () => {
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showComparison, setShowComparison] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -746,87 +748,126 @@ const App: React.FC = () => {
           }
         />
 
-        <div className="flex-1 flex flex-col h-full overflow-y-auto custom-scrollbar relative">
-          <header className="sticky top-0 z-50 bg-[#0f172a]/90 backdrop-blur-xl border-b border-slate-800 p-4 shadow-2xl">
-            <div className="max-w-7xl mx-auto flex items-center justify-between">
-              <div className="flex items-center gap-4">
+        <div className="flex-1 flex flex-col h-full overflow-x-hidden overflow-y-auto custom-scrollbar relative">
+          <header className="sticky top-0 z-50 bg-[#0f172a]/90 backdrop-blur-xl border-b border-slate-800 p-3 sm:p-4 shadow-2xl">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center justify-between md:justify-start gap-4">
                 <div>
-                  <div className="flex items-center gap-3 mt-1.5">
+                  <div className="flex items-center gap-2 sm:gap-3 mt-1.5">
                     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-800 rounded-md border border-slate-700">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                      <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                         Cost
                       </span>
-                      <span className="text-[10px] font-black text-emerald-400 font-mono">
+                      <span className="text-[9px] sm:text-[10px] font-black text-emerald-400 font-mono">
                         ${totalStats.cost.toFixed(4)}
                       </span>
                     </div>
                     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-800 rounded-md border border-slate-700">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                      <span className="text-[8px] sm:text-[9px] font-bold text-slate-500 uppercase tracking-widest">
                         Tokens
                       </span>
-                      <span className="text-[10px] font-black text-indigo-400 font-mono">
+                      <span className="text-[9px] sm:text-[10px] font-black text-indigo-400 font-mono">
                         {totalStats.tokens.toLocaleString()}
                       </span>
                     </div>
                   </div>
                 </div>
+
+                {/* Mobile version toggle visibility */}
+                <div className="flex items-center gap-2 md:hidden">
+                  <button
+                    onClick={() => setIsViewOnly(!isViewOnly)}
+                    className={`p-2.5 rounded-xl border transition-all ${
+                      isViewOnly
+                        ? "bg-indigo-600 border-indigo-400 text-white shadow-indigo-500/40"
+                        : "bg-slate-800 border-slate-700 text-slate-400"
+                    }`}
+                  >
+                    {isViewOnly ? (
+                      <BookOpen className="w-4 h-4" />
+                    ) : (
+                      <Edit3 className="w-4 h-4" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setIsSettingsModalOpen(true)}
+                    className="p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-400"
+                  >
+                    <Sliders className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto no-scrollbar pb-1 md:pb-0">
                 <button
                   onClick={() => setIsViewOnly(!isViewOnly)}
-                  className={`px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.15em] transition-all flex items-center gap-2.5 border shadow-2xl ${
+                  className={`hidden md:flex px-5 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-[0.15em] transition-all items-center gap-2.5 border shadow-2xl ${
                     isViewOnly
                       ? "bg-indigo-600 border-indigo-400 text-white shadow-indigo-500/40"
                       : "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
                   }`}
                 >
                   {isViewOnly ? (
-                    <Eye className="w-4 h-4 animate-pulse" />
+                    <BookOpen className="w-4 h-4 animate-pulse" />
                   ) : (
-                    <Settings className="w-4 h-4" />
+                    <Edit3 className="w-4 h-4" />
                   )}
-                  {isViewOnly ? "Viewing mode" : "Reader mode off"}
+                  {isViewOnly ? "Reading mode" : "Editor mode"}
                 </button>
 
                 {!isViewOnly && (
-                  <button
-                    onClick={() => setIsCategoryModalOpen(true)}
-                    className="p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-all shadow-xl group"
-                    title="Manage Categories"
-                  >
-                    <i className="fas fa-tags text-xs group-hover:scale-110 transition-transform"></i>
-                  </button>
-                )}
+                  <>
+                    <button
+                      onClick={() => setIsCategoryModalOpen(true)}
+                      className="p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 hover:bg-slate-700 hover:text-slate-200 transition-all shadow-xl group"
+                      title="Manage Categories"
+                    >
+                      <i className="fas fa-tags text-xs group-hover:scale-110 transition-transform"></i>
+                    </button>
 
-                {!isViewOnly && (
-                  <button
-                    onClick={processAll}
-                    disabled={isProcessingAll || images.length === 0}
-                    className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 transition-all px-6 py-2.5 rounded-xl font-black flex items-center gap-2 shadow-xl shadow-indigo-500/20 text-xs uppercase tracking-wider"
-                  >
-                    {isProcessingAll ? (
-                      <i className="fas fa-circle-notch fa-spin"></i>
-                    ) : (
-                      <i className="fas fa-bolt"></i>
+                    <button
+                      onClick={() => setIsSettingsModalOpen(true)}
+                      className="p-2.5 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 hover:bg-indigo-600 hover:text-white transition-all shadow-xl group"
+                      title="App Settings"
+                    >
+                      <Sliders className="w-4 h-4 group-hover:rotate-90 transition-transform duration-500" />
+                    </button>
+
+                    <button
+                      onClick={processAll}
+                      disabled={isProcessingAll || images.length === 0}
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 transition-all px-4 sm:px-6 py-2.5 rounded-xl font-black flex items-center gap-2 shadow-xl shadow-indigo-500/20 text-[10px] sm:text-xs uppercase tracking-wider shrink-0"
+                    >
+                      {isProcessingAll ? (
+                        <i className="fas fa-circle-notch fa-spin"></i>
+                      ) : (
+                        <i className="fas fa-bolt"></i>
+                      )}
+                      <span className="hidden sm:inline">
+                        {isProcessingAll ? "Translating..." : "Translate All"}
+                      </span>
+                      <span className="sm:hidden inline">
+                        {isProcessingAll ? "Wait..." : "Translate"}
+                      </span>
+                    </button>
+
+                    {images.length > 0 && (
+                      <button
+                        onClick={downloadAllAsZip}
+                        className="bg-slate-100 text-slate-900 hover:bg-white px-4 sm:px-6 py-2.5 rounded-xl font-black flex items-center gap-2 shadow-xl text-[10px] sm:text-xs uppercase tracking-wider transition-all shrink-0"
+                      >
+                        <i className="fas fa-archive"></i>{" "}
+                        <span className="hidden sm:inline">Download ZIP</span>
+                        <span className="sm:hidden inline">ZIP</span>
+                      </button>
                     )}
-                    {isProcessingAll ? "Translating..." : "Translate All"}
-                  </button>
-                )}
-
-                {!isViewOnly && images.length > 0 && (
-                  <button
-                    onClick={downloadAllAsZip}
-                    className="bg-slate-100 text-slate-900 hover:bg-white px-6 py-2.5 rounded-xl font-black flex items-center gap-2 shadow-xl text-xs uppercase tracking-wider transition-all"
-                  >
-                    <i className="fas fa-archive"></i> Download ZIP
-                  </button>
+                  </>
                 )}
               </div>
             </div>
           </header>
 
-          <main className="flex-1 max-w-7xl mx-auto w-full p-6 md:p-10">
+          <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
             {images.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-[65vh] rounded-[4rem] border-4 border-dashed border-slate-800/50 bg-slate-900/10 group transition-all duration-700 hover:border-indigo-500/40">
                 <div className="mb-10 relative">
@@ -856,22 +897,22 @@ const App: React.FC = () => {
             ) : isViewOnly ? (
               <div className="flex-1 flex flex-col h-full animate-in fade-in duration-700 min-h-0">
                 {/* Premium Viewer Header */}
-                <div className="bg-slate-900/40 backdrop-blur-xl p-6 rounded-[2.5rem] border border-white/5 flex items-center justify-between mb-8 shadow-2xl shrink-0">
+                <div className="bg-slate-900/40 backdrop-blur-xl p-3 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 mb-4 sm:mb-8 shadow-2xl shrink-0">
                   <div className="flex flex-col">
-                    <h2 className="text-2xl font-black text-white italic uppercase tracking-tight">
+                    <h2 className="text-lg sm:text-2xl font-black text-white italic uppercase tracking-tight truncate max-w-[200px] sm:max-w-none">
                       {activeSeries?.name}
                     </h2>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
+                    <div className="flex items-center gap-3 mt-1 sm:mt-0">
+                      <span className="text-[8px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-indigo-500/20">
                         {activeSeries?.category}
                       </span>
-                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                      <span className="text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest">
                         Page {currentImageIndex + 1} / {images.length}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between md:justify-end gap-3">
                     <ViewModeControls
                       showComparison={showComparison}
                       onToggleComparison={() =>
@@ -881,26 +922,30 @@ const App: React.FC = () => {
                       onChangeMode={setComparisonMode}
                     />
 
-                    <button
-                      onClick={() =>
-                        setCurrentImageIndex(Math.max(0, currentImageIndex - 1))
-                      }
-                      disabled={currentImageIndex === 0}
-                      className="w-12 h-12 rounded-2xl bg-slate-800 text-slate-400 hover:bg-indigo-600 hover:text-white disabled:opacity-30 disabled:hover:bg-slate-800 transition-all flex items-center justify-center border border-slate-700 shadow-xl"
-                    >
-                      <i className="fas fa-chevron-left text-lg"></i>
-                    </button>
-                    <button
-                      onClick={() =>
-                        setCurrentImageIndex(
-                          Math.min(images.length - 1, currentImageIndex + 1)
-                        )
-                      }
-                      disabled={currentImageIndex === images.length - 1}
-                      className="w-12 h-12 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 disabled:opacity-30 transition-all flex items-center justify-center border border-indigo-500/30"
-                    >
-                      <i className="fas fa-chevron-right text-lg"></i>
-                    </button>
+                    <div className="flex items-center gap-2 sm:gap-3">
+                      <button
+                        onClick={() =>
+                          setCurrentImageIndex(
+                            Math.max(0, currentImageIndex - 1)
+                          )
+                        }
+                        disabled={currentImageIndex === 0}
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-slate-800 text-slate-400 hover:bg-indigo-600 hover:text-white disabled:opacity-30 disabled:hover:bg-slate-800 transition-all flex items-center justify-center border border-slate-700 shadow-xl"
+                      >
+                        <i className="fas fa-chevron-left text-sm sm:text-lg"></i>
+                      </button>
+                      <button
+                        onClick={() =>
+                          setCurrentImageIndex(
+                            Math.min(images.length - 1, currentImageIndex + 1)
+                          )
+                        }
+                        disabled={currentImageIndex === images.length - 1}
+                        className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 disabled:opacity-30 transition-all flex items-center justify-center border border-indigo-500/30"
+                      >
+                        <i className="fas fa-chevron-right text-sm sm:text-lg"></i>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -950,7 +995,7 @@ const App: React.FC = () => {
                 </div>
 
                 {/* Thumbnail Strip */}
-                <div className="mt-8 flex items-center justify-center gap-3 p-4 shrink-0 overflow-x-auto no-scrollbar max-w-full mx-auto">
+                <div className="mt-4 sm:mt-8 flex items-center justify-start sm:justify-center gap-2 sm:gap-3 p-2 sm:p-4 shrink-0 overflow-x-auto no-scrollbar max-w-full mx-auto">
                   {images.map((img, idx) => (
                     <button
                       key={img.id}
@@ -972,20 +1017,20 @@ const App: React.FC = () => {
               </div>
             ) : (
               <>
-                <div className="flex justify-between items-end mb-10 px-2">
+                <div className="flex flex-col md:flex-row justify-between md:items-end gap-6 mb-10 px-2 text-center md:text-left">
                   <div>
-                    <h3 className="text-3xl font-black tracking-tighter uppercase mb-2">
+                    <h3 className="text-2xl sm:text-3xl font-black tracking-tighter uppercase mb-2">
                       Editor Workspace
                     </h3>
-                    <p className="text-slate-500 font-bold text-sm tracking-wide">
+                    <p className="text-slate-500 font-bold text-xs sm:text-sm tracking-wide">
                       {images.length} items • Working on{" "}
                       <span className="text-slate-300 font-black italic underline decoration-indigo-500/50 underline-offset-4">
                         {activeSeries?.name}
                       </span>
                     </p>
                   </div>
-                  <div className="flex gap-4">
-                    <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-5 py-2.5 rounded-xl text-xs font-black transition-all uppercase flex items-center gap-2">
+                  <div className="flex flex-wrap justify-center md:justify-end gap-3 sm:gap-4">
+                    <label className="cursor-pointer bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-4 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-xs font-black transition-all uppercase flex items-center gap-2 shrink-0">
                       <input
                         type="file"
                         multiple
@@ -993,9 +1038,9 @@ const App: React.FC = () => {
                         className="hidden"
                         onChange={handleFileUpload}
                       />
-                      <i className="fas fa-plus-circle"></i> Append More
+                      <i className="fas fa-plus-circle"></i> Append
                     </label>
-                    <label className="cursor-pointer bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white px-5 py-2.5 rounded-xl text-xs font-black transition-all border border-amber-500/20 uppercase flex items-center gap-2">
+                    <label className="cursor-pointer bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white px-4 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-xs font-black transition-all border border-amber-500/20 uppercase flex items-center gap-2 shrink-0">
                       <input
                         type="file"
                         accept=".zip"
@@ -1006,7 +1051,7 @@ const App: React.FC = () => {
                     </label>
                     <button
                       onClick={clearAll}
-                      className="bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white px-5 py-2.5 rounded-xl text-xs font-black transition-all border border-red-500/20 uppercase"
+                      className="bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white px-4 sm:px-5 py-2.5 rounded-xl text-[10px] sm:text-xs font-black transition-all border border-red-500/20 uppercase shrink-0"
                     >
                       Wipe All
                     </button>
@@ -1131,117 +1176,12 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      <div
-        style={{ display: isViewOnly ? "none" : "flex" }}
-        className="fixed bottom-8 left-[calc(50%+128px)] -translate-x-1/2 z-40 bg-slate-900/95 border border-slate-700/50 p-6 rounded-[2.5rem] shadow-2xl flex items-center gap-12 backdrop-blur-2xl border-t border-t-white/5 max-w-[95vw] overflow-x-auto"
-      >
-        <div className="flex flex-col gap-2 min-w-fit">
-          <label className="text-[9px] uppercase tracking-[0.3em] text-slate-500 font-black">
-            Target
-          </label>
-          <select
-            value={settings.targetLanguage}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, targetLanguage: e.target.value }))
-            }
-            className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-xs font-black focus:ring-2 ring-indigo-500 outline-none text-indigo-300"
-          >
-            <option value="Turkish">Turkish</option>
-            <option value="English">English</option>
-            <option value="Spanish">Spanish</option>
-            <option value="Japanese">Japanese</option>
-            <option value="French">French</option>
-            <option value="German">German</option>
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-2 min-w-fit">
-          <label className="text-[9px] uppercase tracking-[0.3em] text-slate-500 font-black">
-            Max Font Size
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              type="range"
-              min="10"
-              max="60"
-              value={settings.fontSize}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  fontSize: parseInt(e.target.value),
-                }))
-              }
-              className="w-32 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-            />
-            <span className="text-xs font-mono font-black text-indigo-400">
-              {settings.fontSize}px
-            </span>
-          </div>
-        </div>
-
-        <div className="h-12 w-[1px] bg-slate-800"></div>
-
-        <div className="flex flex-col gap-2 min-w-fit">
-          <label className="text-[9px] uppercase tracking-[0.3em] text-slate-500 font-black">
-            Appearance
-          </label>
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col items-center gap-1">
-              <input
-                type="color"
-                value={settings.fontColor}
-                onChange={(e) =>
-                  setSettings((s) => ({ ...s, fontColor: e.target.value }))
-                }
-                className="w-9 h-9 rounded-xl border-2 border-slate-800 bg-transparent cursor-pointer hover:scale-110"
-                title="Text Color"
-              />
-              <span className="text-[8px] uppercase font-black text-slate-500">
-                Font
-              </span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <input
-                type="color"
-                value={
-                  settings.strokeColor === "transparent"
-                    ? "#000000"
-                    : settings.strokeColor
-                }
-                onChange={(e) =>
-                  setSettings((s) => ({ ...s, strokeColor: e.target.value }))
-                }
-                className="w-9 h-9 rounded-xl border-2 border-slate-800 bg-transparent cursor-pointer hover:scale-110"
-                title="Stroke Color"
-              />
-              <span className="text-[8px] uppercase font-black text-slate-500">
-                Stroke
-              </span>
-            </div>
-            <div className="flex flex-col items-center gap-1">
-              <input
-                type="color"
-                value={
-                  settings.backgroundColor === "transparent"
-                    ? "#000000"
-                    : settings.backgroundColor
-                }
-                onChange={(e) =>
-                  setSettings((s) => ({
-                    ...s,
-                    backgroundColor: e.target.value,
-                  }))
-                }
-                className="w-9 h-9 rounded-xl border-2 border-slate-800 bg-transparent cursor-pointer hover:scale-110"
-                title="Background Color"
-              />
-              <span className="text-[8px] uppercase font-black text-slate-500">
-                Bubble
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <SettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        settings={settings}
+        onSettingsChange={setSettings}
+      />
 
       {selectedImageId &&
         (() => {

@@ -400,7 +400,7 @@ const SeriesSidebar: React.FC<Props> = ({
       {/* Mobile Overlay */}
       {isMobileOpen && (
         <div
-          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm md:hidden"
           onClick={() => setIsMobileOpen(false)}
         />
       )}
@@ -412,7 +412,7 @@ const SeriesSidebar: React.FC<Props> = ({
           bg-[#0a0f1a] border-r border-slate-800 
           flex flex-col h-screen overflow-hidden
           transition-all duration-300
-          fixed md:relative inset-y-0 left-0 z-50
+          fixed md:relative inset-y-0 left-0 z-[80]
           ${
             isMobileOpen
               ? "translate-x-0"

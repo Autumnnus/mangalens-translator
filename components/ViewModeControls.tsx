@@ -16,11 +16,11 @@ const ViewModeControls: React.FC<Props> = ({
   onChangeMode,
 }) => {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2 sm:gap-3">
       {/* Toggle Comparison */}
       <button
         onClick={onToggleComparison}
-        className={`px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all flex items-center gap-2 border ${
+        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all flex items-center gap-2 border ${
           showComparison
             ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/30"
             : "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700"
@@ -32,7 +32,7 @@ const ViewModeControls: React.FC<Props> = ({
         ) : (
           <EyeOff className="w-3.5 h-3.5" />
         )}
-        <span className="hidden sm:inline">Compare</span>
+        <span className="hidden md:inline">Compare</span>
       </button>
 
       {/* Mode Selector - Only visible when comparison is enabled */}
@@ -42,13 +42,22 @@ const ViewModeControls: React.FC<Props> = ({
             <button
               key={mode}
               onClick={() => onChangeMode(mode)}
-              className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+              className={`px-2 sm:px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
                 comparisonMode === mode
                   ? "bg-indigo-600 text-white shadow-lg"
                   : "text-slate-400 hover:text-white hover:bg-slate-700"
               }`}
             >
-              {mode === "side-by-side" ? "Split" : mode}
+              <span className="sm:inline hidden">
+                {mode === "side-by-side" ? "Split" : mode}
+              </span>
+              <span className="sm:hidden inline">
+                {mode === "side-by-side"
+                  ? "SPL"
+                  : mode === "slider"
+                  ? "SLI"
+                  : "TOG"}
+              </span>
             </button>
           ))}
         </div>
