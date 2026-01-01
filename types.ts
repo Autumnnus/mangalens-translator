@@ -1,9 +1,8 @@
-
 export interface TextBubble {
   box_2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
   original_text: string;
   translated_text: string;
-  type: 'dialogue' | 'environmental';
+  type: "dialogue" | "environmental";
 }
 
 export interface UsageMetadata {
@@ -16,7 +15,7 @@ export interface ProcessedImage {
   id: string;
   originalUrl: string;
   translatedUrl: string | null;
-  status: 'idle' | 'processing' | 'completed' | 'error';
+  status: "idle" | "processing" | "completed" | "error";
   bubbles: TextBubble[];
   fileName: string;
   usage?: UsageMetadata;
@@ -30,3 +29,21 @@ export interface TranslationSettings {
   backgroundColor: string;
   strokeColor: string; // Added for white outline
 }
+
+export interface ImagePair {
+  id: string;
+  title: string;
+  sourceUrl: string;
+  convertedUrl: string;
+  createdAt: number;
+}
+
+export interface Series {
+  id: string;
+  name: string;
+  description: string;
+  images: ProcessedImage[];
+  createdAt: number;
+}
+
+export type ViewMode = "slider" | "toggle" | "side-by-side";
