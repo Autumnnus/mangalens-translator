@@ -1,0 +1,5 @@
+{
+  "name": "MangaLens Translator",
+  "description": "An advanced manga and comic translator that uses AI to detect, translate, and replace text bubbles directly within your images while preserving the original artwork's flow.",
+  "requestFramePermissions": []
+}
