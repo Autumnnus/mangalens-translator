@@ -46,6 +46,7 @@ export interface Series {
   tags: string[];
   images: ProcessedImage[];
   createdAt: number;
+  updatedAt: number;
 }
 
 export type ViewMode = "slider" | "toggle" | "side-by-side";

@@ -4,6 +4,7 @@ import CategoryManagerModal from "./components/CategoryManagerModal";
 import ComparisonView from "./components/ComparisonView";
 import NewSeriesModal from "./components/NewSeriesModal";
 import SeriesSidebar from "./components/SeriesSidebar";
+import ViewModeControls from "./components/ViewModeControls";
 import { GeminiService } from "./services/gemini";
 import {
   ProcessedImage,
@@ -12,6 +13,7 @@ import {
   UsageMetadata,
   ViewMode,
 } from "./types";
+import { imageDb } from "./utils/db";
 import { createTranslatedImage } from "./utils/image";
 import { extractImagesFromPdf } from "./utils/pdf";
 
@@ -26,11 +28,17 @@ const App: React.FC = () => {
     const saved = localStorage.getItem("mangalens_series");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const loadedSeries = JSON.parse(saved) as Series[];
+        // Migration: add updatedAt if missing
+        return loadedSeries.map((s) => ({
+          ...s,
+          updatedAt: s.updatedAt || s.createdAt,
+        }));
       } catch (e) {
         console.error("Failed to load series", e);
       }
     }
+    const now = Date.now();
     return [
       {
         id: "default",
@@ -39,7 +47,8 @@ const App: React.FC = () => {
         images: [],
         category: "Uncategorized",
         tags: [],
-        createdAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
       },
     ];
   });
@@ -63,6 +72,7 @@ const App: React.FC = () => {
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [showComparison, setShowComparison] = useState(false);
 
   const activeSeries = useMemo(
     () => series.find((s) => s.id === activeSeriesId) || series[0],
@@ -81,7 +91,11 @@ const App: React.FC = () => {
         typeof arg === "function" ? (arg as any)(currentImages) : arg;
 
       const newSeries = [...prev];
-      newSeries[idx] = { ...newSeries[idx], images: newImages };
+      newSeries[idx] = {
+        ...newSeries[idx],
+        images: newImages,
+        updatedAt: Date.now(),
+      };
       return newSeries;
     });
   };
@@ -89,6 +103,53 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem("mangalens_series", JSON.stringify(series));
   }, [series]);
+
+  // Rehydration: Restore blob URLs from IndexedDB on mount
+  useEffect(() => {
+    const rehydrate = async () => {
+      let changed = false;
+      const newSeries = await Promise.all(
+        series.map(async (s) => {
+          const newImages = await Promise.all(
+            s.images.map(async (img) => {
+              let updatedImg = { ...img };
+              let imgChanged = false;
+
+              // Check if URLs are invalid (blob URLs from previous session)
+              const needsOriginal = img.originalUrl?.startsWith("blob:");
+              const needsTranslated = img.translatedUrl?.startsWith("blob:");
+
+              if (needsOriginal || !img.originalUrl) {
+                const blob = await imageDb.getImage(img.id, "original");
+                if (blob) {
+                  updatedImg.originalUrl = URL.createObjectURL(blob);
+                  imgChanged = true;
+                }
+              }
+
+              if (needsTranslated) {
+                const blob = await imageDb.getImage(img.id, "translated");
+                if (blob) {
+                  updatedImg.translatedUrl = URL.createObjectURL(blob);
+                  imgChanged = true;
+                }
+              }
+
+              if (imgChanged) changed = true;
+              return updatedImg;
+            })
+          );
+          return { ...s, images: newImages };
+        })
+      );
+
+      if (changed) {
+        setSeries(newSeries);
+      }
+    };
+
+    rehydrate();
+  }, []);
 
   const [settings, setSettings] = useState<TranslationSettings>({
     targetLanguage: "Turkish",
@@ -143,27 +204,33 @@ const App: React.FC = () => {
     const files = e.target.files;
     if (!files) return;
 
-    let newImages: ProcessedImage[] = [];
+    let rehydratedImages: ProcessedImage[] = [];
     for (const file of Array.from(files) as File[]) {
       if (file.type === "application/pdf") {
         try {
           const extracted = await extractImagesFromPdf(file);
-          newImages.push(
-            ...extracted.map((img) => ({
-              id: Math.random().toString(36).substring(2, 11),
+          for (const img of extracted) {
+            const id = Math.random().toString(36).substring(2, 11);
+            const res = await fetch(img.url);
+            const blob = await res.blob();
+            await imageDb.saveImage(id, "original", blob);
+            rehydratedImages.push({
+              id,
               fileName: img.name,
-              originalUrl: img.url,
+              originalUrl: URL.createObjectURL(blob), // Use Blob URL instead of Data URL
               translatedUrl: null,
               status: "idle" as const,
               bubbles: [],
-            }))
-          );
+            });
+          }
         } catch (err) {
           console.error("PDF extraction failed", err);
         }
       } else {
-        newImages.push({
-          id: Math.random().toString(36).substring(2, 11),
+        const id = Math.random().toString(36).substring(2, 11);
+        await imageDb.saveImage(id, "original", file);
+        rehydratedImages.push({
+          id,
           fileName: file.name,
           originalUrl: URL.createObjectURL(file),
           translatedUrl: null,
@@ -173,7 +240,7 @@ const App: React.FC = () => {
       }
     }
 
-    setImages((prev) => [...prev, ...newImages]);
+    setImages((prev) => [...prev, ...rehydratedImages]);
     e.target.value = "";
   };
 
@@ -200,6 +267,20 @@ const App: React.FC = () => {
       );
       const cost = calculateCost(usage);
 
+      // Save translated image to IDB
+      let finalTranslatedUrl = translatedUrl;
+      try {
+        const tRes = await fetch(translatedUrl);
+        const tBlob = await tRes.blob();
+        await imageDb.saveImage(image.id, "translated", tBlob);
+        // If it was a Data URL, convert it to a Blob URL to save localStorage space
+        if (translatedUrl.startsWith("data:")) {
+          finalTranslatedUrl = URL.createObjectURL(tBlob);
+        }
+      } catch (e) {
+        console.error("Failed to save translated image to DB", e);
+      }
+
       setImages((prev) =>
         prev.map((img) =>
           img.id === image.id
@@ -207,7 +288,7 @@ const App: React.FC = () => {
                 ...img,
                 status: "completed",
                 bubbles,
-                translatedUrl,
+                translatedUrl: finalTranslatedUrl,
                 usage,
                 cost,
               }
@@ -279,10 +360,27 @@ const App: React.FC = () => {
     const zip = new JSZip();
     const folder = zip.folder(activeSeries.name.replace(/[^a-z0-9]/gi, "_"));
 
-    // Save metadata
-    folder.file("series.json", JSON.stringify(activeSeries, null, 2));
+    // Create a clean version of series for JSON export (without blob URLs)
+    const cleanedSeries = {
+      ...activeSeries,
+      images: activeSeries.images.map((img, idx) => {
+        const paddedIndex = (idx + 1).toString().padStart(3, "0");
+        const extension = img.fileName.split(".").pop() || "jpg";
+        return {
+          ...img,
+          originalUrl: `${paddedIndex}_source.${extension}`,
+          translatedUrl: img.translatedUrl
+            ? `${paddedIndex}_translated.${extension}`
+            : null,
+        };
+      }),
+    };
 
-    const promises = images.map(async (img, idx) => {
+    // Save metadata
+    folder.file("series.json", JSON.stringify(cleanedSeries, null, 2));
+
+    for (let idx = 0; idx < images.length; idx++) {
+      const img = images[idx];
       try {
         const extension = img.fileName.split(".").pop() || "jpg";
         const paddedIndex = (idx + 1).toString().padStart(3, "0");
@@ -295,7 +393,7 @@ const App: React.FC = () => {
 
         // Save Translated if exists
         if (img.translatedUrl && img.translatedUrl !== img.originalUrl) {
-          const translatedData = await urlToBase64(img.translatedUrl);
+          const translatedData = await urlToBase64(img.translatedUrl as string);
           folder.file(
             `${paddedIndex}_translated.${extension}`,
             translatedData,
@@ -305,9 +403,8 @@ const App: React.FC = () => {
       } catch (e) {
         console.error(`Failed to add ${img.fileName} to ZIP:`, e);
       }
-    });
+    }
 
-    await Promise.all(promises);
     const content = await zip.generateAsync({ type: "blob" });
     saveAs(content, `${activeSeries.name}_export.zip`);
   };
@@ -364,6 +461,7 @@ const App: React.FC = () => {
           if (sourceFile) {
             const blob = await sourceFile.async("blob");
             sourceBlobUrl = URL.createObjectURL(blob);
+            await imageDb.saveImage(originalImg.id, "original", blob);
           } else {
             continue;
           }
@@ -372,6 +470,7 @@ const App: React.FC = () => {
           if (translatedFile) {
             const blob = await translatedFile.async("blob");
             translatedBlobUrl = URL.createObjectURL(blob);
+            await imageDb.saveImage(originalImg.id, "translated", blob);
           }
 
           rehydratedImages.push({
@@ -406,32 +505,60 @@ const App: React.FC = () => {
 
   const downloadFullAccountZip = async () => {
     const zip = new JSZip();
-
+    console.log("series", series);
     for (const s of series) {
       if (s.images.length === 0) continue;
       const folder = zip.folder(s.name.replace(/[^a-z0-9]/gi, "_"));
 
-      folder.file("series.json", JSON.stringify(s, null, 2));
+      // Create a clean version of series for JSON export (without blob URLs)
+      const cleanedSeries = {
+        ...s,
+        images: s.images.map((img, idx) => {
+          const paddedIndex = (idx + 1).toString().padStart(3, "0");
+          const extension = img.fileName.split(".").pop() || "jpg";
+          return {
+            ...img,
+            // Store relative file paths instead of blob URLs
+            originalUrl: `${paddedIndex}_source.${extension}`,
+            translatedUrl: img.translatedUrl
+              ? `${paddedIndex}_translated.${extension}`
+              : null,
+          };
+        }),
+      };
 
-      const promises = s.images.map(async (img, idx) => {
+      folder.file("series.json", JSON.stringify(cleanedSeries, null, 2));
+
+      for (let idx = 0; idx < s.images.length; idx++) {
+        const img = s.images[idx];
         try {
-          const targetUrl = img.translatedUrl || img.originalUrl;
-          const base64Data = await urlToBase64(targetUrl);
           const extension = img.fileName.split(".").pop() || "jpg";
           const paddedIndex = (idx + 1).toString().padStart(3, "0");
-          folder.file(
-            `${paddedIndex}_${img.fileName.split(".")[0]}.${extension}`,
-            base64Data,
-            { base64: true }
-          );
+
+          // Save Source
+          const sourceData = await urlToBase64(img.originalUrl);
+          folder.file(`${paddedIndex}_source.${extension}`, sourceData, {
+            base64: true,
+          });
+
+          // Save Translated if exists
+          if (img.translatedUrl && img.translatedUrl !== img.originalUrl) {
+            const translatedData = await urlToBase64(
+              img.translatedUrl as string
+            );
+            folder.file(
+              `${paddedIndex}_translated.${extension}`,
+              translatedData,
+              { base64: true }
+            );
+          }
         } catch (e) {
           console.error(
             `Failed to add ${img.fileName} from ${s.name} to ZIP:`,
             e
           );
         }
-      });
-      await Promise.all(promises);
+      }
     }
 
     const content = await zip.generateAsync({ type: "blob" });
@@ -466,11 +593,14 @@ const App: React.FC = () => {
     if (editingSeriesId) {
       setSeries((prev) =>
         prev.map((s) =>
-          s.id === editingSeriesId ? { ...s, name, category } : s
+          s.id === editingSeriesId
+            ? { ...s, name, category, updatedAt: Date.now() }
+            : s
         )
       );
       setEditingSeriesId(null);
     } else {
+      const now = Date.now();
       const newSeries: Series = {
         id: Math.random().toString(36).substring(2, 9),
         name,
@@ -478,7 +608,8 @@ const App: React.FC = () => {
         category,
         tags: [],
         images: [],
-        createdAt: Date.now(),
+        createdAt: now,
+        updatedAt: now,
       };
       setSeries([...series, newSeries]);
       setActiveSeriesId(newSeries.id);
@@ -504,7 +635,6 @@ const App: React.FC = () => {
   };
 
   const handleDeleteSeries = (id: string) => {
-    if (series.length <= 1) return;
     const newSeries = series.filter((s) => s.id !== id);
     setSeries(newSeries);
     if (activeSeriesId === id) {
@@ -533,6 +663,7 @@ const App: React.FC = () => {
           onClose={() => setIsSidebarOpen(false)}
           onImport={handleImportLibrary}
           isViewOnly={isViewOnly}
+          categories={categories}
         />
 
         <CategoryManagerModal
@@ -700,6 +831,15 @@ const App: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-3">
+                    <ViewModeControls
+                      showComparison={showComparison}
+                      onToggleComparison={() =>
+                        setShowComparison(!showComparison)
+                      }
+                      comparisonMode={comparisonMode}
+                      onChangeMode={setComparisonMode}
+                    />
+
                     <button
                       onClick={() =>
                         setCurrentImageIndex(Math.max(0, currentImageIndex - 1))
@@ -739,14 +879,30 @@ const App: React.FC = () => {
                             : "opacity-0 scale-95 translate-x-full pointer-events-none"
                         }`}
                       >
-                        <div className="relative bg-[#0b0f1a] border border-slate-800 rounded-[3rem] overflow-hidden shadow-[0_60px_100px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10 group/img w-full h-full max-w-3xl">
-                          <img
-                            src={img.translatedUrl || img.originalUrl}
-                            alt={`Page ${idx + 1}`}
-                            className="w-full h-full object-contain select-none"
-                          />
-                          <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity pointer-events-none"></div>
-                        </div>
+                        {showComparison ? (
+                          <div className="w-full h-full max-w-5xl">
+                            <ComparisonView
+                              pair={{
+                                id: img.id,
+                                title: img.fileName,
+                                sourceUrl: img.originalUrl,
+                                convertedUrl:
+                                  img.translatedUrl || img.originalUrl,
+                                createdAt: Date.now(),
+                              }}
+                              mode={comparisonMode}
+                            />
+                          </div>
+                        ) : (
+                          <div className="relative bg-[#0b0f1a] border border-slate-800 rounded-[3rem] overflow-hidden shadow-[0_60px_100px_-20px_rgba(0,0,0,0.8)] ring-1 ring-white/10 group/img w-full h-full max-w-3xl">
+                            <img
+                              src={img.translatedUrl || img.originalUrl}
+                              alt={`Page ${idx + 1}`}
+                              className="w-full h-full object-contain select-none"
+                            />
+                            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover/img:opacity-100 transition-opacity pointer-events-none"></div>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
