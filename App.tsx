@@ -2,6 +2,7 @@ import { Eye, Settings } from "lucide-react";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import CategoryManagerModal from "./components/CategoryManagerModal";
 import ComparisonView from "./components/ComparisonView";
+import ConfirmModal from "./components/ConfirmModal";
 import NewSeriesModal from "./components/NewSeriesModal";
 import SeriesSidebar from "./components/SeriesSidebar";
 import ViewModeControls from "./components/ViewModeControls";
@@ -73,6 +74,18 @@ const App: React.FC = () => {
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [showComparison, setShowComparison] = useState(false);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type?: "danger" | "warning";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
 
   const activeSeries = useMemo(
     () => series.find((s) => s.id === activeSeriesId) || series[0],
@@ -505,7 +518,6 @@ const App: React.FC = () => {
 
   const downloadFullAccountZip = async () => {
     const zip = new JSZip();
-    console.log("series", series);
     for (const s of series) {
       if (s.images.length === 0) continue;
       const folder = zip.folder(s.name.replace(/[^a-z0-9]/gi, "_"));
@@ -566,20 +578,35 @@ const App: React.FC = () => {
   };
 
   const removeImage = (id: string) => {
-    setImages((prev) => {
-      const imgToRemove = prev.find((img) => img.id === id);
-      if (imgToRemove?.originalUrl.startsWith("blob:"))
-        URL.revokeObjectURL(imgToRemove.originalUrl);
-      return prev.filter((img) => img.id !== id);
+    setConfirmConfig({
+      isOpen: true,
+      title: "Remove Image",
+      message:
+        "Are you sure you want to remove this image? This action cannot be undone.",
+      onConfirm: () => {
+        setImages((prev) => {
+          const imgToRemove = prev.find((img) => img.id === id);
+          if (imgToRemove?.originalUrl.startsWith("blob:"))
+            URL.revokeObjectURL(imgToRemove.originalUrl);
+          return prev.filter((img) => img.id !== id);
+        });
+      },
     });
   };
 
   const clearAll = () => {
-    images.forEach((img) => {
-      if (img.originalUrl.startsWith("blob:"))
-        URL.revokeObjectURL(img.originalUrl);
+    setConfirmConfig({
+      isOpen: true,
+      title: "Wipe Series",
+      message: "This will remove ALL images from this series. Are you sure?",
+      onConfirm: () => {
+        images.forEach((img) => {
+          if (img.originalUrl.startsWith("blob:"))
+            URL.revokeObjectURL(img.originalUrl);
+        });
+        setImages([]);
+      },
     });
-    setImages([]);
   };
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -626,24 +653,47 @@ const App: React.FC = () => {
   };
 
   const handleDeleteCategory = (name: string) => {
-    setCategories((prev) => prev.filter((c) => c !== name));
-    setSeries((prev) =>
-      prev.map((s) =>
-        s.category === name ? { ...s, category: "Uncategorized" } : s
-      )
-    );
+    setConfirmConfig({
+      isOpen: true,
+      title: "Delete Category",
+      message: `Are you sure you want to delete "${name}"? All series in this category will be moved to Uncategorized.`,
+      onConfirm: () => {
+        setCategories((prev) => prev.filter((c) => c !== name));
+        setSeries((prev) =>
+          prev.map((s) =>
+            s.category === name ? { ...s, category: "Uncategorized" } : s
+          )
+        );
+      },
+    });
   };
 
   const handleDeleteSeries = (id: string) => {
-    const newSeries = series.filter((s) => s.id !== id);
-    setSeries(newSeries);
-    if (activeSeriesId === id) {
-      setActiveSeriesId(newSeries[0].id);
-    }
+    const seriesToDelete = series.find((s) => s.id === id);
+    setConfirmConfig({
+      isOpen: true,
+      title: "Delete Series",
+      message: `Are you sure you want to delete "${seriesToDelete?.name}"? All progress and images will be lost forever.`,
+      onConfirm: () => {
+        const newSeries = series.filter((s) => s.id !== id);
+        setSeries(newSeries);
+        if (activeSeriesId === id) {
+          setActiveSeriesId(newSeries[0].id);
+        }
+      },
+    });
   };
 
   return (
     <>
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        onConfirm={confirmConfig.onConfirm}
+        onClose={() => setConfirmConfig({ ...confirmConfig, isOpen: false })}
+        type={confirmConfig.type}
+      />
       <div className="flex h-screen bg-[#020617] text-slate-100 font-sans overflow-hidden">
         <SeriesSidebar
           series={series}
@@ -700,16 +750,7 @@ const App: React.FC = () => {
           <header className="sticky top-0 z-50 bg-[#0f172a]/90 backdrop-blur-xl border-b border-slate-800 p-4 shadow-2xl">
             <div className="max-w-7xl mx-auto flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="bg-gradient-to-tr from-indigo-600 to-fuchsia-600 p-2.5 rounded-2xl shadow-lg shadow-indigo-500/30">
-                  <i className="fas fa-eye-low-vision text-xl"></i>
-                </div>
                 <div>
-                  <h1 className="text-2xl font-black tracking-tighter uppercase leading-none italic">
-                    Manga<span className="text-indigo-400">Lens</span>{" "}
-                    <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-500/30 font-bold not-italic">
-                      v3.3
-                    </span>
-                  </h1>
                   <div className="flex items-center gap-3 mt-1.5">
                     <div className="flex items-center gap-1.5 px-2 py-0.5 bg-slate-800 rounded-md border border-slate-700">
                       <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">

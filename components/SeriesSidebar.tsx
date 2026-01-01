@@ -208,8 +208,6 @@ const SeriesSidebar: React.FC<Props> = ({
     return groups;
   }, [filteredAndSortedSeries]);
 
-  console.log("groupedSeries", groupedSeries);
-
   const sidebarContent = (
     <>
       {/* Header */}
@@ -223,9 +221,9 @@ const SeriesSidebar: React.FC<Props> = ({
             <div className="w-8 h-8 bg-gradient-to-tr from-indigo-600 to-fuchsia-600 rounded-lg flex items-center justify-center">
               <i className="fas fa-eye-low-vision text-sm"></i>
             </div>
-            <span className="font-black text-base tracking-tight">
-              Vision<span className="text-indigo-400">Swap</span>
-            </span>
+            <h5 className="text-xl font-black tracking-tighter uppercase leading-none italic">
+              Manga<span className="text-indigo-400">Lens</span>
+            </h5>
           </div>
         )}
         <button

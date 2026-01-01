@@ -97,7 +97,6 @@ export class GeminiService {
       console.log("result", result);
       const text = result.text;
       const usage = result.usageMetadata as unknown as UsageMetadata;
-      console.log("text", text);
       if (!text) throw new Error("No response from Gemini");
 
       return {
