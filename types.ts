@@ -42,6 +42,8 @@ export interface Series {
   id: string;
   name: string;
   description: string;
+  category: string;
+  tags: string[];
   images: ProcessedImage[];
   createdAt: number;
 }
