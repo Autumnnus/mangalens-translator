@@ -1,5 +1,9 @@
-
-import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
+import {
+  GoogleGenAI,
+  HarmBlockThreshold,
+  HarmCategory,
+  Type,
+} from "@google/genai";
 import { TextBubble, UsageMetadata } from "../types";
 
 export class GeminiService {
@@ -10,11 +14,11 @@ export class GeminiService {
   }
 
   async translateImage(
-    base64Image: string, 
+    base64Image: string,
     targetLanguage: string
-  ): Promise<{ bubbles: TextBubble[], usage: UsageMetadata }> {
+  ): Promise<{ bubbles: TextBubble[]; usage: UsageMetadata }> {
     const prompt = `
-      ROLE: Professional manga and comic translator.
+      role: Professional manga and comic translator.
       TASK: Detect every text bubble, sound effect, and caption in this image and translate them into ${targetLanguage}.
       
       STRICT GUIDELINES:
@@ -27,7 +31,7 @@ export class GeminiService {
          - Use type "environmental" for sound effects (SFX), narration, or labels.
       
       OUTPUT: Return a JSON array of objects with:
-      - box_2d: [ymin, xmin, ymax, xmax] (0-1000)
+      - box_2d: [ymin, xmin, ymax, xmax] (0-1000). CRITICAL: Provide the bounding box of the text container (the bubble). It must be precise and follow the inner edges of the bubble/text area.
       - original_text: Text from the image.
       - translated_text: Translated text in ${targetLanguage}.
       - type: "dialogue" or "environmental".
@@ -37,13 +41,13 @@ export class GeminiService {
 
     try {
       const result = await this.ai.models.generateContent({
- model: 'gemini-2.5-flash',
+        model: "gemini-3-flash-preview",
         contents: {
           parts: [
             { text: prompt },
             {
               inlineData: {
-                mimeType: 'image/jpeg',
+                mimeType: "image/jpeg",
                 data: base64Image,
               },
             },
@@ -52,10 +56,22 @@ export class GeminiService {
         config: {
           responseMimeType: "application/json",
           safetySettings: [
-            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            {
+              category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
           ],
           responseSchema: {
             type: Type.ARRAY,
@@ -68,9 +84,9 @@ export class GeminiService {
                 },
                 original_text: { type: Type.STRING },
                 translated_text: { type: Type.STRING },
-                type: { 
+                type: {
                   type: Type.STRING,
-                  enum: ['dialogue', 'environmental']
+                  enum: ["dialogue", "environmental"],
                 },
               },
               required: ["box_2d", "original_text", "translated_text", "type"],
@@ -78,15 +94,15 @@ export class GeminiService {
           },
         },
       });
-
+      console.log("result", result);
       const text = result.text;
       const usage = result.usageMetadata as unknown as UsageMetadata;
-console.log('text',text)
+      console.log("text", text);
       if (!text) throw new Error("No response from Gemini");
-      
+
       return {
         bubbles: JSON.parse(text.trim()) as TextBubble[],
-        usage: usage
+        usage: usage,
       };
     } catch (error) {
       console.error("Gemini Translation Error:", error);
