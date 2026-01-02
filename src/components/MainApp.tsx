@@ -1,22 +1,24 @@
+"use client";
+
 import React, { useEffect } from "react";
-import CategoryManagerModal from "./components/CategoryManagerModal";
-import ComparisonView from "./components/ComparisonView"; // For modal view
-import ConfirmModal from "./components/ConfirmModal";
-import NewSeriesModal from "./components/NewSeriesModal";
-import SeriesSidebar from "./components/SeriesSidebar";
-import SettingsModal from "./components/SettingsModal";
-import EditorWorkspace from "./components/editor/EditorWorkspace";
-import Header from "./components/layout/Header";
-import ReaderView from "./components/viewer/ReaderView";
+import CategoryManagerModal from "./CategoryManagerModal";
+import ComparisonView from "./ComparisonView"; // For modal view
+import ConfirmModal from "./ConfirmModal";
+import NewSeriesModal from "./NewSeriesModal";
+import SeriesSidebar from "./SeriesSidebar";
+import SettingsModal from "./SettingsModal";
+import EditorWorkspace from "./editor/EditorWorkspace";
+import Header from "./layout/Header";
+import ReaderView from "./viewer/ReaderView";
 
-import { useProjectExport } from "./hooks/useProjectExport";
-import { useProjectImport } from "./hooks/useProjectImport";
-import { useSeriesStore } from "./stores/useSeriesStore";
-import { useSettingsStore } from "./stores/useSettingsStore";
-import { useUIStore } from "./stores/useUIStore";
-import { ViewMode } from "./types";
+import { useProjectExport } from "../hooks/useProjectExport";
+import { useProjectImport } from "../hooks/useProjectImport";
+import { useSeriesStore } from "../stores/useSeriesStore";
+import { useSettingsStore } from "../stores/useSettingsStore";
+import { useUIStore } from "../stores/useUIStore";
+import { ViewMode } from "../types";
 
-const App: React.FC = () => {
+const MainApp: React.FC = () => {
   // Store Hooks
   const {
     series,
@@ -96,6 +98,20 @@ const App: React.FC = () => {
   const [modalCompareMode, setModalCompareMode] =
     React.useState<ViewMode>("slider");
 
+  // Prevent drag and drop on the entire window (optional, but good for local app feel)
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => e.preventDefault();
+    const handleDrop = (e: DragEvent) => e.preventDefault();
+
+    window.addEventListener("dragover", handleDragOver);
+    window.addEventListener("drop", handleDrop);
+
+    return () => {
+      window.removeEventListener("dragover", handleDragOver);
+      window.removeEventListener("drop", handleDrop);
+    };
+  }, []);
+
   return (
     <>
       <ConfirmModal
@@ -147,7 +163,7 @@ const App: React.FC = () => {
           onConfirm={handleConfirmSeries}
           existingTitles={series.map((s) => s.name)}
           categories={categories}
-          onAddCategory={(cat) => setCategories([...categories, cat])} // This might be redundant if setCategories replaces all
+          onAddCategory={(cat) => setCategories([...categories, cat])}
           initialName={
             editingSeriesId
               ? series.find((s) => s.id === editingSeriesId)?.name
@@ -168,20 +184,6 @@ const App: React.FC = () => {
             updateSettings(newSettings);
           }}
         />
-
-        {/* We need to pass the real update function to SettingsModal. 
-            SettingsModal expects (settings: TranslationSettings) => void. 
-            Our store update expects Partial.
-            Adapter:
-        */}
-        {isSettingsModalOpen && (
-          <div className="hidden">
-            {/* Hack: The modal is rendered above but I need to fix the props passing in real code. 
-                     The SettingsModal component is rendered unconditionally in previous App.tsx but controlled by isOpen prop.
-                     I'll fix the prop underneath.
-                 */}
-          </div>
-        )}
 
         <div className="flex-1 flex flex-col h-full overflow-x-hidden overflow-y-auto custom-scrollbar relative">
           <Header />
@@ -247,4 +249,4 @@ const App: React.FC = () => {
   );
 };
 
-export default App;
+export default MainApp;

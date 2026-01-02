@@ -10,7 +10,13 @@ export class GeminiService {
   private ai: GoogleGenAI;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error(
+        "NEXT_PUBLIC_GEMINI_API_KEY is not defined. Please add it to your .env.local file."
+      );
+    }
+    this.ai = new GoogleGenAI({ apiKey });
   }
 
   async translateImage(

@@ -1,84 +1,36 @@
-# MangaLens Translator - React & TypeScript Refactor
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-MangaLens Translator is a modern, client-side web application for translating manga and comics. It leverages the Gemini AI API for translation and layout preservation.
+## Getting Started
 
-## 🚀 Key Features
+First, run the development server:
 
-- **Project Management**: Create multiple series/projects, categorize them.
-- **AI Translation**: Uses Google Gemini to detect text bubbles, OCR, and translate.
-- **In-Painting**: Automatically clears original text bubbles.
-- **Typesetting**: Intelligently fits translated text back into bubbles with customizable fonts/colors.
-- **Local Privacy**: All images are processed locally or via direct API calls. No images are stored on our servers.
-- **Persistence**: Uses IndexedDB for image storage and LocalStorage for metadata.
-- **Import/Export**: Full project backup and restore via ZIP.
-
-## 🏗 Architecture (Refactored)
-
-The project has been refactored to follow SOLID principles and a modular React architecture using **Zustand** for state management.
-
-### Directory Structure
-
-```text
-src/
-├── components/          # UI Components
-│   ├── editor/          # Editor Workspace (ImageCard, Validation)
-│   ├── layout/          # Layout wrappers (Header, Sidebar)
-│   ├── viewer/          # Read-only components (ReaderView)
-│   ├── common/          # Reusable UI (Modals, Icons)
-│   └── ...
-├── hooks/               # Custom Business Logic Hooks
-│   ├── useImageProcessor.ts  # Translation engine wrapper
-│   ├── useImageUpload.ts     # File handling & PDF extraction
-│   ├── useProjectExport.ts   # ZIP generation logic
-│   └── useProjectImport.ts   # ZIP parsing & rehydration
-├── stores/              # Global State Management (Zustand)
-│   ├── useSeriesStore.ts     # Core data (Series, Images, Categories)
-│   ├── useSettingsStore.ts   # User preferences (Translation, UI Appearance)
-│   └── useUIStore.ts         # Transient UI state (Modals, current selection)
-├── services/            # API Services
-│   └── gemini.ts             # Google Gemini API interaction
-├── utils/               # Helper Functions
-│   ├── db.ts                 # IndexedDB wrapper (Image storage)
-│   ├── image.ts              # Canvas manipulation & typesetting
-│   └── pdf.ts                # PDF.js wrapper
-└── App.tsx              # Main Entry & Router/Layout Composer
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-### State Management
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-We use **Zustand** stores decoupled by domain:
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-- `useSeriesStore`: Persistent. Handles heavy data.
-- `useSettingsStore`: Persistent. Handles configuration.
-- `useUIStore`: Ephemeral. Handles modals and temporary states.
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-### Persistence
+## Learn More
 
-- **Metadata**: Persisted to `localStorage` via Zustand middleware.
-- **Binary Data (Images)**: Persisted to `IndexedDB` (idb) to bypass storage limits.
-- **Rehydration**: Checks for broken Blob URLs on mount and restores them from IndexedDB.
+To learn more about Next.js, take a look at the following resources:
 
-## 🛠 Tech Stack
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-- **Frontend**: React, TypeScript, Vite
-- **Styling**: Tailwind CSS
-- **State**: Zustand
-- **Icons**: Lucide React, FontAwesome
-- **AI**: Google Gemini Pro Vision
-- **Utils**: JSZip, FileSaver, PDF.js
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## 📦 Installation
+## Deploy on Vercel
 
-1.  Clone the repository.
-2.  Install dependencies:
-    ```bash
-    yarn install
-    ```
-3.  Run the development server:
-    ```bash
-    yarn dev
-    ```
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-## 🤝 Contribution
-
-Feel free to open issues or PRs for improvements.
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
