@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { ProcessedImage } from "../types";
-import { imageDb } from "../utils/db";
+// import { imageDb } from "../utils/db"; // Removed
 import { extractImagesFromPdf } from "../utils/pdf";
 
 export const useImageUpload = () => {
@@ -13,8 +13,6 @@ export const useImageUpload = () => {
 
     setIsUploading(true);
     try {
-      const rehydratedImages: ProcessedImage[] = [];
-
       for (const file of Array.from(files)) {
         if (file.type === "application/pdf") {
           try {
@@ -24,7 +22,7 @@ export const useImageUpload = () => {
               const res = await fetch(img.url);
               const blob = await res.blob();
 
-              await imageDb.saveImage(id, "original", blob);
+              // await imageDb.saveImage(id, "original", blob); // Removed
 
               const newImage: ProcessedImage = {
                 id,
@@ -42,7 +40,7 @@ export const useImageUpload = () => {
           }
         } else {
           const id = Math.random().toString(36).substring(2, 11);
-          await imageDb.saveImage(id, "original", file);
+          // await imageDb.saveImage(id, "original", file); // Removed
 
           const newImage: ProcessedImage = {
             id,

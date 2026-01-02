@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from "react";
 import CategoryManagerModal from "./CategoryManagerModal";
 import ComparisonView from "./ComparisonView"; // For modal view
 import ConfirmModal from "./ConfirmModal";
@@ -19,6 +21,31 @@ import { useUIStore } from "../stores/useUIStore";
 import { ViewMode } from "../types";
 
 const MainApp: React.FC = () => {
+  const router = useRouter();
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+      if (!session) {
+        router.push("/auth/login");
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session) {
+        router.push("/auth/login");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [router]);
+
   // Store Hooks
   const {
     series,
@@ -111,6 +138,18 @@ const MainApp: React.FC = () => {
       window.removeEventListener("drop", handleDrop);
     };
   }, []);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#020617] text-white">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null; // Will redirect
+  }
 
   return (
     <>
