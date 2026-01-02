@@ -4,7 +4,7 @@ import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { ProcessedImage, UsageMetadata } from "../types";
 // import { imageDb } from "../utils/db"; // Removed
-import { createTranslatedImage } from "../utils/image";
+import { createTranslatedImageBlob } from "../utils/image";
 
 const INPUT_COST_PER_1K = 0.0005;
 const OUTPUT_COST_PER_1K = 0.003;
@@ -56,7 +56,7 @@ export const useImageProcessor = () => {
         settings.targetLanguage
       );
 
-      const translatedUrl = await createTranslatedImage(
+      const tBlob = await createTranslatedImageBlob(
         image.originalUrl,
         bubbles,
         settings
@@ -66,9 +66,6 @@ export const useImageProcessor = () => {
 
       // Persistence via Supabase/R2
       try {
-        const tRes = await fetch(translatedUrl);
-        const tBlob = await tRes.blob();
-
         await saveTranslatedImage(
           activeSeriesId,
           image.id,

@@ -108,24 +108,40 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
 
       // Prepend public URL or presigned logic
       // Assuming R2 public access or worker for now:
-      const R2_DOMAIN = process.env.NEXT_PUBLIC_R2_DOMAIN || "";
-      // If R2_DOMAIN is not set, we might need to rely on presigned URLs which expire.
-      // But for simplicity in this migration, let's assume public.
+      const R2_DOMAIN = process.env.NEXT_PUBLIC_R2_DOMAIN;
+      const ACCOUNT_ID = process.env.NEXT_PUBLIC_R2_ACCOUNT_ID;
+
+      const getPublicUrl = (key: string | null) => {
+        if (!key) return null;
+        if (
+          key.startsWith("http") ||
+          key.startsWith("blob:") ||
+          key.startsWith("data:")
+        )
+          return key;
+
+        let domain = R2_DOMAIN;
+        if (!domain && ACCOUNT_ID) {
+          domain = `https://pub-${ACCOUNT_ID}.r2.dev`;
+        }
+
+        if (domain) {
+          const cleanDomain = domain.endsWith("/")
+            ? domain.slice(0, -1)
+            : domain;
+          const cleanKey = key.startsWith("/") ? key.slice(1) : key;
+          return `${cleanDomain}/${cleanKey}`;
+        }
+
+        return key;
+      };
 
       const fixedSeries = transformedSeries.map((s) => ({
         ...s,
         images: s.images.map((img) => ({
           ...img,
-          originalUrl: img.originalUrl
-            ? img.originalUrl.startsWith("http")
-              ? img.originalUrl
-              : `${R2_DOMAIN}/${img.originalUrl}`
-            : "",
-          translatedUrl: img.translatedUrl
-            ? img.translatedUrl.startsWith("http")
-              ? img.translatedUrl
-              : `${R2_DOMAIN}/${img.translatedUrl}`
-            : null,
+          originalUrl: getPublicUrl(img.originalUrl) || "",
+          translatedUrl: getPublicUrl(img.translatedUrl),
         })),
       }));
 

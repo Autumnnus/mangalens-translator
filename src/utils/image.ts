@@ -1,22 +1,10 @@
 import { TextBubble, TranslationSettings } from "../types";
 
-export const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(",")[1]);
-    };
-    reader.onerror = (error) => reject(error);
-  });
-};
-
-export const createTranslatedImage = (
+export const createTranslatedImageBlob = (
   originalUrl: string,
   bubbles: TextBubble[],
   settings: TranslationSettings
-): Promise<string> => {
+): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -27,28 +15,21 @@ export const createTranslatedImage = (
 
       canvas.width = img.width;
       canvas.height = img.height;
-
       ctx.drawImage(img, 0, 0);
 
       bubbles.forEach((bubble) => {
         const [ymin, xmin, ymax, xmax] = bubble.box_2d;
-
-        // 0. Coordinate Buffer (Compensates for 0-1000 coordinate coarseness)
-        const bufferX = (xmax - xmin) * 0.015; // 1.5% horizontal buffer
-        const bufferY = (ymax - ymin) * 0.015; // 1.5% vertical buffer
+        const bufferX = (xmax - xmin) * 0.015;
+        const bufferY = (ymax - ymin) * 0.015;
 
         const left = ((xmin - bufferX) / 1000) * canvas.width;
         const top = ((ymin - bufferY) / 1000) * canvas.height;
         const width = ((xmax - xmin + bufferX * 2) / 1000) * canvas.width;
         const height = ((ymax - ymin + bufferY * 2) / 1000) * canvas.height;
 
-        // 1. Precise Background Clearing (Matches detected bubble geometry)
         if (settings.backgroundColor !== "transparent") {
           ctx.fillStyle = settings.backgroundColor;
-
-          // Use rounded rectangle to better fit manga bubbles
-          const radius = Math.min(width, height) * 0.25; // Slightly more rounded
-
+          const radius = Math.min(width, height) * 0.25;
           ctx.beginPath();
           ctx.moveTo(left + radius, top);
           ctx.lineTo(left + width - radius, top);
@@ -72,38 +53,32 @@ export const createTranslatedImage = (
         const fontStyle = isItalic ? "italic" : "";
         const fontWeight = isItalic ? "500" : "bold";
 
-        // 2. Dynamic Font Scaling Logic
         let currentFontSize = settings.fontSize;
-        const minFontSize = 10; // Increased min font size for readability
-        const paddingHoriz = width * 0.07; // Reduced padding to 7%
+        const minFontSize = 10;
+        const paddingHoriz = width * 0.07;
         const paddingVert = height * 0.07;
         const targetWidth = width - paddingHoriz * 2;
 
         let lines: string[] = [];
         let totalHeight = 0;
 
-        // Decrease font size until text fits both width and height or hits min
         while (currentFontSize > minFontSize) {
           ctx.font = `${fontStyle} ${fontWeight} ${currentFontSize}px 'Inter', sans-serif`;
           lines = wrapText(ctx, bubble.translated_text, targetWidth);
           const lineHeight = currentFontSize * 1.12;
           totalHeight = lines.length * lineHeight;
-
           const maxLineWidth = lines.reduce(
             (max, line) => Math.max(max, ctx.measureText(line).width),
             0
           );
-
           if (
             totalHeight <= height - paddingVert * 2 &&
             maxLineWidth <= targetWidth
-          ) {
+          )
             break;
-          }
-          currentFontSize -= 0.5; // Smoother scaling
+          currentFontSize -= 0.5;
         }
 
-        // Final rendering
         ctx.fillStyle = settings.fontColor;
         ctx.strokeStyle = settings.strokeColor;
         ctx.lineWidth = Math.max(1.2, currentFontSize / 8);
@@ -116,20 +91,23 @@ export const createTranslatedImage = (
         let startY = top + height / 2 - totalHeight / 2 + lineHeight / 2;
 
         lines.forEach((line) => {
-          if (settings.strokeColor !== "transparent") {
+          if (settings.strokeColor !== "transparent")
             ctx.strokeText(line, left + width / 2, startY);
-          }
           ctx.fillText(line, left + width / 2, startY);
           startY += lineHeight;
         });
       });
 
-      resolve(canvas.toDataURL("image/jpeg", 0.9));
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+          else reject("Canvas to Blob failed");
+        },
+        "image/jpeg",
+        0.9
+      );
     };
-    img.onerror = (err) => {
-      console.error("Image loading error in utility:", err);
-      reject(err);
-    };
+    img.onerror = (err) => reject(err);
     img.src = originalUrl;
   });
 };

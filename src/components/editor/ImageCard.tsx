@@ -16,8 +16,28 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
   const { openConfirmModal, setSelectedImageId } = useUIStore();
   const { processImage } = useImageProcessor();
 
+  // Helper to ensure we have a full URL
+  const getDisplayUrl = (url: string | null) => {
+    if (!url) return "";
+    if (
+      url.startsWith("http") ||
+      url.startsWith("blob:") ||
+      url.startsWith("data:")
+    )
+      return url;
+
+    // Fallback construction if store has raw keys
+    const domain =
+      process.env.NEXT_PUBLIC_R2_DOMAIN ||
+      `https://pub-${process.env.NEXT_PUBLIC_R2_ACCOUNT_ID}.r2.dev`;
+    const cleanDomain = domain.endsWith("/") ? domain.slice(0, -1) : domain;
+    return `${cleanDomain}/${url}`;
+  };
+
+  const displayUrl = getDisplayUrl(image.translatedUrl || image.originalUrl);
+
   const handleDownload = async () => {
-    const url = image.translatedUrl || image.originalUrl;
+    const url = displayUrl;
     try {
       const response = await fetch(url);
       const blob = await response.blob();
@@ -61,9 +81,9 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
         onClick={() => setSelectedImageId(image.id)}
       >
         <img
-          src={image.translatedUrl || image.originalUrl}
+          src={displayUrl}
           alt={image.fileName}
-          className="w-full h-full object-contain"
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
         />
 

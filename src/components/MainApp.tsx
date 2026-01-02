@@ -20,9 +20,11 @@ import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
 import { ViewMode } from "../types";
 
+import { Session } from "@supabase/supabase-js";
+
 const MainApp: React.FC = () => {
   const router = useRouter();
-  const [session, setSession] = useState<any>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
