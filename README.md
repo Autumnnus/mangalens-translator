@@ -1,20 +1,84 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# MangaLens Translator - React & TypeScript Refactor
 
-# Run and deploy your AI Studio app
+MangaLens Translator is a modern, client-side web application for translating manga and comics. It leverages the Gemini AI API for translation and layout preservation.
 
-This contains everything you need to run your app locally.
+## 🚀 Key Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/120vaFvWfcdy4vnMXYyFEru3oxNaPsu9Y
+- **Project Management**: Create multiple series/projects, categorize them.
+- **AI Translation**: Uses Google Gemini to detect text bubbles, OCR, and translate.
+- **In-Painting**: Automatically clears original text bubbles.
+- **Typesetting**: Intelligently fits translated text back into bubbles with customizable fonts/colors.
+- **Local Privacy**: All images are processed locally or via direct API calls. No images are stored on our servers.
+- **Persistence**: Uses IndexedDB for image storage and LocalStorage for metadata.
+- **Import/Export**: Full project backup and restore via ZIP.
 
-## Run Locally
+## 🏗 Architecture (Refactored)
 
-**Prerequisites:**  Node.js
+The project has been refactored to follow SOLID principles and a modular React architecture using **Zustand** for state management.
 
+### Directory Structure
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+```text
+src/
+├── components/          # UI Components
+│   ├── editor/          # Editor Workspace (ImageCard, Validation)
+│   ├── layout/          # Layout wrappers (Header, Sidebar)
+│   ├── viewer/          # Read-only components (ReaderView)
+│   ├── common/          # Reusable UI (Modals, Icons)
+│   └── ...
+├── hooks/               # Custom Business Logic Hooks
+│   ├── useImageProcessor.ts  # Translation engine wrapper
+│   ├── useImageUpload.ts     # File handling & PDF extraction
+│   ├── useProjectExport.ts   # ZIP generation logic
+│   └── useProjectImport.ts   # ZIP parsing & rehydration
+├── stores/              # Global State Management (Zustand)
+│   ├── useSeriesStore.ts     # Core data (Series, Images, Categories)
+│   ├── useSettingsStore.ts   # User preferences (Translation, UI Appearance)
+│   └── useUIStore.ts         # Transient UI state (Modals, current selection)
+├── services/            # API Services
+│   └── gemini.ts             # Google Gemini API interaction
+├── utils/               # Helper Functions
+│   ├── db.ts                 # IndexedDB wrapper (Image storage)
+│   ├── image.ts              # Canvas manipulation & typesetting
+│   └── pdf.ts                # PDF.js wrapper
+└── App.tsx              # Main Entry & Router/Layout Composer
+```
+
+### State Management
+
+We use **Zustand** stores decoupled by domain:
+
+- `useSeriesStore`: Persistent. Handles heavy data.
+- `useSettingsStore`: Persistent. Handles configuration.
+- `useUIStore`: Ephemeral. Handles modals and temporary states.
+
+### Persistence
+
+- **Metadata**: Persisted to `localStorage` via Zustand middleware.
+- **Binary Data (Images)**: Persisted to `IndexedDB` (idb) to bypass storage limits.
+- **Rehydration**: Checks for broken Blob URLs on mount and restores them from IndexedDB.
+
+## 🛠 Tech Stack
+
+- **Frontend**: React, TypeScript, Vite
+- **Styling**: Tailwind CSS
+- **State**: Zustand
+- **Icons**: Lucide React, FontAwesome
+- **AI**: Google Gemini Pro Vision
+- **Utils**: JSZip, FileSaver, PDF.js
+
+## 📦 Installation
+
+1.  Clone the repository.
+2.  Install dependencies:
+    ```bash
+    yarn install
+    ```
+3.  Run the development server:
+    ```bash
+    yarn dev
+    ```
+
+## 🤝 Contribution
+
+Feel free to open issues or PRs for improvements.
