@@ -1,6 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";
 import { supabase } from "../lib/supabase";
 import { ProcessedImage, Series } from "../types";
+import { resolveImageUrl } from "../utils/url";
 
 interface SeriesState {
   series: Series[];
@@ -42,9 +44,9 @@ interface SeriesState {
 
   // Category Actions
   setCategories: (categories: string[]) => void;
-  addCategory: (category: string) => void;
-  updateCategoryName: (oldName: string, newName: string) => void;
-  deleteCategory: (name: string) => void;
+  addCategory: (category: string) => Promise<void>;
+  updateCategoryName: (oldName: string, newName: string) => Promise<void>;
+  deleteCategory: (name: string) => Promise<void>;
 
   // Hydration / Legacy
   rehydrateImages: () => Promise<void>; // Changed behavior: fetches from R2/Supabase
@@ -95,53 +97,30 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
           .map((img: any) => ({
             id: img.id,
             fileName: img.file_name,
-            originalUrl:
-              img.original_key /* We will need a way to resolve this to full URL if not public */,
+            originalUrl: img.original_key,
             translatedUrl: img.translated_key,
             status: img.status || "idle",
-            bubbles: [], // TODO: Store text bubbles in DB or separate JSON in R2? Use metadata? For now empty.
-            // Note: Bubbles storage is missing in current DB schema plan.
-            // Suggest storing bubbles in a JSON column in 'images' table or separate file in R2.
+            originalKey: img.original_key,
+            translatedKey: img.translated_key,
+            bubbles: [],
           }))
-          .sort((a: any, b: any) => a.fileName.localeCompare(b.fileName)), // Basic sort
+          .sort((a: any, b: any) => a.fileName.localeCompare(b.fileName)),
       }));
 
-      // Prepend public URL or presigned logic
-      // Assuming R2 public access or worker for now:
-      const R2_DOMAIN = process.env.NEXT_PUBLIC_R2_DOMAIN;
-      const ACCOUNT_ID = process.env.NEXT_PUBLIC_R2_ACCOUNT_ID;
-
-      const getPublicUrl = (key: string | null) => {
-        if (!key) return null;
-        if (
-          key.startsWith("http") ||
-          key.startsWith("blob:") ||
-          key.startsWith("data:")
-        )
-          return key;
-
-        let domain = R2_DOMAIN;
-        if (!domain && ACCOUNT_ID) {
-          domain = `https://pub-${ACCOUNT_ID}.r2.dev`;
-        }
-
-        if (domain) {
-          const cleanDomain = domain.endsWith("/")
-            ? domain.slice(0, -1)
-            : domain;
-          const cleanKey = key.startsWith("/") ? key.slice(1) : key;
-          return `${cleanDomain}/${cleanKey}`;
-        }
-
-        return key;
-      };
+      // Fetch Categories
+      const { data: catData } = await supabase
+        .from("categories")
+        .select("name");
+      if (catData) {
+        set({ categories: catData.map((c) => c.name) });
+      }
 
       const fixedSeries = transformedSeries.map((s) => ({
         ...s,
         images: s.images.map((img) => ({
           ...img,
-          originalUrl: getPublicUrl(img.originalUrl) || "",
-          translatedUrl: getPublicUrl(img.translatedUrl),
+          originalUrl: resolveImageUrl(img.originalUrl),
+          translatedUrl: resolveImageUrl(img.translatedUrl),
         })),
       }));
 
@@ -225,6 +204,16 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   },
 
   deleteSeries: async (id) => {
+    const seriesToDelete = get().series.find((s) => s.id === id);
+    if (!seriesToDelete) return;
+
+    // Collect all R2 keys to delete
+    const keysToDelete: string[] = [];
+    seriesToDelete.images.forEach((img) => {
+      if (img.originalKey) keysToDelete.push(img.originalKey);
+      if (img.translatedKey) keysToDelete.push(img.translatedKey);
+    });
+
     set((state) => {
       const newSeries = state.series.filter((s) => s.id !== id);
       let nextActiveId = state.activeSeriesId;
@@ -235,9 +224,23 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     });
 
     try {
+      // 1. Delete from R2
+      if (keysToDelete.length > 0) {
+        const session = await supabase.auth.getSession();
+        await fetch("/api/delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.data.session?.access_token}`,
+          },
+          body: JSON.stringify({ keys: keysToDelete }),
+        });
+      }
+
+      // 2. Delete from Supabase
       await supabase.from("series").delete().eq("id", id);
     } catch (err) {
-      console.error(err);
+      console.error("Delete Series error:", err);
     }
   },
 
@@ -327,7 +330,11 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
                   ...s,
                   images: s.images.map((img) =>
                     img.id === image.id
-                      ? { ...img, originalUrl: publicUrl }
+                      ? {
+                          ...img,
+                          originalUrl: resolveImageUrl(publicUrl),
+                          originalKey: key,
+                        }
                       : img
                   ),
                 }
@@ -342,6 +349,11 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   },
 
   removeImageFromSeries: async (seriesId, imageId) => {
+    const targetSeries = get().series.find((s) => s.id === seriesId);
+    const imageToDelete = targetSeries?.images.find(
+      (img) => img.id === imageId
+    );
+
     set((state) => ({
       series: state.series.map((s) =>
         s.id === seriesId
@@ -350,10 +362,31 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       ),
     }));
 
-    // We get the image to delete its key from R2?
-    // Usually backend handles cleanup or we send Delete command.
-    // For now delete from DB cascades.
-    await supabase.from("images").delete().eq("id", imageId); // Assumes we use UUID matching DB, but local ID might be different
+    try {
+      // 1. Delete from R2
+      if (imageToDelete) {
+        const keys = [];
+        if (imageToDelete.originalKey) keys.push(imageToDelete.originalKey);
+        if (imageToDelete.translatedKey) keys.push(imageToDelete.translatedKey);
+
+        if (keys.length > 0) {
+          const session = await supabase.auth.getSession();
+          await fetch("/api/delete", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${session.data.session?.access_token}`,
+            },
+            body: JSON.stringify({ keys }),
+          });
+        }
+      }
+
+      // 2. Delete from Supabase
+      await supabase.from("images").delete().eq("id", imageId);
+    } catch (err) {
+      console.error("Remove Image Error:", err);
+    }
   },
 
   updateImageInSeries: async (seriesId, imageId, updates) => {
@@ -436,7 +469,8 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
                   img.id === imageId
                     ? {
                         ...img,
-                        translatedUrl: publicUrl,
+                        translatedUrl: resolveImageUrl(publicUrl),
+                        translatedKey: key,
                         status: "completed",
                         bubbles: meta?.bubbles || img.bubbles,
                         usage: meta?.usage || img.usage,
@@ -455,14 +489,51 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   },
 
   setCategories: (categories) => set({ categories }),
-  addCategory: (category) =>
-    set((state) => ({ categories: [...state.categories, category] })),
-  updateCategoryName: (oldName, newName) =>
+  addCategory: async (category) => {
+    set((state) => ({ categories: [...state.categories, category] }));
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const { error } = await supabase
+        .from("categories")
+        .insert({ name: category, user_id: user.id });
+
+      if (error) {
+        console.error("Add category error:", error);
+        // Refresh from DB on error?
+        get().fetchSeries();
+      }
+    }
+  },
+  updateCategoryName: async (oldName: string, newName: string) => {
     set((state) => ({
       categories: state.categories.map((c) => (c === oldName ? newName : c)),
-    })),
-  deleteCategory: (name) =>
-    set((s) => ({ categories: s.categories.filter((c) => c !== name) })),
+    }));
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      await supabase
+        .from("categories")
+        .update({ name: newName })
+        .eq("name", oldName)
+        .eq("user_id", user.id);
+    }
+  },
+  deleteCategory: async (name) => {
+    set((s) => ({ categories: s.categories.filter((c) => c !== name) }));
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      await supabase
+        .from("categories")
+        .delete()
+        .eq("name", name)
+        .eq("user_id", user.id);
+    }
+  },
 
   rehydrateImages: async () => {
     // Now just an alias for fetch

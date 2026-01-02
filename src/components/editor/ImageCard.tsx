@@ -4,6 +4,7 @@ import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useUIStore } from "../../stores/useUIStore";
 import { ProcessedImage } from "../../types";
+import { resolveImageUrl } from "../../utils/url";
 
 interface Props {
   image: ProcessedImage;
@@ -16,25 +17,7 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
   const { openConfirmModal, setSelectedImageId } = useUIStore();
   const { processImage } = useImageProcessor();
 
-  // Helper to ensure we have a full URL
-  const getDisplayUrl = (url: string | null) => {
-    if (!url) return "";
-    if (
-      url.startsWith("http") ||
-      url.startsWith("blob:") ||
-      url.startsWith("data:")
-    )
-      return url;
-
-    // Fallback construction if store has raw keys
-    const domain =
-      process.env.NEXT_PUBLIC_R2_DOMAIN ||
-      `https://pub-${process.env.NEXT_PUBLIC_R2_ACCOUNT_ID}.r2.dev`;
-    const cleanDomain = domain.endsWith("/") ? domain.slice(0, -1) : domain;
-    return `${cleanDomain}/${url}`;
-  };
-
-  const displayUrl = getDisplayUrl(image.translatedUrl || image.originalUrl);
+  const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
 
   const handleDownload = async () => {
     const url = displayUrl;

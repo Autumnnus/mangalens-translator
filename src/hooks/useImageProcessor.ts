@@ -3,8 +3,8 @@ import { GeminiService } from "../services/gemini";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { ProcessedImage, UsageMetadata } from "../types";
-// import { imageDb } from "../utils/db"; // Removed
 import { createTranslatedImageBlob } from "../utils/image";
+import { resolveImageUrl } from "../utils/url";
 
 const INPUT_COST_PER_1K = 0.0005;
 const OUTPUT_COST_PER_1K = 0.003;
@@ -27,7 +27,7 @@ export const useImageProcessor = () => {
   };
 
   const urlToBase64 = async (url: string): Promise<string> => {
-    const response = await fetch(url);
+    const response = await fetch(resolveImageUrl(url));
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -79,6 +79,7 @@ export const useImageProcessor = () => {
       }
 
       return true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       const errorStr = (error?.message || "").toLowerCase();
       const isRateLimit =

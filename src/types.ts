@@ -18,6 +18,8 @@ export interface ProcessedImage {
   status: "idle" | "processing" | "completed" | "error";
   bubbles: TextBubble[];
   fileName: string;
+  originalKey?: string;
+  translatedKey?: string;
   usage?: UsageMetadata;
   cost?: number; // Calculated USD cost
 }

@@ -40,7 +40,8 @@ export async function POST(req: NextRequest) {
 
     const { uploadUrl, key } = await getPresignedUploadUrl(
       fileName,
-      contentType
+      contentType,
+      seriesId
     );
 
     // We don't insert into DB here. We let the client upload effectively,

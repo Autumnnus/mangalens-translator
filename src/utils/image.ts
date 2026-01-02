@@ -1,4 +1,5 @@
 import { TextBubble, TranslationSettings } from "../types";
+import { resolveImageUrl } from "./url";
 
 export const createTranslatedImageBlob = (
   originalUrl: string,
@@ -108,7 +109,7 @@ export const createTranslatedImageBlob = (
       );
     };
     img.onerror = (err) => reject(err);
-    img.src = originalUrl;
+    img.src = resolveImageUrl(originalUrl);
   });
 };
 

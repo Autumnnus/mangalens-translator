@@ -1,4 +1,8 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!;
@@ -29,9 +33,11 @@ export const r2Client = new S3Client({
 
 export const getPresignedUploadUrl = async (
   fileName: string,
-  contentType: string
+  contentType: string,
+  seriesId: string
 ) => {
-  const key = `${Date.now()}_${fileName.replace(/\s+/g, "-")}`;
+  const cleanFileName = fileName.replace(/\s+/g, "-");
+  const key = `${seriesId}/${Date.now()}_${cleanFileName}`;
 
   const command = new PutObjectCommand({
     Bucket: R2_BUCKET_NAME,
@@ -48,4 +54,12 @@ export const getPresignedUploadUrl = async (
     : `${R2_ENDPOINT}/${R2_BUCKET_NAME}/${key}`; // This often doesn't work directly for public access without config
 
   return { uploadUrl: url, key, publicUrl };
+};
+
+export const deleteR2Object = async (key: string) => {
+  const command = new DeleteObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: key,
+  });
+  await r2Client.send(command);
 };
