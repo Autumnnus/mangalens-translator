@@ -1,6 +1,6 @@
 import { Download, Filter, Hash, Menu, Plus, Trash2, X } from "lucide-react";
 import React, { useMemo, useState } from "react";
-import { ProcessedImage, Series } from "../types";
+import { Category, ProcessedImage, Series } from "../types";
 import FilterSortModal, { FilterSortOptions } from "./FilterSortModal";
 
 interface Props {
@@ -15,11 +15,16 @@ interface Props {
   onClose: () => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isViewOnly?: boolean;
-  categories: string[];
+  categories: Category[];
   page: number;
   pageSize: number;
   total: number;
   setPage: (p: number) => void;
+  onMoveSeries?: (seriesId: string, categoryId: string) => void;
+  onMoveCategory?: (
+    categoryId: string,
+    targetParentId: string | undefined
+  ) => void;
 }
 
 const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
@@ -107,6 +112,220 @@ const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
   );
 };
 
+interface CategoryNodeProps {
+  category: Category;
+  allCategories: Category[];
+  series: Series[];
+  depth: number;
+  collapsedCategories: Set<string>;
+  toggleCategory: (id: string) => void;
+  activeId: string | null;
+  onSelect: (id: string) => void;
+  closeMobileSidebar: () => void;
+  isSidebarCollapsed: boolean;
+  isViewOnly?: boolean;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
+  onMoveSeries?: (seriesId: string, categoryId: string) => void;
+  onMoveCategory?: (
+    categoryId: string,
+    targetParentId: string | undefined
+  ) => void;
+}
+
+const CategoryNode: React.FC<CategoryNodeProps> = ({
+  category,
+  allCategories,
+  series,
+  depth,
+  collapsedCategories,
+  toggleCategory,
+  activeId,
+  onSelect,
+  closeMobileSidebar,
+  isSidebarCollapsed,
+  isViewOnly,
+  onEdit,
+  onDelete,
+  onMoveSeries,
+  onMoveCategory,
+}) => {
+  const isCollapsed = collapsedCategories.has(category.id);
+
+  // Find children categories
+  const childrenCategories = allCategories.filter(
+    (c) => c.parentId === category.id
+  );
+
+  // Find direct series
+  const directSeries = series.filter((s) => s.categoryId === category.id);
+
+  const handleDragStart = (
+    e: React.DragEvent,
+    type: "series" | "category",
+    id: string
+  ) => {
+    if (isViewOnly) return;
+    e.dataTransfer.setData("type", type);
+    e.dataTransfer.setData("id", id);
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isViewOnly) return;
+
+    const type = e.dataTransfer.getData("type");
+    const id = e.dataTransfer.getData("id");
+
+    if (type === "series" && onMoveSeries) {
+      onMoveSeries(id, category.id);
+    } else if (type === "category" && onMoveCategory) {
+      // Avoid self-drop
+      if (id !== category.id) {
+        onMoveCategory(id, category.id);
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (isViewOnly) return;
+    e.preventDefault();
+  };
+
+  return (
+    <div className="border-b border-slate-800/50 last:border-b-0">
+      {/* Category Header */}
+      <div
+        className="group relative"
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+      >
+        <button
+          onClick={() => toggleCategory(category.id)}
+          draggable={!isViewOnly}
+          onDragStart={(e) => handleDragStart(e, "category", category.id)}
+          className={`w-full flex items-center justify-between hover:bg-slate-800/30 transition-colors group-hover:bg-slate-800/50
+              ${isSidebarCollapsed ? "px-2 py-3 justify-center" : "px-4 py-3"}
+            `}
+          style={{
+            paddingLeft: !isSidebarCollapsed
+              ? `${depth * 12 + 16}px`
+              : undefined,
+          }}
+        >
+          <div className="flex items-center gap-2 overflow-hidden">
+            <i
+              className={`fas fa-chevron-${
+                isCollapsed ? "right" : "down"
+              } text-[10px] text-slate-500 transition-transform shrink-0`}
+            ></i>
+            {!isSidebarCollapsed && (
+              <>
+                <span className="text-xs font-black uppercase tracking-wider text-slate-400 truncate">
+                  {category.name}
+                </span>
+                <span className="text-[10px] font-bold text-slate-600 bg-slate-800 px-2 py-0.5 rounded-full shrink-0">
+                  {directSeries.length}
+                </span>
+              </>
+            )}
+          </div>
+        </button>
+      </div>
+
+      {/* Children */}
+      {!isCollapsed && (
+        <>
+          {/* Child Categories */}
+          {childrenCategories.map((child) => (
+            <CategoryNode
+              key={child.id}
+              category={child}
+              allCategories={allCategories}
+              series={series}
+              depth={depth + 1}
+              collapsedCategories={collapsedCategories}
+              toggleCategory={toggleCategory}
+              activeId={activeId}
+              onSelect={onSelect}
+              closeMobileSidebar={closeMobileSidebar}
+              isSidebarCollapsed={isSidebarCollapsed}
+              isViewOnly={isViewOnly}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onMoveSeries={onMoveSeries}
+              onMoveCategory={onMoveCategory}
+            />
+          ))}
+
+          {/* Direct Series */}
+          <div
+            className={`space-y-1 pb-1 ${!isSidebarCollapsed ? "pr-2" : ""}`}
+          >
+            {directSeries.map((s) => (
+              <div
+                key={s.id}
+                draggable={!isViewOnly}
+                onDragStart={(e) => handleDragStart(e, "series", s.id)}
+                onClick={() => {
+                  onSelect(s.id);
+                  closeMobileSidebar();
+                }}
+                style={{
+                  marginLeft: !isSidebarCollapsed
+                    ? `${(depth + 1) * 12 + 12}px`
+                    : "4px",
+                }}
+                className={`group flex items-center gap-3 px-2 py-2 rounded-xl transition-all cursor-pointer ${
+                  activeId === s.id
+                    ? "bg-indigo-600/20 border border-indigo-500/50"
+                    : "hover:bg-slate-800/50 border border-transparent"
+                }`}
+              >
+                <SeriesIcon images={s.images} />
+                {!isSidebarCollapsed && (
+                  <>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold truncate">{s.name}</p>
+                      <p className="text-[10px] text-slate-500 font-bold">
+                        {s.images.length} pages
+                      </p>
+                    </div>
+                    {!isViewOnly && (
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(s.id);
+                          }}
+                          className="w-7 h-7 bg-slate-800 hover:bg-indigo-600 rounded-lg flex items-center justify-center transition-colors"
+                        >
+                          <i className="fas fa-edit text-[10px]"></i>
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(s.id);
+                          }}
+                          className="w-7 h-7 bg-slate-800 hover:bg-red-600 rounded-lg flex items-center justify-center transition-colors"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const SeriesSidebar: React.FC<Props> = ({
   series,
   activeId,
@@ -124,6 +343,8 @@ const SeriesSidebar: React.FC<Props> = ({
   pageSize,
   total,
   setPage,
+  onMoveSeries,
+  onMoveCategory,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -139,13 +360,13 @@ const SeriesSidebar: React.FC<Props> = ({
     showInProgress: true,
   });
 
-  const toggleCategory = (category: string) => {
+  const toggleCategory = (categoryId: string) => {
     setCollapsedCategories((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(category)) {
-        newSet.delete(category);
+      if (newSet.has(categoryId)) {
+        newSet.delete(categoryId);
       } else {
-        newSet.add(category);
+        newSet.add(categoryId);
       }
       return newSet;
     });
@@ -162,7 +383,7 @@ const SeriesSidebar: React.FC<Props> = ({
       );
     }
 
-    // Apply category filter
+    // Apply category filter (string based for now, legacy compat)
     if (filters.categories.length > 0) {
       result = result.filter((s) => filters.categories.includes(s.category));
     }
@@ -204,17 +425,14 @@ const SeriesSidebar: React.FC<Props> = ({
     return result;
   }, [series, filters]);
 
-  // Group by category
-  const groupedSeries: Record<string, Series[]> = useMemo(() => {
-    const groups: Record<string, Series[]> = {};
-    filteredAndSortedSeries.forEach((s) => {
-      if (!groups[s.category]) {
-        groups[s.category] = [];
-      }
-      groups[s.category].push(s);
-    });
-    return groups;
-  }, [filteredAndSortedSeries]);
+  // Root categories
+  const rootCategories = categories.filter((c) => !c.parentId);
+
+  // Uncategorized series (no categoryId or matching ID found)
+  const categoryIds = new Set(categories.map((c) => c.id));
+  const uncategorizedSeries = filteredAndSortedSeries.filter(
+    (s) => !s.categoryId || !categoryIds.has(s.categoryId)
+  );
 
   const sidebarContent = (
     <>
@@ -287,96 +505,146 @@ const SeriesSidebar: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Series List */}
+      {/* Series List Tree */}
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {Object.keys(groupedSeries).length === 0 ? (
+        {filteredAndSortedSeries.length === 0 ? (
           <div className="p-6 text-center text-slate-500 text-sm">
             No series found
           </div>
         ) : (
-          Object.entries(groupedSeries).map(([category, categorySeries]) => (
-            <div key={category} className="border-b border-slate-800/50">
-              {/* Category Header */}
-              <button
-                onClick={() => toggleCategory(category)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-800/30 transition-colors group"
-              >
-                <div className="flex items-center gap-2">
-                  <i
-                    className={`fas fa-chevron-${
-                      collapsedCategories.has(category) ? "right" : "down"
-                    } text-[10px] text-slate-500 transition-transform`}
-                  ></i>
-                  {!isSidebarCollapsed && (
-                    <>
-                      <span className="text-xs font-black uppercase tracking-wider text-slate-400">
-                        {category}
-                      </span>
-                      <span className="text-[10px] font-bold text-slate-600 bg-slate-800 px-2 py-0.5 rounded-full">
-                        {categorySeries?.length}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </button>
-
-              {/* Series in Category */}
-              {!collapsedCategories.has(category) && (
-                <div className="space-y-1 px-2 pb-2">
-                  {categorySeries?.map((s) => (
-                    <div
-                      key={s.id}
-                      onClick={() => {
-                        onSelect(s.id);
-                        setIsMobileOpen(false);
-                      }}
-                      className={`group flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all cursor-pointer ${
-                        activeId === s.id
-                          ? "bg-indigo-600/20 border border-indigo-500/50"
-                          : "hover:bg-slate-800/50 border border-transparent"
-                      }`}
-                    >
-                      <SeriesIcon images={s.images} />
-                      {!isSidebarCollapsed && (
-                        <>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold truncate">
-                              {s.name}
-                            </p>
-                            <p className="text-[10px] text-slate-500 font-bold">
-                              {s.images.length} pages
-                            </p>
-                          </div>
-                          {!isViewOnly && (
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onEdit(s.id);
-                                }}
-                                className="w-7 h-7 bg-slate-800 hover:bg-indigo-600 rounded-lg flex items-center justify-center transition-colors"
-                              >
-                                <i className="fas fa-edit text-[10px]"></i>
-                              </button>
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onDelete(s.id);
-                                }}
-                                className="w-7 h-7 bg-slate-800 hover:bg-red-600 rounded-lg flex items-center justify-center transition-colors"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
+          <>
+            {/* 1. Uncategorized Series */}
+            {uncategorizedSeries.length > 0 && (
+              <div className="border-b border-slate-800/50">
+                <button
+                  onClick={() => toggleCategory("uncategorized")}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (isViewOnly) return;
+                    const type = e.dataTransfer.getData("type");
+                    const id = e.dataTransfer.getData("id");
+                    if (type === "series" && onMoveSeries) {
+                      // "uncategorized" => maybe allow setting null?
+                      // For now, let's skip explicit uncategorizing via drop unless requested,
+                      // or assume user drags out.
+                      // Actually better to support "Move to Uncategorized" or "Root"
+                      // onMoveSeries(id, ""); // handle empty string as null in parent
+                    } else if (type === "category" && onMoveCategory) {
+                      if (onMoveCategory && id) {
+                        onMoveCategory(id, undefined); // Move to root
+                      }
+                    }
+                  }}
+                  onDragOver={(e) => !isViewOnly && e.preventDefault()}
+                  className={`w-full flex items-center justify-between hover:bg-slate-800/30 transition-colors group px-4 py-3 ${
+                    isSidebarCollapsed ? "justify-center" : ""
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <i
+                      className={`fas fa-chevron-${
+                        collapsedCategories.has("uncategorized")
+                          ? "right"
+                          : "down"
+                      } text-[10px] text-slate-500 transition-transform`}
+                    ></i>
+                    {!isSidebarCollapsed && (
+                      <>
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-400">
+                          Uncategorized
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-600 bg-slate-800 px-2 py-0.5 rounded-full">
+                          {uncategorizedSeries.length}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </button>
+                {!collapsedCategories.has("uncategorized") && (
+                  <div className="space-y-1 pb-2">
+                    {uncategorizedSeries.map((s) => (
+                      <div
+                        key={s.id}
+                        draggable={!isViewOnly}
+                        onDragStart={(e) => {
+                          if (isViewOnly) return;
+                          e.dataTransfer.setData("type", "series");
+                          e.dataTransfer.setData("id", s.id);
+                        }}
+                        onClick={() => {
+                          onSelect(s.id);
+                          setIsMobileOpen(false);
+                        }}
+                        className={`group flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all cursor-pointer ${
+                          activeId === s.id
+                            ? "bg-indigo-600/20 border border-indigo-500/50"
+                            : "hover:bg-slate-800/50 border border-transparent"
+                        }`}
+                      >
+                        <SeriesIcon images={s.images} />
+                        {!isSidebarCollapsed && (
+                          <>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold truncate">
+                                {s.name}
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-bold">
+                                {s.images.length} pages
+                              </p>
                             </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))
+                            {!isViewOnly && (
+                              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onEdit(s.id);
+                                  }}
+                                  className="w-7 h-7 bg-slate-800 hover:bg-indigo-600 rounded-lg flex items-center justify-center transition-colors"
+                                >
+                                  <i className="fas fa-edit text-[10px]"></i>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onDelete(s.id);
+                                  }}
+                                  className="w-7 h-7 bg-slate-800 hover:bg-red-600 rounded-lg flex items-center justify-center transition-colors"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. Structured Categories */}
+            {rootCategories.map((cat) => (
+              <CategoryNode
+                key={cat.id}
+                category={cat}
+                allCategories={categories}
+                series={filteredAndSortedSeries}
+                depth={0}
+                collapsedCategories={collapsedCategories}
+                toggleCategory={toggleCategory}
+                activeId={activeId}
+                onSelect={onSelect}
+                closeMobileSidebar={() => setIsMobileOpen(false)}
+                isSidebarCollapsed={isSidebarCollapsed}
+                isViewOnly={isViewOnly}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                onMoveSeries={onMoveSeries}
+                onMoveCategory={onMoveCategory}
+              />
+            ))}
+          </>
         )}
       </div>
 
@@ -456,7 +724,7 @@ const SeriesSidebar: React.FC<Props> = ({
       <FilterSortModal
         isOpen={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
-        availableCategories={categories}
+        availableCategories={categories.map((c) => c.name)}
         currentFilters={filters}
         onApply={setFilters}
       />

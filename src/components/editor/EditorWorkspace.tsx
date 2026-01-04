@@ -10,19 +10,45 @@ import ImageCard from "./ImageCard";
 
 const EditorWorkspace: React.FC = () => {
   const { series, activeSeriesId, setImages } = useSeriesStore();
-  const { openConfirmModal, toggleCategoryModal, toggleSettingsModal } =
-    useUIStore();
+  /* 1. Initialize viewMode from localStorage (lazy initializer) */
+  const [viewMode, setViewMode] = React.useState<"grid" | "list" | "detail">(
+    () => {
+      if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("mangalens_editor_viewmode");
+        if (saved === "grid" || saved === "list" || saved === "detail")
+          return saved;
+      }
+      return "grid";
+    }
+  );
+
+  /* 2. Persist viewMode */
+  React.useEffect(() => {
+    localStorage.setItem("mangalens_editor_viewmode", viewMode);
+  }, [viewMode]);
+
+  /* 3. Get setSelectedImageId logic from store */
+  const {
+    openConfirmModal,
+    toggleCategoryModal,
+    toggleSettingsModal,
+    setSelectedImageId, // Added
+  } = useUIStore();
   const { isViewOnly, toggleViewOnly } = useSettingsStore();
   const { handleFileUpload } = useImageUpload();
   const { importLibrary } = useProjectImport();
-  const [viewMode, setViewMode] = React.useState<"grid" | "list" | "detail">(
-    "grid"
-  );
+
+  /* ... rest of hooks ... */
   const { processAll, isProcessingAll } = useImageProcessor();
   const { downloadAllAsZip } = useProjectExport();
 
+  /* ... skipping unchanged parts until render ... */
+
   const activeSeries = series.find((s) => s.id === activeSeriesId);
-  const images = activeSeries?.images || [];
+  const images = React.useMemo(
+    () => activeSeries?.images || [],
+    [activeSeries]
+  );
 
   const totalStats = React.useMemo(() => {
     return images.reduce(
@@ -93,11 +119,43 @@ const EditorWorkspace: React.FC = () => {
                 <h3 className="text-2xl sm:text-3xl font-black tracking-tighter uppercase mb-2">
                   Editor Workspace
                 </h3>
-                <p className="text-slate-500 font-bold text-xs sm:text-sm tracking-wide">
-                  Working on{" "}
-                  <span className="text-slate-300 font-black italic underline decoration-indigo-500/50 underline-offset-4">
-                    {activeSeries?.name}
+                <p className="text-slate-500 font-bold text-xs sm:text-sm tracking-wide flex flex-wrap gap-x-4 gap-y-1">
+                  <span>
+                    Working on{" "}
+                    <span className="text-slate-300 font-black italic underline decoration-indigo-500/50 underline-offset-4">
+                      {activeSeries?.name}
+                    </span>
                   </span>
+                  {activeSeries?.author && (
+                    <span className="flex items-center gap-1.5 flex-nowrap">
+                      <span className="text-[10px] text-slate-600 uppercase tracking-tighter">
+                        By
+                      </span>
+                      <span className="text-slate-400 font-black italic">
+                        {activeSeries.author}
+                      </span>
+                    </span>
+                  )}
+                  {activeSeries?.group && (
+                    <span className="flex items-center gap-1.5 flex-nowrap">
+                      <span className="text-[10px] text-slate-600 uppercase tracking-tighter">
+                        Group
+                      </span>
+                      <span className="text-slate-400 font-black italic">
+                        {activeSeries.group}
+                      </span>
+                    </span>
+                  )}
+                  {activeSeries?.originalTitle && (
+                    <span className="flex items-center gap-1.5 flex-nowrap">
+                      <span className="text-[10px] text-slate-600 uppercase tracking-tighter">
+                        Original
+                      </span>
+                      <span className="text-slate-400 font-black italic">
+                        {activeSeries.originalTitle}
+                      </span>
+                    </span>
+                  )}
                 </p>
               </div>
 
@@ -206,33 +264,35 @@ const EditorWorkspace: React.FC = () => {
               </div>
 
               {/* File Ops */}
-              <div className="flex flex-wrap items-center gap-3 justify-end">
-                <label className="cursor-pointer text-slate-400 hover:text-green-400 text-[10px] uppercase font-bold flex items-center gap-1 transition-colors">
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*,.pdf"
-                    className="hidden"
-                    onChange={(e) => handleFileUpload(e.target.files)}
-                  />
-                  <i className="fas fa-plus"></i> Add pages
-                </label>
-                <label className="cursor-pointer text-slate-400 hover:text-amber-400 text-[10px] uppercase font-bold flex items-center gap-1 transition-colors">
-                  <input
-                    type="file"
-                    accept=".zip"
-                    className="hidden"
-                    onChange={handleImport}
-                  />
-                  <i className="fas fa-file-import"></i> Import ZIP
-                </label>
-                <button
-                  onClick={clearAll}
-                  className="text-slate-400 hover:text-red-400 text-[10px] uppercase font-bold flex items-center gap-1 transition-colors"
-                >
-                  <i className="fas fa-trash"></i> Wipe All
-                </button>
-              </div>
+              {!isViewOnly && (
+                <div className="flex flex-wrap items-center gap-3 justify-end">
+                  <label className="cursor-pointer text-slate-400 hover:text-green-400 text-[10px] uppercase font-bold flex items-center gap-1 transition-colors">
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,.pdf"
+                      className="hidden"
+                      onChange={(e) => handleFileUpload(e.target.files)}
+                    />
+                    <i className="fas fa-plus"></i> Add pages
+                  </label>
+                  <label className="cursor-pointer text-slate-400 hover:text-amber-400 text-[10px] uppercase font-bold flex items-center gap-1 transition-colors">
+                    <input
+                      type="file"
+                      accept=".zip"
+                      className="hidden"
+                      onChange={handleImport}
+                    />
+                    <i className="fas fa-file-import"></i> Import ZIP
+                  </label>
+                  <button
+                    onClick={clearAll}
+                    className="text-slate-400 hover:text-red-400 text-[10px] uppercase font-bold flex items-center gap-1 transition-colors"
+                  >
+                    <i className="fas fa-trash"></i> Wipe All
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -248,9 +308,14 @@ const EditorWorkspace: React.FC = () => {
             {images.map((image, index) => (
               <div
                 key={image.id}
+                onClick={
+                  viewMode === "list"
+                    ? () => setSelectedImageId(image.id)
+                    : undefined
+                }
                 className={
                   viewMode === "list"
-                    ? "bg-slate-800/50 p-2 rounded-lg flex items-center gap-4 border border-slate-800 hover:border-indigo-500/30 transition-all"
+                    ? "bg-slate-800/50 p-2 rounded-lg flex items-center gap-4 border border-slate-800 hover:border-indigo-500/30 transition-all cursor-pointer group"
                     : ""
                 }
               >
@@ -260,6 +325,7 @@ const EditorWorkspace: React.FC = () => {
                       <img
                         src={image.originalUrl}
                         className="w-full h-full object-cover"
+                        alt={image.fileName}
                       />
                     </div>
                     <div className="flex-1 min-w-0">

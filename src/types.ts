@@ -41,16 +41,26 @@ export interface ImagePair {
   createdAt: number;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
 export interface Series {
   id: string;
   name: string;
   description: string;
-  category: string;
+  category: string; // Keep for display/fallback
+  categoryId?: string; // Link to Category
   tags: string[];
   images: ProcessedImage[];
   sequenceNumber: number;
   createdAt: number;
   updatedAt: number;
+  author?: string;
+  group?: string;
+  originalTitle?: string;
 }
 
 export type ViewMode = "slider" | "toggle" | "side-by-side" | "grid";

@@ -52,13 +52,13 @@ const ReaderView: React.FC = () => {
 
   return (
     <div className="flex-1 flex flex-col h-full animate-in fade-in duration-700 min-h-0">
-      {/* Premium Viewer Header */}
-      <div className="bg-slate-900/40 backdrop-blur-xl p-3 sm:p-6 rounded-2xl sm:rounded-[2.5rem] border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 mb-4 sm:mb-8 shadow-2xl shrink-0 mx-4 mt-4">
+      {/* Premium Viewer Header - Mobile Optimized */}
+      <div className="bg-slate-900/40 backdrop-blur-xl p-2 sm:p-6 rounded-xl sm:rounded-[2.5rem] border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-6 mb-2 sm:mb-8 shadow-2xl shrink-0 mx-2 sm:mx-4 mt-2 sm:mt-4">
         <div className="flex flex-col">
-          <h2 className="text-lg sm:text-2xl font-black text-white italic uppercase tracking-tight truncate max-w-[200px] sm:max-w-none">
+          <h2 className="text-sm sm:text-2xl font-black text-white italic uppercase tracking-tight truncate max-w-[150px] sm:max-w-none">
             {activeSeries?.name}
           </h2>
-          <div className="flex items-center gap-3 mt-1 sm:mt-0">
+          <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-0">
             <span className="text-[8px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-indigo-500/20">
               {activeSeries?.category}
             </span>
@@ -68,12 +68,13 @@ const ReaderView: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center justify-between md:justify-end gap-3">
+        <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3">
           <button
             onClick={toggleViewOnly}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all border border-slate-700"
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl font-black text-[10px] uppercase tracking-wider transition-all border border-slate-700"
           >
-            <i className="fas fa-edit"></i> Edit
+            <i className="fas fa-edit"></i>{" "}
+            <span className="hidden sm:inline">Edit</span>
           </button>
 
           {/* Quick Nav */}
@@ -81,43 +82,43 @@ const ReaderView: React.FC = () => {
             <button
               onClick={() => setCurrentImageIndex(0)}
               disabled={currentImageIndex === 0}
-              className="p-2 hover:bg-slate-700 rounded-md disabled:opacity-30 transition-colors"
+              className="p-1.5 sm:p-2 hover:bg-slate-700 rounded-md disabled:opacity-30 transition-colors"
               title="First Page"
             >
-              <i className="fas fa-step-backward text-xs text-slate-400"></i>
+              <i className="fas fa-step-backward text-[10px] sm:text-xs text-slate-400"></i>
             </button>
             <button
               onClick={() => setCurrentImageIndex(images.length - 1)}
               disabled={currentImageIndex === images.length - 1}
-              className="p-2 hover:bg-slate-700 rounded-md disabled:opacity-30 transition-colors"
+              className="p-1.5 sm:p-2 hover:bg-slate-700 rounded-md disabled:opacity-30 transition-colors"
               title="Last Page"
             >
-              <i className="fas fa-step-forward text-xs text-slate-400"></i>
+              <i className="fas fa-step-forward text-[10px] sm:text-xs text-slate-400"></i>
             </button>
           </div>
 
           <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 gap-1">
             <button
               onClick={() => setComparisonMode("grid")}
-              className={`p-2 rounded-md transition-all ${
+              className={`p-1.5 sm:p-2 rounded-md transition-all ${
                 comparisonMode === "grid"
                   ? "bg-indigo-600 text-white"
                   : "text-slate-400 hover:text-white"
               }`}
               title="Grid View"
             >
-              <i className="fas fa-th text-xs"></i>
+              <i className="fas fa-th text-[10px] sm:text-xs"></i>
             </button>
             <button
               onClick={() => setComparisonMode("slider")}
-              className={`p-2 rounded-md transition-all ${
+              className={`p-1.5 sm:p-2 rounded-md transition-all ${
                 comparisonMode !== "grid"
                   ? "bg-indigo-600 text-white"
                   : "text-slate-400 hover:text-white"
               }`}
               title="Single View"
             >
-              <i className="fas fa-image text-xs"></i>
+              <i className="fas fa-image text-[10px] sm:text-xs"></i>
             </button>
           </div>
 
@@ -134,16 +135,16 @@ const ReaderView: React.FC = () => {
             <button
               onClick={handlePrev}
               disabled={currentImageIndex === 0}
-              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-slate-800 text-slate-400 hover:bg-indigo-600 hover:text-white disabled:opacity-30 disabled:hover:bg-slate-800 transition-all flex items-center justify-center border border-slate-700 shadow-xl"
+              className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-slate-800 text-slate-400 hover:bg-indigo-600 hover:text-white disabled:opacity-30 disabled:hover:bg-slate-800 transition-all flex items-center justify-center border border-slate-700 shadow-xl"
             >
-              <i className="fas fa-chevron-left text-sm sm:text-lg"></i>
+              <i className="fas fa-chevron-left text-xs sm:text-lg"></i>
             </button>
             <button
               onClick={handleNext}
               disabled={currentImageIndex === images.length - 1}
-              className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 disabled:opacity-30 transition-all flex items-center justify-center border border-indigo-500/30"
+              className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 disabled:opacity-30 transition-all flex items-center justify-center border border-indigo-500/30"
             >
-              <i className="fas fa-chevron-right text-sm sm:text-lg"></i>
+              <i className="fas fa-chevron-right text-xs sm:text-lg"></i>
             </button>
           </div>
         </div>

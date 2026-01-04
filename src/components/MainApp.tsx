@@ -10,7 +10,6 @@ import NewSeriesModal from "./NewSeriesModal";
 import SeriesSidebar from "./SeriesSidebar";
 import SettingsModal from "./SettingsModal";
 import EditorWorkspace from "./editor/EditorWorkspace";
-import Header from "./layout/Header";
 import ReaderView from "./viewer/ReaderView";
 
 import { useProjectExport } from "../hooks/useProjectExport";
@@ -56,9 +55,9 @@ const MainApp: React.FC = () => {
     rehydrateImages,
     deleteSeries,
     setActiveSeriesId,
-    setCategories,
-    updateCategoryName,
+    updateCategory,
     deleteCategory,
+    addCategory,
     addSeries,
     updateSeries,
     page,
@@ -108,23 +107,37 @@ const MainApp: React.FC = () => {
 
   const handleConfirmSeries = (
     name: string,
-    category: string,
-    sequenceNumber: number
+    categoryName: string,
+    sequenceNumber: number,
+    categoryId?: string,
+    metadata?: { author?: string; group?: string; originalTitle?: string }
   ) => {
     if (editingSeriesId) {
-      updateSeries(editingSeriesId, { name, category, sequenceNumber });
+      updateSeries(editingSeriesId, {
+        name,
+        category: categoryName,
+        categoryId: categoryId, // Pass ID if available
+        sequenceNumber,
+        author: metadata?.author,
+        group: metadata?.group,
+        originalTitle: metadata?.originalTitle,
+      });
       setEditingSeriesId(null);
     } else {
       addSeries({
         id: Math.random().toString(36).substring(2, 9),
         name,
         description: "",
-        category,
+        category: categoryName,
+        categoryId: categoryId,
         tags: [],
         images: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
         sequenceNumber,
+        author: metadata?.author,
+        group: metadata?.group,
+        originalTitle: metadata?.originalTitle,
       });
     }
     toggleNewSeriesModal(false);
@@ -193,19 +206,36 @@ const MainApp: React.FC = () => {
             }
           }}
           isViewOnly={isViewOnly}
-          categories={categories}
+          categories={categories} // Now Category[]
           page={page}
           pageSize={pageSize}
           total={total}
           setPage={setPage}
+          onMoveSeries={(seriesId, categoryId) => {
+            const targetCategory = categories.find((c) => c.id === categoryId);
+            updateSeries(seriesId, {
+              categoryId,
+              category: targetCategory?.name || "Uncategorized",
+            });
+          }}
+          onMoveCategory={(categoryId, targetParentId) => {
+            // prevented self-reference check should be in the sidebar or here
+            if (categoryId === targetParentId) return;
+            updateCategory(
+              categoryId,
+              categories.find((c) => c.id === categoryId)?.name || "Unknown",
+              targetParentId
+            );
+          }}
         />
 
         <CategoryManagerModal
           isOpen={isCategoryModalOpen}
           onClose={() => toggleCategoryModal(false)}
           categories={categories}
-          onUpdateCategory={updateCategoryName}
-          onDeleteCategory={deleteCategory}
+          onUpdateCategory={updateCategory} // Updated signature: (id, name, parentId?)
+          onDeleteCategory={deleteCategory} // Updated signature: (id)
+          onAddCategory={addCategory} // Added
         />
 
         <NewSeriesModal
@@ -217,7 +247,7 @@ const MainApp: React.FC = () => {
           onConfirm={handleConfirmSeries}
           existingTitles={series.map((s) => s.name)}
           categories={categories}
-          onAddCategory={(cat) => setCategories([...categories, cat])}
+          onAddCategory={(name) => addCategory(name)} // Simple add for legacy behavior in modal?
           initialName={
             editingSeriesId
               ? series.find((s) => s.id === editingSeriesId)?.name
@@ -233,6 +263,21 @@ const MainApp: React.FC = () => {
               ? series.find((s) => s.id === editingSeriesId)?.sequenceNumber
               : 0
           }
+          initialAuthor={
+            editingSeriesId
+              ? series.find((s) => s.id === editingSeriesId)?.author
+              : ""
+          }
+          initialGroup={
+            editingSeriesId
+              ? series.find((s) => s.id === editingSeriesId)?.group
+              : ""
+          }
+          initialOriginalTitle={
+            editingSeriesId
+              ? series.find((s) => s.id === editingSeriesId)?.originalTitle
+              : ""
+          }
         />
 
         <SettingsModal
@@ -245,8 +290,6 @@ const MainApp: React.FC = () => {
         />
 
         <div className="flex-1 flex flex-col h-full overflow-x-hidden overflow-y-auto custom-scrollbar relative">
-          <Header />
-
           {isViewOnly ? <ReaderView /> : <EditorWorkspace />}
         </div>
       </div>

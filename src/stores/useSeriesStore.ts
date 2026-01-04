@@ -1,13 +1,18 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";
 import { supabase } from "../lib/supabase";
-import { ProcessedImage, Series } from "../types";
+import {
+  Category,
+  ProcessedImage,
+  Series,
+  TextBubble,
+  UsageMetadata,
+} from "../types";
 import { resolveImageUrl } from "../utils/url";
 
 interface SeriesState {
   series: Series[];
   activeSeriesId: string;
-  categories: string[];
+  categories: Category[];
   isLoading: boolean;
   error: string | null;
 
@@ -45,7 +50,7 @@ interface SeriesState {
     imageId: string,
     blob: Blob,
     fileName: string,
-    meta?: any
+    meta?: Record<string, unknown>
   ) => Promise<void>;
 
   // Ordering Actions
@@ -53,10 +58,14 @@ interface SeriesState {
   reorderImages: (seriesId: string, orderedImageIds: string[]) => Promise<void>;
 
   // Category Actions
-  setCategories: (categories: string[]) => void;
-  addCategory: (category: string) => Promise<void>;
-  updateCategoryName: (oldName: string, newName: string) => Promise<void>;
-  deleteCategory: (name: string) => Promise<void>;
+  setCategories: (categories: Category[]) => void;
+  addCategory: (name: string, parentId?: string) => Promise<void>;
+  updateCategory: (
+    id: string,
+    name: string,
+    parentId?: string | null
+  ) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
 
   // Hydration / Legacy
   rehydrateImages: () => Promise<void>; // Changed behavior: fetches from R2/Supabase
@@ -65,7 +74,7 @@ interface SeriesState {
 export const useSeriesStore = create<SeriesState>((set, get) => ({
   series: [],
   activeSeriesId: "default",
-  categories: ["Manga", "Manhwa", "Webtoon", "Comic", "Uncategorized"],
+  categories: [],
   isLoading: false,
   error: null,
 
@@ -94,7 +103,24 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      // Fetch Series & Images
+      // 1. Fetch Categories (Hierarchy) regarding user
+      const { data: catData, error: catError } = await supabase
+        .from("categories")
+        .select("id, name, parent_id")
+        .eq("user_id", user.id);
+
+      if (catError) throw catError;
+
+      const categories: Category[] = (catData || []).map(
+        (c: { id: string; name: string; parent_id: string | null }) => ({
+          id: c.id,
+          name: c.name,
+          parentId: c.parent_id,
+        })
+      );
+      set({ categories });
+
+      // 2. Fetch Series
       const {
         data: seriesData,
         error: seriesError,
@@ -118,42 +144,71 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       if (count !== null) set({ total: count });
 
       // Transform data to local shape
-      const transformedSeries: Series[] = seriesData.map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        description: s.description || "",
-        category: s.category || "Uncategorized",
-        tags: s.tags || [],
-        createdAt: new Date(s.created_at).getTime(),
-        updatedAt: new Date(s.updated_at).getTime(),
-        sequenceNumber: s.sequence_number || 0,
-        images: (s.images || [])
-          .map((img: any) => ({
-            id: img.id,
-            fileName: img.file_name,
-            originalUrl: img.original_key,
-            translatedUrl: img.translated_key,
-            status: img.status || "idle",
-            originalKey: img.original_key,
-            translatedKey: img.translated_key,
-            sequenceNumber: img.sequence_number || 0,
-            bubbles: [],
-          }))
-          .sort(
-            (a: any, b: any) =>
-              a.sequenceNumber - b.sequenceNumber ||
-              a.fileName.localeCompare(b.fileName)
-          ),
-      }));
+      const transformedSeries: Series[] = seriesData.map(
+        (s: {
+          id: string;
+          name: string;
+          description: string | null;
+          category: string | null;
+          category_id: string | null;
+          tags: string[] | null;
+          created_at: string;
+          updated_at: string;
+          sequence_number: number | null;
+          author: string | null;
+          group_name: string | null;
+          original_title: string | null;
+          images: {
+            id: string;
+            file_name: string;
+            original_key: string;
+            translated_key: string | null;
+            status: string | null;
+            sequence_number: number | null;
+          }[];
+        }) => ({
+          id: s.id,
+          name: s.name,
+          description: s.description || "",
+          category: s.category || "Uncategorized", // Fallback string
+          categoryId: s.category_id || undefined, // New field, handle null
+          tags: s.tags || [],
+          createdAt: new Date(s.created_at).getTime(),
+          updatedAt: new Date(s.updated_at).getTime(),
+          sequenceNumber: s.sequence_number || 0,
+          author: s.author || undefined,
+          group: s.group_name || undefined,
+          originalTitle: s.original_title || undefined,
+          images: (s.images || [])
+            .map(
+              (img: {
+                id: string;
+                file_name: string;
+                original_key: string;
+                translated_key: string | null;
+                status: string | null;
+                sequence_number: number | null;
+              }) => ({
+                id: img.id,
+                fileName: img.file_name,
+                originalUrl: img.original_key,
+                translatedUrl: img.translated_key,
+                status: (img.status as ProcessedImage["status"]) || "idle",
+                originalKey: img.original_key,
+                translatedKey: img.translated_key || undefined,
+                sequenceNumber: img.sequence_number || 0,
+                bubbles: [],
+              })
+            )
+            .sort(
+              (a: ProcessedImage, b: ProcessedImage) =>
+                (a.sequenceNumber || 0) - (b.sequenceNumber || 0) ||
+                a.fileName.localeCompare(b.fileName)
+            ),
+        })
+      );
 
-      // Fetch Categories
-      const { data: catData } = await supabase
-        .from("categories")
-        .select("name");
-      if (catData) {
-        set({ categories: catData.map((c) => c.name) });
-      }
-
+      // Resolve URLs locally
       const fixedSeries = transformedSeries.map((s) => ({
         ...s,
         images: s.images.map((img) => ({
@@ -167,9 +222,10 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       if (fixedSeries.length > 0 && get().activeSeriesId === "default") {
         set({ activeSeriesId: fixedSeries[0].id });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Fetch Series Error:", err);
-      set({ error: err.message, isLoading: false });
+      const message = err instanceof Error ? err.message : "Unknown error";
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -200,10 +256,14 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
           // Let's assume we generated a compatible ID or let Supabase return it.
           name: newSeries.name,
           category: newSeries.category,
+          category_id: newSeries.categoryId,
           description: newSeries.description,
           tags: newSeries.tags,
           user_id: user.id,
           sequence_number: newSeries.sequenceNumber || 0,
+          author: newSeries.author,
+          group_name: newSeries.group,
+          original_title: newSeries.originalTitle,
         })
         .select()
         .single();
@@ -239,8 +299,19 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
         dbUpdates.description = updates.description;
       if (updates.sequenceNumber !== undefined)
         dbUpdates.sequence_number = updates.sequenceNumber;
+      if (updates.categoryId !== undefined)
+        dbUpdates.category_id = updates.categoryId;
+      if (updates.author !== undefined) dbUpdates.author = updates.author;
+      if (updates.group !== undefined) dbUpdates.group_name = updates.group;
+      if (updates.originalTitle !== undefined)
+        dbUpdates.original_title = updates.originalTitle;
 
-      await supabase.from("series").update(dbUpdates).eq("id", id);
+      const { error } = await supabase
+        .from("series")
+        .update(dbUpdates)
+        .eq("id", id);
+
+      if (error) throw error;
     } catch (err) {
       console.error(err);
     }
@@ -527,9 +598,9 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
                         translatedUrl: resolveImageUrl(publicUrl),
                         translatedKey: key,
                         status: "completed",
-                        bubbles: meta?.bubbles || img.bubbles,
-                        usage: meta?.usage || img.usage,
-                        cost: meta?.cost || img.cost,
+                        bubbles: (meta?.bubbles as TextBubble[]) || img.bubbles,
+                        usage: (meta?.usage as UsageMetadata) || img.usage,
+                        cost: (meta?.cost as number) || img.cost,
                       }
                     : img
                 ),
@@ -544,40 +615,58 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   },
 
   setCategories: (categories) => set({ categories }),
-  addCategory: async (category) => {
-    set((state) => ({ categories: [...state.categories, category] }));
+  addCategory: async (name, parentId) => {
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (user) {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("categories")
-        .insert({ name: category, user_id: user.id });
+        .insert({ name, user_id: user.id, parent_id: parentId })
+        .select()
+        .single();
 
       if (error) {
         console.error("Add category error:", error);
-        // Refresh from DB on error?
-        get().fetchSeries();
+      } else if (data) {
+        // Optimistic / Sync
+        const newCat: Category = {
+          id: data.id,
+          name: data.name,
+          parentId: data.parent_id,
+        };
+        set((state) => ({ categories: [...state.categories, newCat] }));
       }
     }
   },
-  updateCategoryName: async (oldName: string, newName: string) => {
+  updateCategory: async (id, name, parentId) => {
     set((state) => ({
-      categories: state.categories.map((c) => (c === oldName ? newName : c)),
+      categories: state.categories.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              name,
+              parentId: parentId !== undefined ? parentId : c.parentId,
+            }
+          : c
+      ),
     }));
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (user) {
+      const updatePayload: any = { name };
+      if (parentId !== undefined) updatePayload.parent_id = parentId;
+
       await supabase
         .from("categories")
-        .update({ name: newName })
-        .eq("name", oldName)
+        .update(updatePayload)
+        .eq("id", id)
         .eq("user_id", user.id);
     }
   },
-  deleteCategory: async (name) => {
-    set((s) => ({ categories: s.categories.filter((c) => c !== name) }));
+  deleteCategory: async (id) => {
+    set((s) => ({ categories: s.categories.filter((c) => c.id !== id) }));
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -585,7 +674,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       await supabase
         .from("categories")
         .delete()
-        .eq("name", name)
+        .eq("id", id)
         .eq("user_id", user.id);
     }
   },
