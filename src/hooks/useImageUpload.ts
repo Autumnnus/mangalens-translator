@@ -6,7 +6,9 @@ import { extractImagesFromPdf } from "../utils/pdf";
 
 export const useImageUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
-  const { addImageToSeries, activeSeriesId } = useSeriesStore();
+  const { addImageToSeries, activeSeriesId, series } = useSeriesStore();
+  const activeSeries = series.find((s) => s.id === activeSeriesId);
+  let nextSequenceNumber = activeSeries?.images.length || 0;
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || !activeSeriesId) return;
@@ -31,6 +33,7 @@ export const useImageUpload = () => {
                 translatedUrl: null,
                 status: "idle",
                 bubbles: [],
+                sequenceNumber: nextSequenceNumber++,
               };
 
               addImageToSeries(activeSeriesId, newImage);
@@ -49,6 +52,7 @@ export const useImageUpload = () => {
             translatedUrl: null,
             status: "idle",
             bubbles: [],
+            sequenceNumber: nextSequenceNumber++,
           };
 
           addImageToSeries(activeSeriesId, newImage);
