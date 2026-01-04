@@ -1,21 +1,14 @@
 import JSZip from "jszip";
 import { useSeriesStore } from "../stores/useSeriesStore";
-import { ProcessedImage, Series } from "../types";
-import { imageDb } from "../utils/db";
+import { Series } from "../types";
+// import { imageDb } from "../utils/db"; // Removed
 
 export const useProjectImport = () => {
-  const { setSeries, setActiveSeriesId } = useSeriesStore();
+  const { addSeries, addImageToSeries, setActiveSeriesId } = useSeriesStore();
 
   const importLibrary = async (file: File) => {
     try {
       const zip = await JSZip.loadAsync(file);
-      const newSeries: Series[] = [];
-
-      // Detect if this is a full library export (has subfolders as series) or single series
-      // Quick check: look for folders at root
-      const rootEntries = Object.keys(zip.files).filter(
-        (path) => !path.includes("/")
-      );
 
       // We'll traverse all folders looking for "series.json"
       const seriesFolders = new Set<string>();
@@ -28,63 +21,55 @@ export const useProjectImport = () => {
         }
       });
 
-      for (const folderPath of Array.from(seriesFolders)) {
+      let importedCount = 0;
+      for (const seriesFolder of Array.from(seriesFolders)) {
         const jsonContent = await zip
-          .file(folderPath + "series.json")
+          .file(seriesFolder + "series.json")
           ?.async("string");
         if (!jsonContent) continue;
 
         const seriesData = JSON.parse(jsonContent) as Series;
 
-        const rehydratedImages: ProcessedImage[] = [];
+        // 1. Create Series
+        const newSeriesId = crypto.randomUUID(); // Use UUID for new series
+        const newSeries: Series = {
+          ...seriesData,
+          id: newSeriesId,
+          images: [], // Start empty, add one by one
+          updatedAt: Date.now(),
+        };
 
+        await addSeries(newSeries);
+        setActiveSeriesId(newSeriesId);
+
+        // 2. Upload Images
         for (let i = 0; i < seriesData.images.length; i++) {
           const originalImg = seriesData.images[i];
           const extension = originalImg.fileName.split(".").pop() || "jpg";
           const paddedIndex = (i + 1).toString().padStart(3, "0");
-
-          const sourcePath = `${folderPath}${paddedIndex}_source.${extension}`;
-          const translatedPath = `${folderPath}${paddedIndex}_translated.${extension}`;
-
-          let sourceBlobUrl = "";
-          let translatedBlobUrl = null;
+          const sourcePath = `${seriesFolder}${paddedIndex}_source.${extension}`;
 
           const sourceFile = zip.file(sourcePath);
-          if (sourceFile) {
-            const blob = await sourceFile.async("blob");
-            sourceBlobUrl = URL.createObjectURL(blob);
-            await imageDb.saveImage(originalImg.id, "original", blob);
-          } else {
-            continue;
-          }
+          if (!sourceFile) continue;
 
-          const translatedFile = zip.file(translatedPath);
-          if (translatedFile) {
-            const blob = await translatedFile.async("blob");
-            translatedBlobUrl = URL.createObjectURL(blob);
-            await imageDb.saveImage(originalImg.id, "translated", blob);
-          }
+          const blob = await sourceFile.async("blob");
+          const blobUrl = URL.createObjectURL(blob);
 
-          rehydratedImages.push({
+          await addImageToSeries(newSeriesId, {
             ...originalImg,
-            originalUrl: sourceBlobUrl,
-            translatedUrl: translatedBlobUrl,
-            status: "completed",
+            id: originalImg.id, // Try to keep ID or generate new? R2 key depends on time, but it's fine.
+            originalUrl: blobUrl,
+            translatedUrl: null, // Reset translation for now as we don't handle uploading translated BLOBs in addImageToSeries yet. TODO: Support it.
+            status: "idle",
           });
         }
-
-        newSeries.push({
-          ...seriesData,
-          id: Math.random().toString(36).substring(2, 9), // Generate new ID to avoid collisions
-          images: rehydratedImages,
-          updatedAt: Date.now(),
-        });
+        importedCount++;
       }
 
-      if (newSeries.length > 0) {
-        setSeries((prev: Series[]) => [...prev, ...newSeries]);
-        setActiveSeriesId(newSeries[0].id);
-        alert(`Imported ${newSeries.length} series successfully!`);
+      if (importedCount > 0) {
+        alert(
+          `Imported ${importedCount} series successfully! Images are uploading in background.`
+        );
       } else {
         alert("No valid series found in the ZIP archive.");
       }

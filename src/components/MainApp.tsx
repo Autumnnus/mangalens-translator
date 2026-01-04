@@ -1,6 +1,8 @@
 "use client";
 
-import React, { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { useRouter } from "next/navigation";
+import React, { useEffect, useState } from "react";
 import CategoryManagerModal from "./CategoryManagerModal";
 import ComparisonView from "./ComparisonView"; // For modal view
 import ConfirmModal from "./ConfirmModal";
@@ -8,7 +10,6 @@ import NewSeriesModal from "./NewSeriesModal";
 import SeriesSidebar from "./SeriesSidebar";
 import SettingsModal from "./SettingsModal";
 import EditorWorkspace from "./editor/EditorWorkspace";
-import Header from "./layout/Header";
 import ReaderView from "./viewer/ReaderView";
 
 import { useProjectExport } from "../hooks/useProjectExport";
@@ -18,7 +19,34 @@ import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
 import { ViewMode } from "../types";
 
+import { Session } from "@supabase/supabase-js";
+
 const MainApp: React.FC = () => {
+  const router = useRouter();
+  const [session, setSession] = useState<Session | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setLoading(false);
+      if (!session) {
+        router.push("/auth/login");
+      }
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session) {
+        router.push("/auth/login");
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [router]);
+
   // Store Hooks
   const {
     series,
@@ -27,11 +55,15 @@ const MainApp: React.FC = () => {
     rehydrateImages,
     deleteSeries,
     setActiveSeriesId,
-    setCategories,
-    updateCategoryName,
+    updateCategory,
     deleteCategory,
+    addCategory,
     addSeries,
     updateSeries,
+    page,
+    pageSize,
+    total,
+    setPage,
   } = useSeriesStore();
   const { settings, updateSettings, isViewOnly } = useSettingsStore();
   const {
@@ -60,7 +92,7 @@ const MainApp: React.FC = () => {
   // Mount effects
   useEffect(() => {
     rehydrateImages();
-  }, []);
+  }, [rehydrateImages]);
 
   // State Wrappers for Sidebar/Modals (Adapting store actions to component props)
   const handleSelectSeries = (id: string) => {
@@ -73,20 +105,39 @@ const MainApp: React.FC = () => {
     toggleNewSeriesModal(true);
   };
 
-  const handleConfirmSeries = (name: string, category: string) => {
+  const handleConfirmSeries = (
+    name: string,
+    categoryName: string,
+    sequenceNumber: number,
+    categoryId?: string,
+    metadata?: { author?: string; group?: string; originalTitle?: string }
+  ) => {
     if (editingSeriesId) {
-      updateSeries(editingSeriesId, { name, category });
+      updateSeries(editingSeriesId, {
+        name,
+        category: categoryName,
+        categoryId: categoryId, // Pass ID if available
+        sequenceNumber,
+        author: metadata?.author,
+        group: metadata?.group,
+        originalTitle: metadata?.originalTitle,
+      });
       setEditingSeriesId(null);
     } else {
       addSeries({
         id: Math.random().toString(36).substring(2, 9),
         name,
         description: "",
-        category,
+        category: categoryName,
+        categoryId: categoryId,
         tags: [],
         images: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        sequenceNumber,
+        author: metadata?.author,
+        group: metadata?.group,
+        originalTitle: metadata?.originalTitle,
       });
     }
     toggleNewSeriesModal(false);
@@ -111,6 +162,18 @@ const MainApp: React.FC = () => {
       window.removeEventListener("drop", handleDrop);
     };
   }, []);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[#020617] text-white">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!session) {
+    return null; // Will redirect
+  }
 
   return (
     <>
@@ -143,15 +206,36 @@ const MainApp: React.FC = () => {
             }
           }}
           isViewOnly={isViewOnly}
-          categories={categories}
+          categories={categories} // Now Category[]
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          setPage={setPage}
+          onMoveSeries={(seriesId, categoryId) => {
+            const targetCategory = categories.find((c) => c.id === categoryId);
+            updateSeries(seriesId, {
+              categoryId,
+              category: targetCategory?.name || "Uncategorized",
+            });
+          }}
+          onMoveCategory={(categoryId, targetParentId) => {
+            // prevented self-reference check should be in the sidebar or here
+            if (categoryId === targetParentId) return;
+            updateCategory(
+              categoryId,
+              categories.find((c) => c.id === categoryId)?.name || "Unknown",
+              targetParentId
+            );
+          }}
         />
 
         <CategoryManagerModal
           isOpen={isCategoryModalOpen}
           onClose={() => toggleCategoryModal(false)}
           categories={categories}
-          onUpdateCategory={updateCategoryName}
-          onDeleteCategory={deleteCategory}
+          onUpdateCategory={updateCategory} // Updated signature: (id, name, parentId?)
+          onDeleteCategory={deleteCategory} // Updated signature: (id)
+          onAddCategory={addCategory} // Added
         />
 
         <NewSeriesModal
@@ -163,7 +247,7 @@ const MainApp: React.FC = () => {
           onConfirm={handleConfirmSeries}
           existingTitles={series.map((s) => s.name)}
           categories={categories}
-          onAddCategory={(cat) => setCategories([...categories, cat])}
+          onAddCategory={(name) => addCategory(name)} // Simple add for legacy behavior in modal?
           initialName={
             editingSeriesId
               ? series.find((s) => s.id === editingSeriesId)?.name
@@ -172,6 +256,26 @@ const MainApp: React.FC = () => {
           initialCategory={
             editingSeriesId
               ? series.find((s) => s.id === editingSeriesId)?.category
+              : ""
+          }
+          initialSequenceNumber={
+            editingSeriesId
+              ? series.find((s) => s.id === editingSeriesId)?.sequenceNumber
+              : 0
+          }
+          initialAuthor={
+            editingSeriesId
+              ? series.find((s) => s.id === editingSeriesId)?.author
+              : ""
+          }
+          initialGroup={
+            editingSeriesId
+              ? series.find((s) => s.id === editingSeriesId)?.group
+              : ""
+          }
+          initialOriginalTitle={
+            editingSeriesId
+              ? series.find((s) => s.id === editingSeriesId)?.originalTitle
               : ""
           }
         />
@@ -186,8 +290,6 @@ const MainApp: React.FC = () => {
         />
 
         <div className="flex-1 flex flex-col h-full overflow-x-hidden overflow-y-auto custom-scrollbar relative">
-          <Header />
-
           {isViewOnly ? <ReaderView /> : <EditorWorkspace />}
         </div>
       </div>
@@ -230,7 +332,7 @@ const MainApp: React.FC = () => {
                   sourceUrl: selectedImg.originalUrl,
                   convertedUrl:
                     selectedImg.translatedUrl || selectedImg.originalUrl,
-                  createdAt: Date.now(),
+                  createdAt: 0,
                 }}
                 mode={modalCompareMode}
               />

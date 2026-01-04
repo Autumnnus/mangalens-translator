@@ -1,16 +1,26 @@
 import { Plus, X } from "lucide-react";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+import { Category } from "../types";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (name: string, category: string) => void;
+  onConfirm: (
+    name: string,
+    category: string,
+    sequenceNumber: number,
+    categoryId?: string,
+    metadata?: { author?: string; group?: string; originalTitle?: string }
+  ) => void;
   existingTitles: string[];
-  categories: string[];
-  onAddCategory: (category: string) => void;
+  categories: Category[];
+  onAddCategory: (name: string) => void;
   initialName?: string;
   initialCategory?: string;
-  title?: string;
+  initialSequenceNumber?: number;
+  initialAuthor?: string;
+  initialGroup?: string;
+  initialOriginalTitle?: string;
 }
 
 const NewSeriesModal: React.FC<Props> = ({
@@ -22,12 +32,20 @@ const NewSeriesModal: React.FC<Props> = ({
   onAddCategory,
   initialName = "",
   initialCategory = "",
-  title = "New Series",
+  initialSequenceNumber = 0,
+  initialAuthor = "",
+  initialGroup = "",
+  initialOriginalTitle = "",
 }) => {
   const [name, setName] = useState(initialName);
-  const [category, setCategory] = useState(
-    initialCategory || categories[0] || "Uncategorized"
+  const [categoryName, setCategoryName] = useState(
+    initialCategory ||
+      (categories.length > 0 ? categories[0].name : "Uncategorized")
   );
+  const [sequenceNumber, setSequenceNumber] = useState(initialSequenceNumber);
+  const [author, setAuthor] = useState(initialAuthor);
+  const [group, setGroup] = useState(initialGroup);
+  const [originalTitle, setOriginalTitle] = useState(initialOriginalTitle);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [error, setError] = useState("");
@@ -36,11 +54,25 @@ const NewSeriesModal: React.FC<Props> = ({
   React.useEffect(() => {
     if (isOpen) {
       setName(initialName);
-      setCategory(initialCategory || categories[0] || "Uncategorized");
+      setCategoryName(
+        initialCategory ||
+          (categories.length > 0 ? categories[0].name : "Uncategorized")
+      );
+      setSequenceNumber(initialSequenceNumber);
+      setAuthor(initialAuthor);
+      setGroup(initialGroup);
+      setOriginalTitle(initialOriginalTitle);
     }
-  }, [isOpen, initialName, initialCategory, categories]);
-
-  if (!isOpen) return null;
+  }, [
+    isOpen,
+    initialName,
+    initialCategory,
+    initialSequenceNumber,
+    initialAuthor,
+    initialGroup,
+    initialOriginalTitle,
+    categories,
+  ]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,7 +88,13 @@ const NewSeriesModal: React.FC<Props> = ({
       return;
     }
 
-    onConfirm(name.trim(), category);
+    const selectedCategory = categories.find((c) => c.name === categoryName);
+
+    onConfirm(name.trim(), categoryName, sequenceNumber, selectedCategory?.id, {
+      author,
+      group,
+      originalTitle,
+    });
     setName("");
     onClose();
   };
@@ -64,14 +102,40 @@ const NewSeriesModal: React.FC<Props> = ({
   const handleAddCategory = () => {
     if (
       newCategoryName.trim() &&
-      !categories.includes(newCategoryName.trim())
+      !categories.some((c) => c.name === newCategoryName.trim())
     ) {
       onAddCategory(newCategoryName.trim());
-      setCategory(newCategoryName.trim());
+      setCategoryName(newCategoryName.trim());
       setNewCategoryName("");
       setIsAddingCategory(false);
     }
   };
+
+  const flattenedCategories = useMemo(() => {
+    const buildList = (
+      parentId: string | null = null,
+      depth = 0
+    ): { id: string; name: string; level: number }[] => {
+      const children = categories.filter(
+        (c) => c.parentId === (parentId || null)
+      );
+      let list: { id: string; name: string; level: number }[] = [];
+      children.forEach((child) => {
+        list.push({ id: child.id, name: child.name, level: depth });
+        list = list.concat(buildList(child.id, depth + 1));
+      });
+      return list;
+    };
+    const roots = categories.filter((c) => !c.parentId);
+    let result: { id: string; name: string; level: number }[] = [];
+    roots.forEach((r) => {
+      result.push({ id: r.id, name: r.name, level: 0 });
+      result = result.concat(buildList(r.id, 1));
+    });
+    return result;
+  }, [categories]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
@@ -114,18 +178,73 @@ const NewSeriesModal: React.FC<Props> = ({
 
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+              Sequence Number
+            </label>
+            <input
+              type="number"
+              value={sequenceNumber}
+              onChange={(e) => setSequenceNumber(parseInt(e.target.value) || 0)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Author
+              </label>
+              <input
+                type="text"
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+                placeholder="Author name"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+                Group
+              </label>
+              <input
+                type="text"
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
+                placeholder="Scan group"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+              Original Title
+            </label>
+            <input
+              type="text"
+              value={originalTitle}
+              onChange={(e) => setOriginalTitle(e.target.value)}
+              placeholder="Original series title"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
               Category
             </label>
             {!isAddingCategory ? (
               <div className="flex gap-2">
                 <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
+                  value={categoryName}
+                  onChange={(e) => setCategoryName(e.target.value)}
                   className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer"
                 >
-                  {categories.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
+                  <option value="">Select or Uncategorized</option>
+                  {flattenedCategories.map((cat) => (
+                    <option key={cat.id} value={cat.name}>
+                      {"\u00A0\u00A0".repeat(cat.level) +
+                        (cat.level > 0 ? "└ " : "") +
+                        cat.name}
                     </option>
                   ))}
                 </select>

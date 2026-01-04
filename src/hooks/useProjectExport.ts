@@ -6,26 +6,6 @@ export const useProjectExport = () => {
   const { series, activeSeriesId } = useSeriesStore();
   const activeSeries = series.find((s) => s.id === activeSeriesId);
 
-  const urlToBase64 = async (url: string): Promise<string> => {
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          const base64 = result.includes(",") ? result.split(",")[1] : result;
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      console.error("Error converting URL to Base64:", url, e);
-      throw e;
-    }
-  };
-
   const downloadAllAsZip = async () => {
     if (!activeSeries || activeSeries.images.length === 0) return;
 
@@ -58,20 +38,14 @@ export const useProjectExport = () => {
         const extension = img.fileName.split(".").pop() || "jpg";
         const paddedIndex = (idx + 1).toString().padStart(3, "0");
 
-        const sourceData = await urlToBase64(img.originalUrl);
-        folder.file(`${paddedIndex}_source.${extension}`, sourceData, {
-          base64: true,
-        });
+        const sourceRes = await fetch(img.originalUrl);
+        const sourceBlob = await sourceRes.blob();
+        folder.file(`${paddedIndex}_source.${extension}`, sourceBlob);
 
         if (img.translatedUrl && img.translatedUrl !== img.originalUrl) {
-          const translatedData = await urlToBase64(img.translatedUrl as string);
-          folder.file(
-            `${paddedIndex}_translated.${extension}`,
-            translatedData,
-            {
-              base64: true,
-            }
-          );
+          const translatedRes = await fetch(img.translatedUrl as string);
+          const translatedBlob = await translatedRes.blob();
+          folder.file(`${paddedIndex}_translated.${extension}`, translatedBlob);
         }
       } catch (e) {
         console.error(`Failed to add ${img.fileName} to ZIP:`, e);
@@ -115,20 +89,17 @@ export const useProjectExport = () => {
           const paddedIndex = (idx + 1).toString().padStart(3, "0");
 
           // Save Source
-          const sourceData = await urlToBase64(img.originalUrl);
-          folder.file(`${paddedIndex}_source.${extension}`, sourceData, {
-            base64: true,
-          });
+          const sourceRes = await fetch(img.originalUrl);
+          const sourceBlob = await sourceRes.blob();
+          folder.file(`${paddedIndex}_source.${extension}`, sourceBlob);
 
           // Save Translated if exists
           if (img.translatedUrl && img.translatedUrl !== img.originalUrl) {
-            const translatedData = await urlToBase64(
-              img.translatedUrl as string
-            );
+            const translatedRes = await fetch(img.translatedUrl as string);
+            const translatedBlob = await translatedRes.blob();
             folder.file(
               `${paddedIndex}_translated.${extension}`,
-              translatedData,
-              { base64: true }
+              translatedBlob
             );
           }
         } catch (e) {

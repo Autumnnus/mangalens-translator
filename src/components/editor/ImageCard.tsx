@@ -4,6 +4,7 @@ import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useUIStore } from "../../stores/useUIStore";
 import { ProcessedImage } from "../../types";
+import { resolveImageUrl } from "../../utils/url";
 
 interface Props {
   image: ProcessedImage;
@@ -12,12 +13,21 @@ interface Props {
 }
 
 const ImageCard: React.FC<Props> = ({ image, index, total }) => {
-  const { activeSeriesId, setImages, removeImageFromSeries } = useSeriesStore();
+  const {
+    activeSeriesId,
+
+    removeImageFromSeries,
+    updateImageInSeries,
+    series,
+    reorderImages,
+  } = useSeriesStore();
   const { openConfirmModal, setSelectedImageId } = useUIStore();
   const { processImage } = useImageProcessor();
 
+  const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
+
   const handleDownload = async () => {
-    const url = image.translatedUrl || image.originalUrl;
+    const url = displayUrl;
     try {
       const response = await fetch(url);
       const blob = await response.blob();
@@ -28,16 +38,22 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
   };
 
   const moveImage = (dir: "up" | "down") => {
-    setImages(activeSeriesId, (prev) => {
-      const newImages = [...prev];
-      const targetIndex = dir === "up" ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
-      [newImages[index], newImages[targetIndex]] = [
-        newImages[targetIndex],
-        newImages[index],
-      ];
-      return newImages;
-    });
+    const activeSeries = series.find((s) => s.id === activeSeriesId);
+    if (!activeSeries) return;
+
+    const currentImages = [...activeSeries.images];
+    const targetIndex = dir === "up" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= currentImages.length) return;
+
+    // Swap
+    [currentImages[index], currentImages[targetIndex]] = [
+      currentImages[targetIndex],
+      currentImages[index],
+    ];
+
+    // Extract IDs in new order
+    const orderedIds = currentImages.map((img) => img.id);
+    reorderImages(activeSeriesId, orderedIds);
   };
 
   const handleRemove = () => {
@@ -61,9 +77,9 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
         onClick={() => setSelectedImageId(image.id)}
       >
         <img
-          src={image.translatedUrl || image.originalUrl}
+          src={displayUrl}
           alt={image.fileName}
-          className="w-full h-full object-contain"
+          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           loading="lazy"
         />
 
@@ -148,7 +164,22 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
             </button>
           )}
 
-          <div className="flex bg-slate-900 rounded-xl border border-slate-700 p-0.5">
+          <div className="flex bg-slate-900 rounded-xl border border-slate-700 p-0.5 items-center">
+            <input
+              type="number"
+              className="w-12 bg-transparent text-center text-[10px] font-bold text-slate-300 focus:outline-none focus:text-white"
+              value={image.sequenceNumber}
+              onChange={(e) => {
+                const val = parseInt(e.target.value);
+                if (!isNaN(val)) {
+                  updateImageInSeries(activeSeriesId, image.id, {
+                    sequenceNumber: val,
+                  });
+                }
+              }}
+              title="Sequence Number"
+            />
+            <div className="w-px bg-slate-800 my-1 h-full"></div>
             <button
               onClick={() => moveImage("up")}
               disabled={index === 0}
@@ -156,7 +187,7 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
             >
               <i className="fas fa-chevron-left"></i>
             </button>
-            <div className="w-px bg-slate-800 my-1"></div>
+            <div className="w-px bg-slate-800 my-1 h-full"></div>
             <button
               onClick={() => moveImage("down")}
               disabled={index === total - 1}

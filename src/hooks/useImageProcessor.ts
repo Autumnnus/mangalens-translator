@@ -3,8 +3,8 @@ import { GeminiService } from "../services/gemini";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { ProcessedImage, UsageMetadata } from "../types";
-import { imageDb } from "../utils/db";
-import { createTranslatedImage } from "../utils/image";
+import { createTranslatedImageBlob } from "../utils/image";
+import { resolveImageUrl } from "../utils/url";
 
 const INPUT_COST_PER_1K = 0.0005;
 const OUTPUT_COST_PER_1K = 0.003;
@@ -13,7 +13,8 @@ export const useImageProcessor = () => {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const geminiService = useRef(new GeminiService());
 
-  const { series, activeSeriesId, updateImageInSeries } = useSeriesStore();
+  const { series, activeSeriesId, updateImageInSeries, saveTranslatedImage } =
+    useSeriesStore();
   const { settings } = useSettingsStore();
 
   const activeSeries = series.find((s) => s.id === activeSeriesId);
@@ -26,7 +27,7 @@ export const useImageProcessor = () => {
   };
 
   const urlToBase64 = async (url: string): Promise<string> => {
-    const response = await fetch(url);
+    const response = await fetch(resolveImageUrl(url));
     const blob = await response.blob();
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -55,7 +56,7 @@ export const useImageProcessor = () => {
         settings.targetLanguage
       );
 
-      const translatedUrl = await createTranslatedImage(
+      const tBlob = await createTranslatedImageBlob(
         image.originalUrl,
         bubbles,
         settings
@@ -63,29 +64,22 @@ export const useImageProcessor = () => {
 
       const cost = calculateCost(usage);
 
-      // Persistence
-      let finalTranslatedUrl = translatedUrl;
+      // Persistence via Supabase/R2
       try {
-        const tRes = await fetch(translatedUrl);
-        const tBlob = await tRes.blob();
-        await imageDb.saveImage(image.id, "translated", tBlob);
-
-        if (translatedUrl.startsWith("data:")) {
-          finalTranslatedUrl = URL.createObjectURL(tBlob);
-        }
+        await saveTranslatedImage(
+          activeSeriesId,
+          image.id,
+          tBlob,
+          image.fileName,
+          { bubbles, usage, cost }
+        );
       } catch (e) {
-        console.error("Failed to save translated image to DB", e);
+        console.error("Failed to save translated image", e);
+        // Fallback or error state?
       }
 
-      updateImageInSeries(activeSeriesId, image.id, {
-        status: "completed",
-        bubbles,
-        translatedUrl: finalTranslatedUrl,
-        usage,
-        cost,
-      });
-
       return true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       const errorStr = (error?.message || "").toLowerCase();
       const isRateLimit =
