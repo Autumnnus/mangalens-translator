@@ -1,13 +1,15 @@
 import React, { useState } from "react";
 import { useSeriesStore } from "../../stores/useSeriesStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
-import { ViewMode } from "../../types";
+import { ProcessedImage, ViewMode } from "../../types";
 import ComparisonView from "../ComparisonView";
 import ViewModeControls from "../ViewModeControls";
 
 const ReaderView: React.FC = () => {
   const { series, activeSeriesId } = useSeriesStore();
   const { currentImageIndex, setCurrentImageIndex } = useUIStore();
+  const { toggleViewOnly } = useSettingsStore();
 
   // Local state for reader-specific toggles
   const [showComparison, setShowComparison] = useState(false);
@@ -39,7 +41,8 @@ const ReaderView: React.FC = () => {
   }
 
   // Helper for ComparisonView pair prop
-  const getPair = (img: any) => ({
+  // Helper for ComparisonView pair prop
+  const getPair = (img: ProcessedImage) => ({
     id: img.id,
     title: img.fileName,
     sourceUrl: img.originalUrl,
@@ -66,12 +69,66 @@ const ReaderView: React.FC = () => {
         </div>
 
         <div className="flex items-center justify-between md:justify-end gap-3">
-          <ViewModeControls
-            showComparison={showComparison}
-            onToggleComparison={() => setShowComparison(!showComparison)}
-            comparisonMode={comparisonMode}
-            onChangeMode={setComparisonMode}
-          />
+          <button
+            onClick={toggleViewOnly}
+            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all border border-slate-700"
+          >
+            <i className="fas fa-edit"></i> Edit
+          </button>
+
+          {/* Quick Nav */}
+          <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+            <button
+              onClick={() => setCurrentImageIndex(0)}
+              disabled={currentImageIndex === 0}
+              className="p-2 hover:bg-slate-700 rounded-md disabled:opacity-30 transition-colors"
+              title="First Page"
+            >
+              <i className="fas fa-step-backward text-xs text-slate-400"></i>
+            </button>
+            <button
+              onClick={() => setCurrentImageIndex(images.length - 1)}
+              disabled={currentImageIndex === images.length - 1}
+              className="p-2 hover:bg-slate-700 rounded-md disabled:opacity-30 transition-colors"
+              title="Last Page"
+            >
+              <i className="fas fa-step-forward text-xs text-slate-400"></i>
+            </button>
+          </div>
+
+          <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 gap-1">
+            <button
+              onClick={() => setComparisonMode("grid")}
+              className={`p-2 rounded-md transition-all ${
+                comparisonMode === "grid"
+                  ? "bg-indigo-600 text-white"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Grid View"
+            >
+              <i className="fas fa-th text-xs"></i>
+            </button>
+            <button
+              onClick={() => setComparisonMode("slider")}
+              className={`p-2 rounded-md transition-all ${
+                comparisonMode !== "grid"
+                  ? "bg-indigo-600 text-white"
+                  : "text-slate-400 hover:text-white"
+              }`}
+              title="Single View"
+            >
+              <i className="fas fa-image text-xs"></i>
+            </button>
+          </div>
+
+          {comparisonMode !== "grid" && (
+            <ViewModeControls
+              showComparison={showComparison}
+              onToggleComparison={() => setShowComparison(!showComparison)}
+              comparisonMode={comparisonMode}
+              onChangeMode={setComparisonMode}
+            />
+          )}
 
           <div className="flex items-center gap-2 sm:gap-3">
             <button
@@ -93,53 +150,93 @@ const ReaderView: React.FC = () => {
       </div>
 
       {/* Main Image Area */}
-      <div className="flex-1 min-h-0 flex items-center justify-center p-4 relative overflow-hidden">
-        <div className="w-full h-full flex items-center justify-center relative z-10 transition-all duration-300">
-          {showComparison && currentImage.translatedUrl ? (
-            <div className="w-full h-full max-w-5xl mx-auto">
-              <ComparisonView
-                pair={getPair(currentImage)}
-                mode={comparisonMode}
+      {comparisonMode !== "grid" && (
+        <div className="flex-1 min-h-0 flex items-center justify-center p-4 relative overflow-hidden">
+          <div className="w-full h-full flex items-center justify-center relative z-10 transition-all duration-300">
+            {showComparison && currentImage.translatedUrl ? (
+              <div className="w-full h-full max-w-5xl mx-auto">
+                <ComparisonView
+                  pair={getPair(currentImage)}
+                  mode={comparisonMode}
+                />
+              </div>
+            ) : (
+              <img
+                src={currentImage?.translatedUrl || currentImage?.originalUrl}
+                className="max-w-full max-h-full object-contain drop-shadow-2xl"
+                alt="Page"
               />
-            </div>
-          ) : (
+            )}
+          </div>
+
+          {/* Background Blur Effect */}
+          <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
             <img
               src={currentImage?.translatedUrl || currentImage?.originalUrl}
-              className="max-w-full max-h-full object-contain drop-shadow-2xl"
-              alt="Page"
+              alt=""
+              className="w-full h-full object-cover blur-3xl scale-110"
             />
-          )}
+          </div>
         </div>
-
-        {/* Background Blur Effect */}
-        <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
-          <img
-            src={currentImage?.translatedUrl || currentImage?.originalUrl}
-            alt=""
-            className="w-full h-full object-cover blur-3xl scale-110"
-          />
-        </div>
-      </div>
+      )}
 
       {/* Thumbnail Strip */}
-      <div className="mt-4 sm:mt-8 flex items-center justify-start sm:justify-center gap-2 sm:gap-3 p-2 sm:p-4 shrink-0 overflow-x-auto no-scrollbar max-w-full mx-auto">
-        {images.map((img, idx) => (
-          <button
-            key={img.id}
-            onClick={() => setCurrentImageIndex(idx)}
-            className={`relative w-12 h-16 sm:w-16 sm:h-24 shrink-0 rounded-lg sm:rounded-xl overflow-hidden border-2 transition-all ${
-              idx === currentImageIndex
-                ? "border-indigo-500 shadow-lg shadow-indigo-500/50 scale-110 z-10"
-                : "border-slate-700 opacity-50 hover:opacity-100 hover:scale-105"
-            }`}
-          >
-            <img
-              src={img.originalUrl}
-              alt={`Page ${idx + 1}`}
-              className="w-full h-full object-cover"
-            />
-          </button>
-        ))}
+      <div
+        className={`mt-4 sm:mt-8 p-2 sm:p-4 shrink-0 transition-all ${
+          comparisonMode === "grid"
+            ? "overflow-y-auto max-h-[50vh]"
+            : "overflow-x-auto no-scrollbar max-w-full mx-auto"
+        }`}
+      >
+        {comparisonMode === "grid" ? (
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+            {images.map((img, idx) => (
+              <button
+                key={img.id}
+                onClick={() => {
+                  setCurrentImageIndex(idx);
+                  setComparisonMode("slider"); // Exit grid mode
+                }}
+                className={`relative aspect-auto group rounded-xl overflow-hidden border-2 transition-all ${
+                  idx === currentImageIndex
+                    ? "border-indigo-500 shadow-xl scale-105 z-10"
+                    : "border-slate-800 hover:border-indigo-400 opacity-70 hover:opacity-100"
+                }`}
+              >
+                <img
+                  src={img.originalUrl}
+                  alt={`Page ${idx + 1}`}
+                  className="w-full h-auto object-cover"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <span className="text-white font-bold text-xs">
+                    Pg {idx + 1}
+                  </span>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center justify-start sm:justify-center gap-2 sm:gap-3">
+            {images.map((img, idx) => (
+              <button
+                key={img.id}
+                onClick={() => setCurrentImageIndex(idx)}
+                className={`relative w-12 h-16 sm:w-16 sm:h-24 shrink-0 rounded-lg sm:rounded-xl overflow-hidden border-2 transition-all ${
+                  idx === currentImageIndex
+                    ? "border-indigo-500 shadow-lg shadow-indigo-500/50 scale-110 z-10"
+                    : "border-slate-700 opacity-50 hover:opacity-100 hover:scale-105"
+                }`}
+              >
+                <img
+                  src={img.originalUrl}
+                  alt={`Page ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

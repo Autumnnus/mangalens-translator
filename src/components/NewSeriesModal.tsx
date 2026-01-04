@@ -4,13 +4,13 @@ import React, { useState } from "react";
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (name: string, category: string) => void;
+  onConfirm: (name: string, category: string, sequenceNumber: number) => void;
   existingTitles: string[];
   categories: string[];
   onAddCategory: (category: string) => void;
   initialName?: string;
   initialCategory?: string;
-  title?: string;
+  initialSequenceNumber?: number;
 }
 
 const NewSeriesModal: React.FC<Props> = ({
@@ -22,12 +22,13 @@ const NewSeriesModal: React.FC<Props> = ({
   onAddCategory,
   initialName = "",
   initialCategory = "",
-  title = "New Series",
+  initialSequenceNumber = 0,
 }) => {
   const [name, setName] = useState(initialName);
   const [category, setCategory] = useState(
     initialCategory || categories[0] || "Uncategorized"
   );
+  const [sequenceNumber, setSequenceNumber] = useState(initialSequenceNumber);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [error, setError] = useState("");
@@ -37,8 +38,9 @@ const NewSeriesModal: React.FC<Props> = ({
     if (isOpen) {
       setName(initialName);
       setCategory(initialCategory || categories[0] || "Uncategorized");
+      setSequenceNumber(initialSequenceNumber);
     }
-  }, [isOpen, initialName, initialCategory, categories]);
+  }, [isOpen, initialName, initialCategory, initialSequenceNumber, categories]);
 
   if (!isOpen) return null;
 
@@ -56,7 +58,7 @@ const NewSeriesModal: React.FC<Props> = ({
       return;
     }
 
-    onConfirm(name.trim(), category);
+    onConfirm(name.trim(), category, sequenceNumber);
     setName("");
     onClose();
   };
@@ -110,6 +112,18 @@ const NewSeriesModal: React.FC<Props> = ({
             {error && (
               <p className="text-xs font-bold text-rose-500 mt-1">{error}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+              Sequence Number
+            </label>
+            <input
+              type="number"
+              value={sequenceNumber}
+              onChange={(e) => setSequenceNumber(parseInt(e.target.value) || 0)}
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+            />
           </div>
 
           <div className="space-y-2">

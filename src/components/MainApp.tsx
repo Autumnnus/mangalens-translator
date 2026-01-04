@@ -61,6 +61,10 @@ const MainApp: React.FC = () => {
     deleteCategory,
     addSeries,
     updateSeries,
+    page,
+    pageSize,
+    total,
+    setPage,
   } = useSeriesStore();
   const { settings, updateSettings, isViewOnly } = useSettingsStore();
   const {
@@ -89,7 +93,7 @@ const MainApp: React.FC = () => {
   // Mount effects
   useEffect(() => {
     rehydrateImages();
-  }, []);
+  }, [rehydrateImages]);
 
   // State Wrappers for Sidebar/Modals (Adapting store actions to component props)
   const handleSelectSeries = (id: string) => {
@@ -102,9 +106,13 @@ const MainApp: React.FC = () => {
     toggleNewSeriesModal(true);
   };
 
-  const handleConfirmSeries = (name: string, category: string) => {
+  const handleConfirmSeries = (
+    name: string,
+    category: string,
+    sequenceNumber: number
+  ) => {
     if (editingSeriesId) {
-      updateSeries(editingSeriesId, { name, category });
+      updateSeries(editingSeriesId, { name, category, sequenceNumber });
       setEditingSeriesId(null);
     } else {
       addSeries({
@@ -116,6 +124,7 @@ const MainApp: React.FC = () => {
         images: [],
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        sequenceNumber,
       });
     }
     toggleNewSeriesModal(false);
@@ -185,6 +194,10 @@ const MainApp: React.FC = () => {
           }}
           isViewOnly={isViewOnly}
           categories={categories}
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          setPage={setPage}
         />
 
         <CategoryManagerModal
@@ -214,6 +227,11 @@ const MainApp: React.FC = () => {
             editingSeriesId
               ? series.find((s) => s.id === editingSeriesId)?.category
               : ""
+          }
+          initialSequenceNumber={
+            editingSeriesId
+              ? series.find((s) => s.id === editingSeriesId)?.sequenceNumber
+              : 0
           }
         />
 
@@ -271,7 +289,7 @@ const MainApp: React.FC = () => {
                   sourceUrl: selectedImg.originalUrl,
                   convertedUrl:
                     selectedImg.translatedUrl || selectedImg.originalUrl,
-                  createdAt: Date.now(),
+                  createdAt: 0,
                 }}
                 mode={modalCompareMode}
               />

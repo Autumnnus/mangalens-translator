@@ -16,6 +16,10 @@ interface Props {
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isViewOnly?: boolean;
   categories: string[];
+  page: number;
+  pageSize: number;
+  total: number;
+  setPage: (p: number) => void;
 }
 
 const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
@@ -116,6 +120,10 @@ const SeriesSidebar: React.FC<Props> = ({
   onEdit,
   isViewOnly = false,
   categories,
+  page,
+  pageSize,
+  total,
+  setPage,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -375,6 +383,27 @@ const SeriesSidebar: React.FC<Props> = ({
       {/* Footer */}
       {!isSidebarCollapsed && (
         <div className="p-4 border-t border-slate-800 space-y-2">
+          {/* Pagination */}
+          <div className="flex items-center justify-between mb-2">
+            <button
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+              className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400 transition-colors"
+            >
+              <i className="fas fa-chevron-left text-xs"></i>
+            </button>
+            <span className="text-[10px] font-bold text-slate-500 uppercase">
+              Page {page} of {Math.ceil(total / pageSize) || 1}
+            </span>
+            <button
+              disabled={page >= Math.ceil(total / pageSize)}
+              onClick={() => setPage(page + 1)}
+              className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400 transition-colors"
+            >
+              <i className="fas fa-chevron-right text-xs"></i>
+            </button>
+          </div>
+
           <button
             onClick={onExportAll}
             className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all border border-slate-700"

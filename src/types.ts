@@ -20,6 +20,7 @@ export interface ProcessedImage {
   fileName: string;
   originalKey?: string;
   translatedKey?: string;
+  sequenceNumber: number;
   usage?: UsageMetadata;
   cost?: number; // Calculated USD cost
 }
@@ -47,8 +48,9 @@ export interface Series {
   category: string;
   tags: string[];
   images: ProcessedImage[];
+  sequenceNumber: number;
   createdAt: number;
   updatedAt: number;
 }
 
-export type ViewMode = "slider" | "toggle" | "side-by-side";
+export type ViewMode = "slider" | "toggle" | "side-by-side" | "grid";

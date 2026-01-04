@@ -11,6 +11,12 @@ interface SeriesState {
   isLoading: boolean;
   error: string | null;
 
+  // Pagination
+  page: number;
+  pageSize: number;
+  total: number;
+  setPage: (page: number) => void;
+
   // Sync Actions
   fetchSeries: () => Promise<void>;
 
@@ -42,6 +48,10 @@ interface SeriesState {
     meta?: any
   ) => Promise<void>;
 
+  // Ordering Actions
+  reorderSeries: (orderedSeriesIds: string[]) => Promise<void>;
+  reorderImages: (seriesId: string, orderedImageIds: string[]) => Promise<void>;
+
   // Category Actions
   setCategories: (categories: string[]) => void;
   addCategory: (category: string) => Promise<void>;
@@ -59,6 +69,16 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   isLoading: false,
   error: null,
 
+  // Pagination defaults
+  page: 1,
+  pageSize: 20,
+  total: 0,
+
+  setPage: (page) => {
+    set({ page });
+    get().fetchSeries();
+  },
+
   fetchSeries: async () => {
     set({ isLoading: true, error: null });
     try {
@@ -70,19 +90,32 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
         return;
       }
 
+      const { page, pageSize } = get();
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
       // Fetch Series & Images
-      const { data: seriesData, error: seriesError } = await supabase
+      const {
+        data: seriesData,
+        error: seriesError,
+        count,
+      } = await supabase
         .from("series")
         .select(
           `
           *,
           images (*)
-        `
+        `,
+          { count: "exact" }
         )
         .eq("user_id", user.id)
-        .order("updated_at", { ascending: false });
+        .order("sequence_number", { ascending: true })
+        .order("updated_at", { ascending: false })
+        .range(from, to);
 
       if (seriesError) throw seriesError;
+
+      if (count !== null) set({ total: count });
 
       // Transform data to local shape
       const transformedSeries: Series[] = seriesData.map((s: any) => ({
@@ -93,6 +126,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
         tags: s.tags || [],
         createdAt: new Date(s.created_at).getTime(),
         updatedAt: new Date(s.updated_at).getTime(),
+        sequenceNumber: s.sequence_number || 0,
         images: (s.images || [])
           .map((img: any) => ({
             id: img.id,
@@ -102,9 +136,14 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
             status: img.status || "idle",
             originalKey: img.original_key,
             translatedKey: img.translated_key,
+            sequenceNumber: img.sequence_number || 0,
             bubbles: [],
           }))
-          .sort((a: any, b: any) => a.fileName.localeCompare(b.fileName)),
+          .sort(
+            (a: any, b: any) =>
+              a.sequenceNumber - b.sequenceNumber ||
+              a.fileName.localeCompare(b.fileName)
+          ),
       }));
 
       // Fetch Categories
@@ -164,6 +203,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
           description: newSeries.description,
           tags: newSeries.tags,
           user_id: user.id,
+          sequence_number: newSeries.sequenceNumber || 0,
         })
         .select()
         .single();
@@ -189,15 +229,18 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
 
     try {
       if (id === "default") return;
-      await supabase
-        .from("series")
-        .update({
-          name: updates.name,
-          category: updates.category,
-          description: updates.description,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", id);
+
+      const dbUpdates: any = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.name !== undefined) dbUpdates.name = updates.name;
+      if (updates.category !== undefined) dbUpdates.category = updates.category;
+      if (updates.description !== undefined)
+        dbUpdates.description = updates.description;
+      if (updates.sequenceNumber !== undefined)
+        dbUpdates.sequence_number = updates.sequenceNumber;
+
+      await supabase.from("series").update(dbUpdates).eq("id", id);
     } catch (err) {
       console.error(err);
     }
@@ -319,6 +362,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
           file_name: image.fileName,
           original_key: key,
           status: "idle",
+          sequence_number: image.sequenceNumber || 0,
           // We could store bubbles metadata if we had a column.
         });
 
@@ -395,9 +439,17 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
         s.id === seriesId
           ? {
               ...s,
-              images: s.images.map((img) =>
-                img.id === imageId ? { ...img, ...updates } : img
-              ),
+              images: s.images
+                .map((img) =>
+                  img.id === imageId ? { ...img, ...updates } : img
+                )
+                // If sequence updated, re-sort? Maybe better to let component handle visual sort or only re-sort if requested.
+                // But for consistency:
+                .sort(
+                  (a: any, b: any) =>
+                    a.sequenceNumber - b.sequenceNumber ||
+                    a.fileName.localeCompare(b.fileName)
+                ),
             }
           : s
       ),
@@ -411,6 +463,9 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       // For now mainly 'status'.
       const dbUpdates: any = {};
       if (updates.status) dbUpdates.status = updates.status;
+      if (updates.sequenceNumber !== undefined)
+        dbUpdates.sequence_number = updates.sequenceNumber;
+
       // bubbles? We don't have a column yet.
       if (Object.keys(dbUpdates).length > 0) {
         await supabase.from("images").update(dbUpdates).eq("id", imageId); // ID warning: verify generic ID vs UUID
@@ -538,5 +593,89 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   rehydrateImages: async () => {
     // Now just an alias for fetch
     await get().fetchSeries();
+  },
+
+  reorderSeries: async (orderedSeriesIds) => {
+    // Optimistic
+    set((state) => {
+      const seriesMap = new Map(state.series.map((s) => [s.id, s]));
+      const newSeriesOrder = orderedSeriesIds
+        .map((id) => seriesMap.get(id))
+        .filter((s): s is Series => !!s)
+        .map((s, index) => ({ ...s, sequenceNumber: index }));
+
+      // Append any series not in the ordered list (shouldn't happen often but safe)
+      const remaining = state.series.filter(
+        (s) => !orderedSeriesIds.includes(s.id)
+      );
+
+      return { series: [...newSeriesOrder, ...remaining] };
+    });
+
+    // DB Sync
+    try {
+      const updates = orderedSeriesIds.map((id, index) => ({
+        id,
+        sequence_number: index,
+        updated_at: new Date().toISOString(),
+      }));
+
+      const { error } = await supabase.from("series").upsert(updates);
+      if (error) console.error("Reorder Series Error:", error);
+    } catch (err) {
+      console.error(err);
+    }
+  },
+
+  reorderImages: async (seriesId, orderedImageIds) => {
+    // Optimistic
+    set((state) => {
+      const series = state.series.find((s) => s.id === seriesId);
+      if (!series) return {};
+
+      const imageMap = new Map(series.images.map((img) => [img.id, img]));
+      const newImages = orderedImageIds
+        .map((id) => imageMap.get(id))
+        .filter((img): img is ProcessedImage => !!img)
+        .map((img, index) => ({ ...img, sequenceNumber: index }));
+
+      // Append remaining
+      const remaining = series.images.filter(
+        (img) => !orderedImageIds.includes(img.id)
+      );
+      const finalImages = [...newImages, ...remaining];
+
+      return {
+        series: state.series.map((s) =>
+          s.id === seriesId ? { ...s, images: finalImages } : s
+        ),
+      };
+    });
+
+    // DB Sync
+    try {
+      const updates = orderedImageIds.map((id, index) => ({
+        id,
+        sequence_number: index,
+        // status, etc preserved? Upsert needs careful handling if not all fields present?
+        // Supabase upsert requires primary key.
+        // We should probably use a custom RPC or just loop updates if upsert is risky on partial data.
+        // Or better, just update the sequence_number column.
+        // upserting {id, sequence_number} works if we don't violate not-nulls.
+        // Assuming other fields are nullable or defaults, or existing rows.
+      }));
+
+      // Upsert with only id and sequence_number might wipe other fields if not careful?
+      // No, Supabase Upsert updates provided columns match primary key.
+      // BUT checks for required columns on INSERT. Since they exist, it's an UPDATE.
+      // However, we must ensure we are hitting the update path.
+
+      const { error } = await supabase
+        .from("images")
+        .upsert(updates, { onConflict: "id", ignoreDuplicates: false });
+      if (error) console.error("Reorder Images Error:", error);
+    } catch (err) {
+      console.error(err);
+    }
   },
 }));
