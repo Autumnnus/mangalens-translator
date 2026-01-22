@@ -1,8 +1,6 @@
 "use client";
 
-import { supabase } from "@/lib/supabase";
-import { useRouter } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import CategoryManagerModal from "./CategoryManagerModal";
 import ComparisonView from "./ComparisonView"; // For modal view
 import ConfirmModal from "./ConfirmModal";
@@ -19,33 +17,9 @@ import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
 import { ViewMode } from "../types";
 
-import { Session } from "@supabase/supabase-js";
-
 const MainApp: React.FC = () => {
-  const router = useRouter();
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-      if (!session) {
-        router.push("/auth/login");
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (!session) {
-        router.push("/auth/login");
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [router]);
+  // Middleware handles auth redirect, so we can assume we are good or the calls will fail.
+  // We can add useSession if we need user info later.
 
   // Store Hooks
   const {
@@ -110,7 +84,7 @@ const MainApp: React.FC = () => {
     categoryName: string,
     sequenceNumber: number,
     categoryId?: string,
-    metadata?: { author?: string; group?: string; originalTitle?: string }
+    metadata?: { author?: string; group?: string; originalTitle?: string },
   ) => {
     if (editingSeriesId) {
       updateSeries(editingSeriesId, {
@@ -163,17 +137,7 @@ const MainApp: React.FC = () => {
     };
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-[#020617] text-white">
-        Loading...
-      </div>
-    );
-  }
-
-  if (!session) {
-    return null; // Will redirect
-  }
+  // No loading check needed as middleware handles protection
 
   return (
     <>
@@ -224,7 +188,7 @@ const MainApp: React.FC = () => {
             updateCategory(
               categoryId,
               categories.find((c) => c.id === categoryId)?.name || "Unknown",
-              targetParentId
+              targetParentId,
             );
           }}
         />
@@ -319,7 +283,7 @@ const MainApp: React.FC = () => {
                     >
                       {mode.replace(/-/g, " ")}
                     </button>
-                  )
+                  ),
                 )}
               </div>
             )}
