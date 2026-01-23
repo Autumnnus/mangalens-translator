@@ -1,8 +1,6 @@
 import React from "react";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useImageUpload } from "../../hooks/useImageUpload";
-import { useProjectExport } from "../../hooks/useProjectExport";
-import { useProjectImport } from "../../hooks/useProjectImport";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
@@ -10,7 +8,6 @@ import ImageCard from "./ImageCard";
 
 const EditorWorkspace: React.FC = () => {
   const { series, activeSeriesId, setImages } = useSeriesStore();
-  /* 1. Initialize viewMode from localStorage (lazy initializer) */
   const [viewMode, setViewMode] = React.useState<"grid" | "list" | "detail">(
     () => {
       if (typeof window !== "undefined") {
@@ -19,35 +16,28 @@ const EditorWorkspace: React.FC = () => {
           return saved;
       }
       return "grid";
-    }
+    },
   );
 
-  /* 2. Persist viewMode */
   React.useEffect(() => {
     localStorage.setItem("mangalens_editor_viewmode", viewMode);
   }, [viewMode]);
 
-  /* 3. Get setSelectedImageId logic from store */
   const {
     openConfirmModal,
     toggleCategoryModal,
     toggleSettingsModal,
-    setSelectedImageId, // Added
+    setSelectedImageId,
   } = useUIStore();
   const { isViewOnly, toggleViewOnly } = useSettingsStore();
   const { handleFileUpload } = useImageUpload();
-  const { importLibrary } = useProjectImport();
 
-  /* ... rest of hooks ... */
   const { processAll, isProcessingAll } = useImageProcessor();
-  const { downloadAllAsZip } = useProjectExport();
-
-  /* ... skipping unchanged parts until render ... */
 
   const activeSeries = series.find((s) => s.id === activeSeriesId);
   const images = React.useMemo(
     () => activeSeries?.images || [],
-    [activeSeries]
+    [activeSeries],
   );
 
   const totalStats = React.useMemo(() => {
@@ -56,17 +46,9 @@ const EditorWorkspace: React.FC = () => {
         tokens: acc.tokens + (img.usage?.totalTokenCount || 0),
         cost: acc.cost + (img.cost || 0),
       }),
-      { tokens: 0, cost: 0 }
+      { tokens: 0, cost: 0 },
     );
   }, [images]);
-
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      importLibrary(file);
-      e.target.value = "";
-    }
-  };
 
   const clearAll = () => {
     openConfirmModal({
@@ -77,7 +59,9 @@ const EditorWorkspace: React.FC = () => {
           if (img.originalUrl.startsWith("blob:"))
             URL.revokeObjectURL(img.originalUrl);
         });
-        setImages(activeSeriesId, []);
+        if (activeSeriesId) {
+          setImages(activeSeriesId, []);
+        }
       },
       type: "danger",
     });
@@ -221,14 +205,6 @@ const EditorWorkspace: React.FC = () => {
                   )}
                   {isProcessingAll ? "Translating..." : "Translate All"}
                 </button>
-                <button
-                  onClick={downloadAllAsZip}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center gap-2 transition-all border border-slate-700"
-                >
-                  <i className="fas fa-archive"></i> Download ZIP
-                </button>
-
-                {/* View Mode Toggles */}
                 <div className="flex bg-slate-800 rounded-lg p-1 border border-slate-700">
                   <button
                     onClick={() => setViewMode("grid")}
@@ -276,15 +252,6 @@ const EditorWorkspace: React.FC = () => {
                     />
                     <i className="fas fa-plus"></i> Add pages
                   </label>
-                  <label className="cursor-pointer text-slate-400 hover:text-amber-400 text-[10px] uppercase font-bold flex items-center gap-1 transition-colors">
-                    <input
-                      type="file"
-                      accept=".zip"
-                      className="hidden"
-                      onChange={handleImport}
-                    />
-                    <i className="fas fa-file-import"></i> Import ZIP
-                  </label>
                   <button
                     onClick={clearAll}
                     className="text-slate-400 hover:text-red-400 text-[10px] uppercase font-bold flex items-center gap-1 transition-colors"
@@ -301,8 +268,8 @@ const EditorWorkspace: React.FC = () => {
               viewMode === "grid"
                 ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
                 : viewMode === "list"
-                ? "space-y-2"
-                : "space-y-12 max-w-4xl mx-auto"
+                  ? "space-y-2"
+                  : "space-y-12 max-w-4xl mx-auto"
             }`}
           >
             {images.map((image, index) => (
@@ -346,8 +313,8 @@ const EditorWorkspace: React.FC = () => {
                             image.status === "completed"
                               ? "text-emerald-400"
                               : image.status === "processing"
-                              ? "text-amber-400"
-                              : "text-slate-500"
+                                ? "text-amber-400"
+                                : "text-slate-500"
                           }`}
                         >
                           {image.status}

@@ -1,4 +1,3 @@
-import { saveAs } from "file-saver";
 import React from "react";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
@@ -26,17 +25,6 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
 
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
 
-  const handleDownload = async () => {
-    const url = displayUrl;
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      saveAs(blob, `translated_${image.fileName}`);
-    } catch (e) {
-      console.error("Single download failed:", e);
-    }
-  };
-
   const moveImage = (dir: "up" | "down") => {
     const activeSeries = series.find((s) => s.id === activeSeriesId);
     if (!activeSeries) return;
@@ -45,15 +33,15 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
     const targetIndex = dir === "up" ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= currentImages.length) return;
 
-    // Swap
     [currentImages[index], currentImages[targetIndex]] = [
       currentImages[targetIndex],
       currentImages[index],
     ];
 
-    // Extract IDs in new order
     const orderedIds = currentImages.map((img) => img.id);
-    reorderImages(activeSeriesId, orderedIds);
+    if (activeSeriesId) {
+      reorderImages(activeSeriesId, orderedIds);
+    }
   };
 
   const handleRemove = () => {
@@ -64,7 +52,9 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
       onConfirm: () => {
         if (image.originalUrl.startsWith("blob:"))
           URL.revokeObjectURL(image.originalUrl);
-        removeImageFromSeries(activeSeriesId, image.id);
+        if (activeSeriesId) {
+          removeImageFromSeries(activeSeriesId, image.id);
+        }
       },
       type: "danger",
     });
@@ -90,10 +80,10 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
               image.status === "completed"
                 ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
                 : image.status === "processing"
-                ? "bg-indigo-500/20 border-indigo-500/30 text-indigo-400 animate-pulse"
-                : image.status === "error"
-                ? "bg-red-500/20 border-red-500/30 text-red-400"
-                : "bg-slate-800/80 border-slate-600/50 text-slate-300"
+                  ? "bg-indigo-500/20 border-indigo-500/30 text-indigo-400 animate-pulse"
+                  : image.status === "error"
+                    ? "bg-red-500/20 border-red-500/30 text-red-400"
+                    : "bg-slate-800/80 border-slate-600/50 text-slate-300"
             }`}
           >
             {image.status === "processing" ? (
@@ -142,14 +132,7 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          {image.status === "completed" ? (
-            <button
-              onClick={handleDownload}
-              className="flex-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-400 border border-emerald-500/20 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
-            >
-              Download
-            </button>
-          ) : (
+          {image.status === "completed" ? null : (
             <button
               onClick={() => processImage(image)}
               disabled={image.status === "processing"}
@@ -172,9 +155,11 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
               onChange={(e) => {
                 const val = parseInt(e.target.value);
                 if (!isNaN(val)) {
-                  updateImageInSeries(activeSeriesId, image.id, {
-                    sequenceNumber: val,
-                  });
+                  if (activeSeriesId) {
+                    updateImageInSeries(activeSeriesId, image.id, {
+                      sequenceNumber: val,
+                    });
+                  }
                 }
               }}
               title="Sequence Number"

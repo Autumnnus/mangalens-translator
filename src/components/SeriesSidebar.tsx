@@ -1,4 +1,4 @@
-import { Download, Filter, Hash, Menu, Plus, Trash2, X } from "lucide-react";
+import { Filter, Hash, Menu, Plus, Trash2, X } from "lucide-react";
 import React, { useMemo, useState } from "react";
 import { Category, ProcessedImage, Series } from "../types";
 import FilterSortModal, { FilterSortOptions } from "./FilterSortModal";
@@ -10,10 +10,6 @@ interface Props {
   onAdd: () => void;
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
-  onExportAll: () => void;
-  isOpen: boolean;
-  onClose: () => void;
-  onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isViewOnly?: boolean;
   categories: Category[];
   page: number;
@@ -23,7 +19,7 @@ interface Props {
   onMoveSeries?: (seriesId: string, categoryId: string) => void;
   onMoveCategory?: (
     categoryId: string,
-    targetParentId: string | undefined
+    targetParentId: string | undefined,
   ) => void;
 }
 
@@ -129,7 +125,7 @@ interface CategoryNodeProps {
   onMoveSeries?: (seriesId: string, categoryId: string) => void;
   onMoveCategory?: (
     categoryId: string,
-    targetParentId: string | undefined
+    targetParentId: string | undefined,
   ) => void;
 }
 
@@ -154,7 +150,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
 
   // Find children categories
   const childrenCategories = allCategories.filter(
-    (c) => c.parentId === category.id
+    (c) => c.parentId === category.id,
   );
 
   // Find direct series
@@ -163,7 +159,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
   const handleDragStart = (
     e: React.DragEvent,
     type: "series" | "category",
-    id: string
+    id: string,
   ) => {
     if (isViewOnly) return;
     e.dataTransfer.setData("type", type);
@@ -332,10 +328,6 @@ const SeriesSidebar: React.FC<Props> = ({
   onSelect,
   onAdd,
   onDelete,
-  onExportAll,
-  isOpen,
-  onClose,
-  onImport,
   onEdit,
   isViewOnly = false,
   categories,
@@ -350,7 +342,7 @@ const SeriesSidebar: React.FC<Props> = ({
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
   const [filters, setFilters] = useState<FilterSortOptions>({
     search: "",
@@ -379,7 +371,7 @@ const SeriesSidebar: React.FC<Props> = ({
     // Apply search
     if (filters.search) {
       result = result.filter((s) =>
-        s.name.toLowerCase().includes(filters.search.toLowerCase())
+        s.name.toLowerCase().includes(filters.search.toLowerCase()),
       );
     }
 
@@ -392,7 +384,7 @@ const SeriesSidebar: React.FC<Props> = ({
     result = result.filter((s) => {
       const isCompleted = s.images.every((img) => img.status === "completed");
       const isInProgress = s.images.some(
-        (img) => img.status !== "idle" && img.status !== "completed"
+        (img) => img.status !== "idle" && img.status !== "completed",
       );
 
       if (!filters.showCompleted && isCompleted) return false;
@@ -431,7 +423,7 @@ const SeriesSidebar: React.FC<Props> = ({
   // Uncategorized series (no categoryId or matching ID found)
   const categoryIds = new Set(categories.map((c) => c.id));
   const uncategorizedSeries = filteredAndSortedSeries.filter(
-    (s) => !s.categoryId || !categoryIds.has(s.categoryId)
+    (s) => !s.categoryId || !categoryIds.has(s.categoryId),
   );
 
   const sidebarContent = (
@@ -480,28 +472,13 @@ const SeriesSidebar: React.FC<Props> = ({
             <Plus className="w-4 h-4" />
             New Series
           </button>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setIsFilterModalOpen(true)}
-              className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all border border-slate-700"
-            >
-              <Filter className="w-3.5 h-3.5" />
-              Filter
-            </button>
-            <label className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all border border-slate-700 cursor-pointer">
-              <input
-                type="file"
-                accept=".zip"
-                className="hidden"
-                onChange={(e) => {
-                  onImport(e);
-                  setIsMobileOpen(false);
-                }}
-              />
-              <Download className="w-3.5 h-3.5" />
-              Import
-            </label>
-          </div>
+          <button
+            onClick={() => setIsFilterModalOpen(true)}
+            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all border border-slate-700"
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filter
+          </button>
         </div>
       )}
 
@@ -671,14 +648,6 @@ const SeriesSidebar: React.FC<Props> = ({
               <i className="fas fa-chevron-right text-xs"></i>
             </button>
           </div>
-
-          <button
-            onClick={onExportAll}
-            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2.5 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all border border-slate-700"
-          >
-            <Download className="w-4 h-4" />
-            Export All
-          </button>
         </div>
       )}
     </>

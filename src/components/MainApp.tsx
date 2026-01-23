@@ -10,8 +10,6 @@ import SettingsModal from "./SettingsModal";
 import EditorWorkspace from "./editor/EditorWorkspace";
 import ReaderView from "./viewer/ReaderView";
 
-import { useProjectExport } from "../hooks/useProjectExport";
-import { useProjectImport } from "../hooks/useProjectImport";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
@@ -56,9 +54,6 @@ const MainApp: React.FC = () => {
     selectedImageId,
     setSelectedImageId,
   } = useUIStore();
-
-  const { downloadFullAccountZip } = useProjectExport();
-  const { importLibrary } = useProjectImport();
 
   const activeSeries = series.find((s) => s.id === activeSeriesId) || series[0];
   const images = activeSeries?.images || [];
@@ -158,19 +153,8 @@ const MainApp: React.FC = () => {
           onAdd={() => toggleNewSeriesModal(true)}
           onDelete={deleteSeries}
           onEdit={handleEditSeries}
-          onExportAll={downloadFullAccountZip}
-          isOpen={isSidebarOpen}
-          onClose={() => toggleSidebar(false)}
-          onImport={(e) => {
-            // importLibrary expects File, but sidebar input event provides ChangeEvent
-            const file = e.target.files?.[0];
-            if (file) {
-              importLibrary(file);
-              e.target.value = "";
-            }
-          }}
           isViewOnly={isViewOnly}
-          categories={categories} // Now Category[]
+          categories={categories}
           page={page}
           pageSize={pageSize}
           total={total}
@@ -183,7 +167,6 @@ const MainApp: React.FC = () => {
             });
           }}
           onMoveCategory={(categoryId, targetParentId) => {
-            // prevented self-reference check should be in the sidebar or here
             if (categoryId === targetParentId) return;
             updateCategory(
               categoryId,
@@ -197,9 +180,9 @@ const MainApp: React.FC = () => {
           isOpen={isCategoryModalOpen}
           onClose={() => toggleCategoryModal(false)}
           categories={categories}
-          onUpdateCategory={updateCategory} // Updated signature: (id, name, parentId?)
-          onDeleteCategory={deleteCategory} // Updated signature: (id)
-          onAddCategory={addCategory} // Added
+          onUpdateCategory={updateCategory}
+          onDeleteCategory={deleteCategory}
+          onAddCategory={addCategory}
         />
 
         <NewSeriesModal
@@ -211,7 +194,7 @@ const MainApp: React.FC = () => {
           onConfirm={handleConfirmSeries}
           existingTitles={series.map((s) => s.name)}
           categories={categories}
-          onAddCategory={(name) => addCategory(name)} // Simple add for legacy behavior in modal?
+          onAddCategory={(name) => addCategory(name)}
           initialName={
             editingSeriesId
               ? series.find((s) => s.id === editingSeriesId)?.name

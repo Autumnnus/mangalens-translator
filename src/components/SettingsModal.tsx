@@ -25,7 +25,10 @@ const SettingsModal: React.FC<Props> = ({
 }) => {
   if (!isOpen) return null;
 
-  const handleChange = (key: keyof TranslationSettings, value: any) => {
+  const handleChange = (
+    key: keyof TranslationSettings,
+    value: string | number | boolean,
+  ) => {
     onSettingsChange({ ...settings, [key]: value });
   };
 
