@@ -26,10 +26,6 @@ interface Props {
   onEdit: (id: string) => void;
   isViewOnly?: boolean;
   categories: Category[];
-  page: number;
-  pageSize: number;
-  total: number;
-  setPage: (p: number) => void;
   onMoveSeries?: (seriesId: string, categoryId: string) => void;
   onMoveCategory?: (
     categoryId: string,
@@ -84,6 +80,7 @@ const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
                   src={img.translatedUrl || img.originalUrl}
                   className="w-full h-full object-cover"
                   alt=""
+                  sizes="120px"
                 />
               </div>
             ))}
@@ -116,6 +113,7 @@ const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
             src={images[idx].translatedUrl || images[idx].originalUrl}
             className="w-full h-full object-cover"
             alt=""
+            sizes="28px"
           />
         </div>
       ))}
@@ -386,10 +384,6 @@ const SeriesSidebar: React.FC<Props> = ({
   onEdit,
   isViewOnly = false,
   categories,
-  page,
-  pageSize,
-  total,
-  setPage,
   onMoveSeries,
   onMoveCategory,
   onAddSubcategory,
@@ -543,7 +537,9 @@ const SeriesSidebar: React.FC<Props> = ({
 
       {/* Global System Actions */}
       {!isSidebarCollapsed && (
-        <div className="px-4 py-2 grid grid-cols-3 gap-2 border-b border-border-muted bg-surface/10">
+        <div
+          className={`px-4 py-2 grid ${isViewOnly ? "grid-cols-1" : "grid-cols-3"} gap-2 border-b border-border-muted bg-surface/10`}
+        >
           <button
             onClick={toggleViewOnly}
             className={`flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl transition-all border ${
@@ -558,26 +554,30 @@ const SeriesSidebar: React.FC<Props> = ({
               Preview
             </span>
           </button>
-          <button
-            onClick={() => toggleCategoryModal(true)}
-            className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-surface-raised/50 border border-border-muted text-text-dark hover:text-text-muted hover:border-border-accent transition-all"
-            title="Manage Categories"
-          >
-            <Tags className="w-4 h-4" />
-            <span className="text-[8px] font-black uppercase tracking-tighter">
-              Tags
-            </span>
-          </button>
-          <button
-            onClick={() => toggleSettingsModal(true)}
-            className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-surface-raised/50 border border-border-muted text-text-dark hover:text-text-muted hover:border-border-accent transition-all"
-            title="Global Settings"
-          >
-            <Settings className="w-4 h-4" />
-            <span className="text-[8px] font-black uppercase tracking-tighter">
-              Settings
-            </span>
-          </button>
+          {!isViewOnly && (
+            <>
+              <button
+                onClick={() => toggleCategoryModal(true)}
+                className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-surface-raised/50 border border-border-muted text-text-dark hover:text-text-muted hover:border-border-accent transition-all"
+                title="Manage Categories"
+              >
+                <Tags className="w-4 h-4" />
+                <span className="text-[8px] font-black uppercase tracking-tighter">
+                  Tags
+                </span>
+              </button>
+              <button
+                onClick={() => toggleSettingsModal(true)}
+                className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-surface-raised/50 border border-border-muted text-text-dark hover:text-text-muted hover:border-border-accent transition-all"
+                title="Global Settings"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="text-[8px] font-black uppercase tracking-tighter">
+                  Settings
+                </span>
+              </button>
+            </>
+          )}
         </div>
       )}
 
@@ -728,30 +728,9 @@ const SeriesSidebar: React.FC<Props> = ({
       </div>
 
       {/* Footer */}
-      {!isSidebarCollapsed && (
+      {!isSidebarCollapsed && !isViewOnly && (
         <div className="p-4 border-t border-slate-800 space-y-2">
-          {/* Pagination */}
-          <div className="flex items-center justify-between mb-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage(page - 1)}
-              className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400 transition-colors"
-            >
-              <i className="fas fa-chevron-left text-xs"></i>
-            </button>
-            <span className="text-[10px] font-bold text-slate-500 uppercase">
-              Page {page} of {Math.ceil(total / pageSize) || 1}
-            </span>
-            <button
-              disabled={page >= Math.ceil(total / pageSize)}
-              onClick={() => setPage(page + 1)}
-              className="p-2 bg-slate-800 rounded-lg text-slate-400 hover:text-white disabled:opacity-30 disabled:hover:text-slate-400 transition-colors"
-            >
-              <i className="fas fa-chevron-right text-xs"></i>
-            </button>
-          </div>
-
-          <div className="pt-2 border-t border-slate-800 grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={async () => {
                 try {

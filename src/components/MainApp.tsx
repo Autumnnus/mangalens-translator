@@ -33,10 +33,6 @@ const MainApp: React.FC = () => {
     addCategory,
     addSeries,
     updateSeries,
-    page,
-    pageSize,
-    total,
-    setPage,
   } = useSeriesStore();
   const { settings, updateSettings, isViewOnly } = useSettingsStore();
   const {
@@ -176,10 +172,6 @@ const MainApp: React.FC = () => {
           onEdit={handleEditSeries}
           isViewOnly={isViewOnly}
           categories={categories}
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          setPage={setPage}
           onMoveSeries={(seriesId, categoryId) => {
             const targetCategory = categories.find((c) => c.id === categoryId);
             updateSeries(seriesId, {
