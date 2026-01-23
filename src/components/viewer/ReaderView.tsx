@@ -24,6 +24,17 @@ const ReaderView: React.FC = () => {
     [activeSeries],
   );
 
+  // Thumbnail Pagination State
+  const thumbnailsPerPage = 20;
+  const currentThumbPage = Math.floor(currentImageIndex / thumbnailsPerPage);
+
+  const totalThumbPages = Math.ceil(images.length / thumbnailsPerPage);
+
+  const currentThumbSet = React.useMemo(() => {
+    const start = currentThumbPage * thumbnailsPerPage;
+    return images.slice(start, start + thumbnailsPerPage);
+  }, [images, currentThumbPage]);
+
   const currentImage = images[currentImageIndex];
 
   const handleNext = React.useCallback(() => {
@@ -89,15 +100,8 @@ const ReaderView: React.FC = () => {
         {/* Animated Background Accent */}
         <div className="absolute top-0 left-0 w-32 h-full bg-indigo-500/5 blur-3xl rounded-full -translate-x-1/2 pointer-events-none" />
 
-        <div className="flex items-center gap-4 sm:gap-6 z-10">
-          <button
-            onClick={toggleViewOnly}
-            className="group flex items-center gap-2.5 bg-slate-950/50 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 px-3 sm:px-5 py-2 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border border-white/5 hover:border-rose-500/20 shadow-xl"
-            title="Exit Reader"
-          >
-            <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
-          </button>
-          <div className="flex flex-col">
+        <div className="flex items-center justify-between w-full sm:justify-start sm:gap-6 z-10">
+          <div className="flex flex-col min-w-0 pl-16 sm:pl-0">
             <h2 className="text-sm sm:text-2xl font-black text-white italic uppercase tracking-tight truncate max-w-[150px] sm:max-w-none">
               {activeSeries?.name}
             </h2>
@@ -110,6 +114,15 @@ const ReaderView: React.FC = () => {
               </span>
             </div>
           </div>
+
+          <button
+            onClick={toggleViewOnly}
+            className="group flex items-center gap-2.5 bg-slate-950/50 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 px-3 sm:px-5 py-2 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border border-white/5 hover:border-rose-500/20 shadow-xl ml-auto sm:ml-0"
+            title="Exit Reader"
+          >
+            <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
+            <span className="hidden sm:inline">Back</span>
+          </button>
         </div>
 
         <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3 z-10">
@@ -236,61 +249,117 @@ const ReaderView: React.FC = () => {
         </div>
       )}
 
-      {/* Thumbnail Strip */}
+      {/* Thumbnail Strip with Pagination */}
       <div
-        className={`mt-4 sm:mt-8 p-2 sm:p-4 shrink-0 transition-all ${
-          comparisonMode === "grid"
-            ? "overflow-y-auto max-h-[50vh]"
-            : "overflow-x-auto no-scrollbar max-w-full mx-auto"
+        className={`mt-4 sm:mt-8 p-4 bg-slate-900/40 backdrop-blur-xl rounded-[2rem] border border-white/5 mx-2 sm:mx-4 mb-4 shrink-0 transition-all ${
+          comparisonMode === "grid" ? "overflow-y-auto max-h-[60vh]" : ""
         }`}
       >
+        {/* Pagination Info & Controls */}
+        <div className="flex items-center justify-between mb-4 px-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20">
+              Batch {currentThumbPage + 1} / {totalThumbPages}
+            </span>
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest hidden sm:inline">
+              Showing {currentThumbPage * thumbnailsPerPage + 1} -{" "}
+              {Math.min(
+                (currentThumbPage + 1) * thumbnailsPerPage,
+                images.length,
+              )}{" "}
+              of {images.length}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() =>
+                setCurrentImageIndex(
+                  Math.max(0, currentImageIndex - thumbnailsPerPage),
+                )
+              }
+              disabled={currentThumbPage === 0}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl disabled:opacity-30 transition-all"
+              title="Previous 20"
+            >
+              <i className="fas fa-angles-left text-xs"></i>
+            </button>
+            <button
+              onClick={() =>
+                setCurrentImageIndex(
+                  Math.min(
+                    images.length - 1,
+                    currentImageIndex + thumbnailsPerPage,
+                  ),
+                )
+              }
+              disabled={currentThumbPage >= totalThumbPages - 1}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl disabled:opacity-30 transition-all"
+              title="Next 20"
+            >
+              <i className="fas fa-angles-right text-xs"></i>
+            </button>
+          </div>
+        </div>
+
         {comparisonMode === "grid" ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-            {images.map((img, idx) => (
-              <button
-                key={img.id}
-                onClick={() => {
-                  setCurrentImageIndex(idx);
-                  setComparisonMode("slider"); // Exit grid mode
-                }}
-                className={`relative aspect-auto group rounded-xl overflow-hidden border-2 transition-all ${
-                  idx === currentImageIndex
-                    ? "border-indigo-500 shadow-xl scale-105 z-10"
-                    : "border-slate-800 hover:border-indigo-400 opacity-70 hover:opacity-100"
-                }`}
-              >
-                <img
-                  src={img.originalUrl}
-                  alt={`Page ${idx + 1}`}
-                  className="w-full h-auto object-cover"
-                />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <span className="text-white font-bold text-xs">
-                    Pg {idx + 1}
-                  </span>
-                </div>
-              </button>
-            ))}
+          <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-10 gap-4">
+            {currentThumbSet.map((img) => {
+              const idx = images.findIndex((i) => i.id === img.id);
+              return (
+                <button
+                  key={img.id}
+                  onClick={() => {
+                    setCurrentImageIndex(idx);
+                    setComparisonMode("slider");
+                  }}
+                  className={`relative aspect-[2/3] group rounded-xl overflow-hidden border-2 transition-all ${
+                    idx === currentImageIndex
+                      ? "border-indigo-500 shadow-xl scale-105 z-10"
+                      : "border-slate-800 hover:border-indigo-400 opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <img
+                    src={img.originalUrl}
+                    alt={`Page ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <span className="text-white font-bold text-xs uppercase">
+                      Pg {idx + 1}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         ) : (
-          <div className="flex items-center justify-start sm:justify-center gap-2 sm:gap-3">
-            {images.map((img, idx) => (
-              <button
-                key={img.id}
-                onClick={() => setCurrentImageIndex(idx)}
-                className={`relative w-12 h-16 sm:w-16 sm:h-24 shrink-0 rounded-lg sm:rounded-xl overflow-hidden border-2 transition-all ${
-                  idx === currentImageIndex
-                    ? "border-indigo-500 shadow-lg shadow-indigo-500/50 scale-110 z-10"
-                    : "border-slate-700 opacity-50 hover:opacity-100 hover:scale-105"
-                }`}
-              >
-                <img
-                  src={img.originalUrl}
-                  alt={`Page ${idx + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </button>
-            ))}
+          <div className="flex items-center justify-start sm:justify-center gap-2 sm:gap-4 overflow-x-auto no-scrollbar pb-2">
+            {currentThumbSet.map((img) => {
+              const idx = images.findIndex((i) => i.id === img.id);
+              return (
+                <button
+                  key={img.id}
+                  onClick={() => setCurrentImageIndex(idx)}
+                  className={`relative w-12 h-16 sm:w-20 sm:h-32 shrink-0 rounded-xl overflow-hidden border-2 transition-all ${
+                    idx === currentImageIndex
+                      ? "border-indigo-500 shadow-[0_0_20px_rgba(99,102,241,0.5)] scale-110 z-10"
+                      : "border-slate-800 opacity-40 hover:opacity-100 hover:scale-105"
+                  }`}
+                >
+                  <img
+                    src={img.originalUrl}
+                    alt={`Page ${idx + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute bottom-0 inset-x-0 bg-black/60 py-1">
+                    <span className="text-[8px] font-black text-white uppercase tracking-tighter">
+                      {idx + 1}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>

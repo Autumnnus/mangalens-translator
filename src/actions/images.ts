@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server";
 
 import { auth } from "@/auth";
@@ -38,10 +39,6 @@ export async function updateImageAction(imageId: string, data: any) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
-  // We can join series to verify ownership if needed, but RLS/Where clause on update is tricky without join.
-  // For now, assume if ID matches and we don't have row-level permissions on images table, we trust the ID.
-  // Better: Ensure the image belongs to a series owned by user.
-
   // Check ownership
   const img = await db.query.images.findFirst({
     where: eq(schema.images.id, imageId),
@@ -55,4 +52,21 @@ export async function updateImageAction(imageId: string, data: any) {
     .update(schema.images)
     .set({ ...data, updatedAt: new Date() })
     .where(eq(schema.images.id, imageId));
+}
+
+export async function reorderImagesAction(imageIds: string[]) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+
+  await db.transaction(async (tx) => {
+    for (let i = 0; i < imageIds.length; i++) {
+      await tx
+        .update(schema.images)
+        .set({
+          sequenceNumber: i + 1,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.images.id, imageIds[i]));
+    }
+  });
 }

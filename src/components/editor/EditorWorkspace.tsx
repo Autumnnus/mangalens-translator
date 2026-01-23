@@ -52,6 +52,21 @@ const EditorWorkspace: React.FC = () => {
     );
   }, [images]);
 
+  // Pagination for Editor
+  const [editorPage, setEditorPage] = React.useState(1);
+  const editorPageSize = 20;
+  const totalEditorPages = Math.ceil(images.length / editorPageSize);
+
+  const paginatedImages = React.useMemo(() => {
+    const start = (editorPage - 1) * editorPageSize;
+    return images.slice(start, start + editorPageSize);
+  }, [images, editorPage]);
+
+  // Reset page when series changes
+  React.useEffect(() => {
+    setEditorPage(1);
+  }, [activeSeriesId]);
+
   const clearAll = () => {
     confirm({
       title: "Wipe Series",
@@ -290,7 +305,7 @@ const EditorWorkspace: React.FC = () => {
           </div>
 
           <div
-            className={`pb-24 ${
+            className={`pb-12 ${
               viewMode === "grid"
                 ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
                 : viewMode === "list"
@@ -298,90 +313,142 @@ const EditorWorkspace: React.FC = () => {
                   : "space-y-12 max-w-4xl mx-auto"
             }`}
           >
-            {images.map((image, index) => (
-              <div
-                key={image.id}
-                onClick={
-                  viewMode === "list"
-                    ? () => setSelectedImageId(image.id)
-                    : undefined
-                }
-                className={
-                  viewMode === "list"
-                    ? "bg-slate-800/50 p-2 rounded-lg flex items-center gap-4 border border-slate-800 hover:border-indigo-500/30 transition-all cursor-pointer group"
-                    : ""
-                }
-              >
-                {viewMode === "list" ? (
-                  <>
-                    <div className="w-12 h-16 bg-slate-900 rounded-md overflow-hidden shrink-0">
-                      <img
-                        src={image.originalUrl}
-                        className="w-full h-full object-cover"
-                        alt={image.fileName}
-                      />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-slate-500 text-[10px] font-mono">
-                          #{image.sequenceNumber}
-                        </span>
-                        <h4
-                          className="text-slate-200 font-bold text-xs truncate"
-                          title={image.fileName}
-                        >
-                          {image.fileName}
-                        </h4>
+            {paginatedImages.map((image, idx) => {
+              const globalIndex = (editorPage - 1) * editorPageSize + idx;
+              return (
+                <div
+                  key={image.id}
+                  onClick={
+                    viewMode === "list"
+                      ? () => setSelectedImageId(image.id)
+                      : undefined
+                  }
+                  className={
+                    viewMode === "list"
+                      ? "bg-slate-800/50 p-2 rounded-lg flex items-center gap-4 border border-slate-800 hover:border-indigo-500/30 transition-all cursor-pointer group"
+                      : ""
+                  }
+                >
+                  {viewMode === "list" ? (
+                    <>
+                      <div className="w-12 h-16 bg-slate-900 rounded-md overflow-hidden shrink-0">
+                        <img
+                          src={image.originalUrl}
+                          className="w-full h-full object-cover"
+                          alt={image.fileName}
+                        />
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span
-                          className={`text-[10px] font-bold uppercase tracking-wider ${
-                            image.status === "completed"
-                              ? "text-emerald-400"
-                              : image.status === "processing"
-                                ? "text-amber-400"
-                                : "text-slate-500"
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-slate-500 text-[10px] font-mono">
+                            #{image.sequenceNumber}
+                          </span>
+                          <h4
+                            className="text-slate-200 font-bold text-xs truncate"
+                            title={image.fileName}
+                          >
+                            {image.fileName}
+                          </h4>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`text-[10px] font-bold uppercase tracking-wider ${
+                              image.status === "completed"
+                                ? "text-emerald-400"
+                                : image.status === "processing"
+                                  ? "text-amber-400"
+                                  : "text-slate-500"
+                            }`}
+                          >
+                            {image.status}
+                          </span>
+                          {image.cost && (
+                            <span className="text-[10px] text-slate-500">
+                              ${image.cost.toFixed(4)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <ImageCard
+                      image={image}
+                      index={globalIndex}
+                      total={images.length}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalEditorPages > 1 && (
+            <div className="flex items-center justify-center gap-4 py-12 border-t border-slate-800/50 mt-12">
+              <button
+                disabled={editorPage === 1}
+                onClick={() => {
+                  setEditorPage(editorPage - 1);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="w-12 h-12 flex items-center justify-center bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-indigo-500/50 rounded-2xl transition-all disabled:opacity-30 shadow-xl"
+              >
+                <i className="fas fa-arrow-left"></i>
+              </button>
+
+              <div className="hidden sm:flex items-center gap-2">
+                {Array.from({ length: totalEditorPages }, (_, i) => i + 1).map(
+                  (p) => {
+                    if (
+                      p === 1 ||
+                      p === totalEditorPages ||
+                      Math.abs(p - editorPage) <= 2
+                    ) {
+                      return (
+                        <button
+                          key={p}
+                          onClick={() => {
+                            setEditorPage(p);
+                            window.scrollTo({ top: 0, behavior: "smooth" });
+                          }}
+                          className={`w-12 h-12 rounded-2xl font-black text-xs transition-all border ${
+                            editorPage === p
+                              ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/30"
+                              : "bg-slate-900 border-slate-800 text-slate-500 hover:bg-slate-800 hover:text-white"
                           }`}
                         >
-                          {image.status}
+                          {p}
+                        </button>
+                      );
+                    }
+                    if (Math.abs(p - editorPage) === 3) {
+                      return (
+                        <span key={p} className="text-slate-700 font-bold px-1">
+                          ...
                         </span>
-                        {image.cost && (
-                          <span className="text-[10px] text-slate-500">
-                            ${image.cost.toFixed(4)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {/* Reuse ImageCard logic? We might need a separate Row component, but for now just basic info. 
-                                Actually, user might want to edit in list view too. 
-                                Ideally ImageCard should support 'variant' prop. 
-                                But for now, let's keep it simple or render ImageCard in different wrapper.
-                                Wait, passing props to ImageCard is easier if it supported layout. 
-                                Let's just use ImageCard for grid and detail, and simple row for list for now, or just render ImageCard.
-                                Actually, ImageCard is quite complex (has actions). 
-                                Let's stick to Grid being the main interactive one. List view is "summary".
-                                But user asked for "frontend viewing".
-                                "View Type" usually implies how the main cards look.
-                                Let's try to just change the Grid CSS classes? 
-                                Grid: grid-cols-4
-                                List: grid-cols-1 (and maybe pass a prop to ImageCard to be wide?)
-                                Detail: grid-cols-1 (but large)
-                                
-                                Let's use grid-cols-1 for list/detail.
-                             */}
-                  </>
-                ) : (
-                  <ImageCard
-                    image={image}
-                    index={index}
-                    total={images.length}
-                    // variant={viewMode} // Pass this if I update ImageCard, but for now standard card.
-                    // If Detail mode, scale up?
-                  />
+                      );
+                    }
+                    return null;
+                  },
                 )}
               </div>
-            ))}
-          </div>
+
+              <div className="sm:hidden text-xs font-black text-slate-500 uppercase tracking-widest">
+                Page {editorPage} of {totalEditorPages}
+              </div>
+
+              <button
+                disabled={editorPage === totalEditorPages}
+                onClick={() => {
+                  setEditorPage(editorPage + 1);
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className="w-12 h-12 flex items-center justify-center bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-indigo-500/50 rounded-2xl transition-all disabled:opacity-30 shadow-xl"
+              >
+                <i className="fas fa-arrow-right"></i>
+              </button>
+            </div>
+          )}
         </>
       )}
     </main>

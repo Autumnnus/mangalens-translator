@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server";
 
 import { auth } from "@/auth";
@@ -6,20 +7,33 @@ import * as schema from "@/db/schema";
 import { getPresignedViewUrl } from "@/lib/storage";
 import { and, desc, eq } from "drizzle-orm";
 
-export async function fetchSeriesAction(userId?: string) {
+export async function fetchSeriesAction(
+  userId?: string,
+  page: number = 1,
+  pageSize: number = 20,
+) {
   const session = await auth();
   const id = userId || session?.user?.id;
-  if (!id) return [];
+  if (!id) return { items: [], total: 0 };
 
   const seriesData = await db.query.series.findMany({
     where: eq(schema.series.userId, id),
     orderBy: [desc(schema.series.updatedAt)],
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
     with: {
       images: {
         orderBy: desc(schema.images.sequenceNumber),
       },
     },
   });
+
+  // Get total for the user
+  const allSeries = await db
+    .select({ id: schema.series.id })
+    .from(schema.series)
+    .where(eq(schema.series.userId, id));
+  const total = allSeries.length;
 
   // Transform and Sign URLs
   const enrichedSeries = await Promise.all(
@@ -41,7 +55,7 @@ export async function fetchSeriesAction(userId?: string) {
     }),
   );
 
-  return enrichedSeries;
+  return { items: enrichedSeries, total };
 }
 
 export async function createSeriesAction(data: any) {

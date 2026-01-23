@@ -27,18 +27,29 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
 
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
 
-  const moveImage = (dir: "up" | "down") => {
+  const moveImage = (dir: "up" | "down" | "jump", targetPos?: number) => {
     const activeSeries = series.find((s) => s.id === activeSeriesId);
     if (!activeSeries) return;
 
     const currentImages = [...activeSeries.images];
-    const targetIndex = dir === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= currentImages.length) return;
 
-    [currentImages[index], currentImages[targetIndex]] = [
-      currentImages[targetIndex],
-      currentImages[index],
-    ];
+    if (dir === "jump" && targetPos !== undefined) {
+      // Logic: Move from current position to targetPos
+      const [item] = currentImages.splice(index, 1);
+      const insertIdx = Math.max(
+        0,
+        Math.min(targetPos - 1, currentImages.length),
+      );
+      currentImages.splice(insertIdx, 0, item);
+    } else {
+      const targetIndex = dir === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= currentImages.length) return;
+
+      [currentImages[index], currentImages[targetIndex]] = [
+        currentImages[targetIndex],
+        currentImages[index],
+      ];
+    }
 
     const orderedIds = currentImages.map((img) => img.id);
     if (activeSeriesId) {
@@ -149,38 +160,42 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
             </button>
           )}
 
-          <div className="flex bg-slate-900 rounded-xl border border-slate-700 p-0.5 items-center">
-            <input
-              type="number"
-              className="w-12 bg-transparent text-center text-[10px] font-bold text-slate-300 focus:outline-none focus:text-white"
-              value={image.sequenceNumber}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
-                if (!isNaN(val)) {
-                  if (activeSeriesId) {
-                    updateImageInSeries(activeSeriesId, image.id, {
-                      sequenceNumber: val,
-                    });
-                  }
-                }
-              }}
-              title="Sequence Number"
-            />
-            <div className="w-px bg-slate-800 my-1 h-full"></div>
+          {/* Premium Order Control */}
+          <div className="flex bg-slate-950/80 rounded-2xl border border-white/5 p-1 items-center shadow-inner group/order">
             <button
               onClick={() => moveImage("up")}
               disabled={index === 0}
-              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+              className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-xl transition-all disabled:opacity-20 active:scale-90"
+              title="Move Up"
             >
-              <i className="fas fa-chevron-left"></i>
+              <i className="fas fa-chevron-left text-xs"></i>
             </button>
-            <div className="w-px bg-slate-800 my-1 h-full"></div>
+
+            <div className="relative flex items-center px-1">
+              <span className="absolute left-1/2 -translate-x-1/2 text-[8px] font-black text-slate-600 uppercase tracking-tighter -top-3 opacity-0 group-hover/order:opacity-100 transition-opacity">
+                Pos
+              </span>
+              <input
+                type="number"
+                className="w-10 bg-transparent text-center text-xs font-black text-white focus:outline-none focus:ring-1 focus:ring-indigo-500/50 rounded-lg py-1 transition-all"
+                value={image.sequenceNumber}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val)) {
+                    moveImage("jump", val);
+                  }
+                }}
+                onFocus={(e) => e.target.select()}
+              />
+            </div>
+
             <button
               onClick={() => moveImage("down")}
               disabled={index === total - 1}
-              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+              className="w-9 h-9 flex items-center justify-center text-slate-500 hover:text-indigo-400 hover:bg-indigo-500/10 rounded-xl transition-all disabled:opacity-20 active:scale-90"
+              title="Move Down"
             >
-              <i className="fas fa-chevron-right"></i>
+              <i className="fas fa-chevron-right text-xs"></i>
             </button>
           </div>
         </div>

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";
 import {
   createCategoryAction,
@@ -8,6 +9,7 @@ import {
 import {
   addImageAction,
   deleteImageAction,
+  reorderImagesAction,
   updateImageAction,
 } from "../actions/images";
 import {
@@ -122,9 +124,13 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await get().fetchCategories();
-      const seriesData = await fetchSeriesAction();
+      const { items, total } = await fetchSeriesAction(
+        undefined,
+        get().page,
+        get().pageSize,
+      );
 
-      const transformedSeries: Series[] = seriesData.map((s: any) => ({
+      const transformedSeries: Series[] = items.map((s: any) => ({
         id: s.id,
         name: s.name,
         description: s.description || "",
@@ -160,7 +166,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       set({
         series: transformedSeries,
         isLoading: false,
-        total: transformedSeries.length,
+        total,
       });
 
       if (transformedSeries.length > 0 && !get().activeSeriesId) {
@@ -418,7 +424,36 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     // Placeholder
   },
   reorderImages: async (seriesId, orderedIds) => {
-    // Placeholder
+    const state = get();
+    const seriesIndex = state.series.findIndex((s) => s.id === seriesId);
+    if (seriesIndex === -1) return;
+
+    const currentImages = [...state.series[seriesIndex].images];
+    const newImages = orderedIds
+      .map((id) => currentImages.find((img) => img.id === id))
+      .filter(Boolean) as ProcessedImage[];
+
+    // Assign new sequence numbers based on order
+    const updatedImages = newImages.map((img, idx) => ({
+      ...img,
+      sequenceNumber: idx + 1,
+    }));
+
+    // Update local state
+    const newSeries = [...state.series];
+    newSeries[seriesIndex] = {
+      ...newSeries[seriesIndex],
+      images: updatedImages,
+      updatedAt: Date.now(),
+    };
+    set({ series: newSeries });
+
+    // Sync with DB
+    try {
+      await reorderImagesAction(orderedIds);
+    } catch (err) {
+      console.error("Reorder sync failed", err);
+    }
   },
 
   setCategories: (categories) => set({ categories }),
