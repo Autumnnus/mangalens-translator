@@ -43,8 +43,9 @@ export const categories = pgTable("categories", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
-  parentId: uuid("parent_id"), // Self-reference handled in application logic or separate relation if needed
+  parentId: uuid("parent_id"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const series = pgTable("series", {
@@ -111,4 +112,12 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
     references: [users.id],
   }),
   series: many(series),
+  parent: one(categories, {
+    fields: [categories.parentId],
+    references: [categories.id],
+    relationName: "category_hierarchy",
+  }),
+  children: many(categories, {
+    relationName: "category_hierarchy",
+  }),
 }));

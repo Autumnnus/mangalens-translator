@@ -1,14 +1,19 @@
 import {
+  BookOpen,
   Download,
   Filter,
   Hash,
   Menu,
   Plus,
+  Settings,
+  Tags,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
 import React, { useMemo, useState } from "react";
+import { useSettingsStore } from "../stores/useSettingsStore";
+import { useUIStore } from "../stores/useUIStore";
 import { Category, ProcessedImage, Series } from "../types";
 import FilterSortModal, { FilterSortOptions } from "./FilterSortModal";
 
@@ -30,6 +35,7 @@ interface Props {
     categoryId: string,
     targetParentId: string | undefined,
   ) => void;
+  onAddSubcategory?: (parentId: string) => void;
 }
 
 const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
@@ -136,6 +142,7 @@ interface CategoryNodeProps {
     categoryId: string,
     targetParentId: string | undefined,
   ) => void;
+  onAddSubcategory: (parentId: string) => void;
 }
 
 const CategoryNode: React.FC<CategoryNodeProps> = ({
@@ -154,6 +161,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
   onDelete,
   onMoveSeries,
   onMoveCategory,
+  onAddSubcategory,
 }) => {
   const isCollapsed = collapsedCategories.has(category.id);
 
@@ -207,37 +215,70 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
         onDrop={handleDrop}
         onDragOver={handleDragOver}
       >
-        <button
-          onClick={() => toggleCategory(category.id)}
-          draggable={!isViewOnly}
-          onDragStart={(e) => handleDragStart(e, "category", category.id)}
-          className={`w-full flex items-center justify-between hover:bg-surface-raised/30 transition-colors group-hover:bg-surface-raised/50
-              ${isSidebarCollapsed ? "px-2 py-3 justify-center" : "px-4 py-3"}
+        <div
+          className={`flex items-center hover:bg-surface-raised/30 transition-all group-hover:bg-surface-raised/50 relative
+              ${isSidebarCollapsed ? "px-2 py-3 justify-center" : "px-4 py-2.5"}
             `}
           style={{
             paddingLeft: !isSidebarCollapsed
-              ? `${depth * 12 + 16}px`
+              ? `${depth * 16 + 16}px`
               : undefined,
           }}
         >
-          <div className="flex items-center gap-2 overflow-hidden">
+          {/* Hierarchy Connector Lines */}
+          {!isSidebarCollapsed && depth > 0 && (
+            <div
+              className="absolute left-0 top-0 bottom-0 border-l border-border-muted"
+              style={{ left: `${depth * 16 + 4}px` }}
+            />
+          )}
+
+          <button
+            onClick={() => toggleCategory(category.id)}
+            draggable={!isViewOnly}
+            onDragStart={(e) => handleDragStart(e, "category", category.id)}
+            className="flex-1 flex items-center gap-2 overflow-hidden text-left"
+          >
             <i
               className={`fas fa-chevron-${
                 isCollapsed ? "right" : "down"
-              } text-[10px] text-slate-500 transition-transform shrink-0`}
+              } text-[10px] ${
+                isCollapsed ? "text-text-dark" : "text-primary"
+              } transition-transform shrink-0 w-3`}
             ></i>
             {!isSidebarCollapsed && (
-              <>
-                <span className="text-xs font-black uppercase tracking-wider text-text-muted/80 truncate group-hover:text-primary transition-colors">
+              <div className="flex items-center gap-2 truncate">
+                <span
+                  className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${
+                    isCollapsed
+                      ? "text-text-muted/60"
+                      : "text-text-main text-glow"
+                  }`}
+                >
                   {category.name}
                 </span>
-                <span className="text-[10px] font-bold text-text-dark bg-surface-raised/80 px-2 py-0.5 rounded-full shrink-0">
+                <span className="text-[9px] font-bold text-text-dark bg-surface-raised/80 px-1.5 py-0.5 rounded-md shrink-0 border border-border-muted/30">
                   {directSeries.length}
                 </span>
-              </>
+              </div>
             )}
-          </div>
-        </button>
+          </button>
+
+          {!isViewOnly && !isSidebarCollapsed && (
+            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddSubcategory(category.id);
+                }}
+                className="w-6 h-6 bg-surface-raised hover:bg-primary/20 text-text-dark hover:text-primary rounded-lg flex items-center justify-center transition-all border border-border-muted/50"
+                title="Add Subcategory"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Children */}
@@ -262,6 +303,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
               onDelete={onDelete}
               onMoveSeries={onMoveSeries}
               onMoveCategory={onMoveCategory}
+              onAddSubcategory={onAddSubcategory}
             />
           ))}
 
@@ -279,9 +321,9 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                   closeMobileSidebar();
                 }}
                 style={{
-                  marginLeft: !isSidebarCollapsed
-                    ? `${(depth + 1) * 12 + 12}px`
-                    : "4px",
+                  paddingLeft: !isSidebarCollapsed
+                    ? `${(depth + 1) * 16 + 16}px`
+                    : undefined,
                 }}
                 className={`group flex items-center gap-3 px-2 py-2 rounded-xl transition-all cursor-pointer border ${
                   activeId === s.id
@@ -350,6 +392,7 @@ const SeriesSidebar: React.FC<Props> = ({
   setPage,
   onMoveSeries,
   onMoveCategory,
+  onAddSubcategory,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -364,6 +407,9 @@ const SeriesSidebar: React.FC<Props> = ({
     showCompleted: true,
     showInProgress: true,
   });
+
+  const { toggleCategoryModal, toggleSettingsModal } = useUIStore();
+  const { toggleViewOnly } = useSettingsStore();
 
   const toggleCategory = (categoryId: string) => {
     setCollapsedCategories((prev) => {
@@ -491,6 +537,46 @@ const SeriesSidebar: React.FC<Props> = ({
           >
             <Filter className="w-3.5 h-3.5" />
             Filter
+          </button>
+        </div>
+      )}
+
+      {/* Global System Actions */}
+      {!isSidebarCollapsed && (
+        <div className="px-4 py-2 grid grid-cols-3 gap-2 border-b border-border-muted bg-surface/10">
+          <button
+            onClick={toggleViewOnly}
+            className={`flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl transition-all border ${
+              isViewOnly
+                ? "bg-primary/20 border-primary/40 text-primary"
+                : "bg-surface-raised/50 border-border-muted text-text-dark hover:text-text-muted hover:border-border-accent"
+            }`}
+            title="Toggle Preview Mode"
+          >
+            <BookOpen className="w-4 h-4" />
+            <span className="text-[8px] font-black uppercase tracking-tighter">
+              Preview
+            </span>
+          </button>
+          <button
+            onClick={() => toggleCategoryModal(true)}
+            className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-surface-raised/50 border border-border-muted text-text-dark hover:text-text-muted hover:border-border-accent transition-all"
+            title="Manage Categories"
+          >
+            <Tags className="w-4 h-4" />
+            <span className="text-[8px] font-black uppercase tracking-tighter">
+              Tags
+            </span>
+          </button>
+          <button
+            onClick={() => toggleSettingsModal(true)}
+            className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-xl bg-surface-raised/50 border border-border-muted text-text-dark hover:text-text-muted hover:border-border-accent transition-all"
+            title="Global Settings"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="text-[8px] font-black uppercase tracking-tighter">
+              Settings
+            </span>
           </button>
         </div>
       )}
@@ -632,6 +718,9 @@ const SeriesSidebar: React.FC<Props> = ({
                 onDelete={onDelete}
                 onMoveSeries={onMoveSeries}
                 onMoveCategory={onMoveCategory}
+                onAddSubcategory={(parentId) => {
+                  if (onAddSubcategory) onAddSubcategory(parentId);
+                }}
               />
             ))}
           </>

@@ -52,6 +52,7 @@ const MainApp: React.FC = () => {
     setEditingSeriesId,
     selectedImageId,
     setSelectedImageId,
+    categoryInitialParentId,
   } = useUIStore();
   const { confirm, close: closeConfirmModal } = useConfirm();
 
@@ -194,6 +195,9 @@ const MainApp: React.FC = () => {
               targetParentId,
             );
           }}
+          onAddSubcategory={(parentId) => {
+            toggleCategoryModal(true, parentId);
+          }}
         />
 
         <CategoryManagerModal
@@ -203,6 +207,7 @@ const MainApp: React.FC = () => {
           onUpdateCategory={updateCategory}
           onDeleteCategory={handleDeleteCategory}
           onAddCategory={addCategory}
+          initialParentId={categoryInitialParentId || undefined}
         />
 
         <NewSeriesModal

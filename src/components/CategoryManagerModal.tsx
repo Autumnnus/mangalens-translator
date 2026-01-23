@@ -9,6 +9,7 @@ interface Props {
   onUpdateCategory: (id: string, name: string) => void;
   onDeleteCategory: (id: string) => void;
   onAddCategory: (name: string, parentId?: string) => void;
+  initialParentId?: string;
 }
 
 const CategoryManagerModal: React.FC<Props> = ({
@@ -18,11 +19,22 @@ const CategoryManagerModal: React.FC<Props> = ({
   onUpdateCategory,
   onDeleteCategory,
   onAddCategory,
+  initialParentId,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [selectedParentId, setSelectedParentId] = useState<string>("");
+  const [selectedParentId, setSelectedParentId] = useState<string>(
+    initialParentId || "",
+  );
+
+  React.useEffect(() => {
+    if (isOpen && initialParentId) {
+      setSelectedParentId(initialParentId);
+    } else if (isOpen) {
+      setSelectedParentId("");
+    }
+  }, [isOpen, initialParentId]);
 
   if (!isOpen) return null;
 
