@@ -1,4 +1,5 @@
 import React from "react";
+import { useConfirm } from "../../hooks/useConfirm";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useUIStore } from "../../stores/useUIStore";
@@ -20,7 +21,8 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
     series,
     reorderImages,
   } = useSeriesStore();
-  const { openConfirmModal, setSelectedImageId } = useUIStore();
+  const { setSelectedImageId } = useUIStore();
+  const { confirm } = useConfirm();
   const { processImage } = useImageProcessor();
 
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
@@ -45,7 +47,7 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
   };
 
   const handleRemove = () => {
-    openConfirmModal({
+    confirm({
       title: "Remove Image",
       message:
         "Are you sure you want to remove this image? This action cannot be undone.",

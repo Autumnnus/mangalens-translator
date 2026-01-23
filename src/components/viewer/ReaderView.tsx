@@ -15,21 +15,56 @@ const ReaderView: React.FC = () => {
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonMode, setComparisonMode] = useState<ViewMode>("slider");
 
-  const activeSeries = series.find((s) => s.id === activeSeriesId);
-  const images = activeSeries?.images || [];
+  const activeSeries = React.useMemo(
+    () => series.find((s) => s.id === activeSeriesId),
+    [series, activeSeriesId],
+  );
+  const images = React.useMemo(
+    () => activeSeries?.images || [],
+    [activeSeries],
+  );
 
   const currentImage = images[currentImageIndex];
 
-  const handleNext = () => {
-    if (currentImageIndex < images.length - 1) {
-      setCurrentImageIndex(currentImageIndex + 1);
-    }
+  const handleNext = React.useCallback(() => {
+    setCurrentImageIndex(Math.min(currentImageIndex + 1, images.length - 1));
+  }, [currentImageIndex, images.length, setCurrentImageIndex]);
+
+  const handlePrev = React.useCallback(() => {
+    setCurrentImageIndex(Math.max(0, currentImageIndex - 1));
+  }, [currentImageIndex, setCurrentImageIndex]);
+
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") handleNext();
+      if (e.key === "ArrowLeft") handlePrev();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleNext, handlePrev]);
+
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  const minSwipeDistance = 50;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
   };
 
-  const handlePrev = () => {
-    if (currentImageIndex > 0) {
-      setCurrentImageIndex(currentImageIndex - 1);
-    }
+  const onTouchMove = (e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+
+    if (isLeftSwipe) handleNext();
+    if (isRightSwipe) handlePrev();
   };
 
   if (images.length === 0) {
@@ -40,43 +75,44 @@ const ReaderView: React.FC = () => {
     );
   }
 
-  // Helper for ComparisonView pair prop
-  // Helper for ComparisonView pair prop
   const getPair = (img: ProcessedImage) => ({
     id: img.id,
     title: img.fileName,
     sourceUrl: img.originalUrl,
     convertedUrl: img.translatedUrl || img.originalUrl,
-    createdAt: 0, // Mock or ignore if not used strictly
+    createdAt: 0,
   });
 
   return (
     <div className="flex-1 flex flex-col h-full animate-in fade-in duration-700 min-h-0">
-      {/* Premium Viewer Header - Mobile Optimized */}
-      <div className="bg-slate-900/40 backdrop-blur-xl p-2 sm:p-6 rounded-xl sm:rounded-[2.5rem] border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-6 mb-2 sm:mb-8 shadow-2xl shrink-0 mx-2 sm:mx-4 mt-2 sm:mt-4">
-        <div className="flex flex-col">
-          <h2 className="text-sm sm:text-2xl font-black text-white italic uppercase tracking-tight truncate max-w-[150px] sm:max-w-none">
-            {activeSeries?.name}
-          </h2>
-          <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-0">
-            <span className="text-[8px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-indigo-500/20">
-              {activeSeries?.category}
-            </span>
-            <span className="text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest">
-              Page {currentImageIndex + 1} / {images.length}
-            </span>
+      <div className="bg-slate-900/40 backdrop-blur-xl p-2 sm:p-6 rounded-xl sm:rounded-[2.5rem] border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-6 mb-2 sm:mb-8 shadow-2xl shrink-0 mx-2 sm:mx-4 mt-2 sm:mt-4 overflow-hidden relative">
+        {/* Animated Background Accent */}
+        <div className="absolute top-0 left-0 w-32 h-full bg-indigo-500/5 blur-3xl rounded-full -translate-x-1/2 pointer-events-none" />
+
+        <div className="flex items-center gap-4 sm:gap-6 z-10">
+          <button
+            onClick={toggleViewOnly}
+            className="group flex items-center gap-2.5 bg-slate-950/50 hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 px-3 sm:px-5 py-2 sm:py-3 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border border-white/5 hover:border-rose-500/20 shadow-xl"
+            title="Exit Reader"
+          >
+            <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
+          </button>
+          <div className="flex flex-col">
+            <h2 className="text-sm sm:text-2xl font-black text-white italic uppercase tracking-tight truncate max-w-[150px] sm:max-w-none">
+              {activeSeries?.name}
+            </h2>
+            <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-0">
+              <span className="text-[8px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-indigo-500/20">
+                {activeSeries?.category}
+              </span>
+              <span className="text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                Page {currentImageIndex + 1} / {images.length}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3">
-          <button
-            onClick={toggleViewOnly}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl font-black text-[10px] uppercase tracking-wider transition-all border border-slate-700"
-          >
-            <i className="fas fa-edit"></i>{" "}
-            <span className="hidden sm:inline">Edit</span>
-          </button>
-
+        <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3 z-10">
           {/* Quick Nav */}
           <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
             <button
@@ -128,31 +164,49 @@ const ReaderView: React.FC = () => {
               onToggleComparison={() => setShowComparison(!showComparison)}
               comparisonMode={comparisonMode}
               onChangeMode={setComparisonMode}
+              hasTranslation={!!currentImage?.translatedUrl}
             />
           )}
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={handlePrev}
-              disabled={currentImageIndex === 0}
-              className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-slate-800 text-slate-400 hover:bg-indigo-600 hover:text-white disabled:opacity-30 disabled:hover:bg-slate-800 transition-all flex items-center justify-center border border-slate-700 shadow-xl"
-            >
-              <i className="fas fa-chevron-left text-xs sm:text-lg"></i>
-            </button>
-            <button
-              onClick={handleNext}
-              disabled={currentImageIndex === images.length - 1}
-              className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 disabled:opacity-30 transition-all flex items-center justify-center border border-indigo-500/30"
-            >
-              <i className="fas fa-chevron-right text-xs sm:text-lg"></i>
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Main Image Area */}
       {comparisonMode !== "grid" && (
-        <div className="flex-1 min-h-0 flex items-center justify-center p-4 relative overflow-hidden">
+        <div
+          className="flex-1 min-h-0 flex items-center justify-center p-4 relative overflow-hidden touch-none"
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+        >
+          {/* Navigation Click Zones */}
+          <div
+            className="absolute inset-y-0 left-0 w-1/4 z-30 cursor-pointer group/nav"
+            onClick={(e) => {
+              e.stopPropagation();
+              handlePrev();
+            }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent opacity-0 group-hover/nav:opacity-100 transition-opacity flex items-center justify-start pl-8">
+              <div className="w-12 h-12 rounded-full bg-slate-900/50 backdrop-blur-md flex items-center justify-center border border-white/10 text-white translate-x-[-10px] group-hover/nav:translate-x-0 transition-transform">
+                <i className="fas fa-chevron-left"></i>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="absolute inset-y-0 right-0 w-1/4 z-30 cursor-pointer group/nav"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleNext();
+            }}
+          >
+            <div className="absolute inset-0 bg-gradient-to-l from-black/20 to-transparent opacity-0 group-hover/nav:opacity-100 transition-opacity flex items-center justify-end pr-8">
+              <div className="w-12 h-12 rounded-full bg-slate-900/50 backdrop-blur-md flex items-center justify-center border border-white/10 text-white translate-x-[10px] group-hover/nav:translate-x-0 transition-transform">
+                <i className="fas fa-chevron-right"></i>
+              </div>
+            </div>
+          </div>
+
           <div className="w-full h-full flex items-center justify-center relative z-10 transition-all duration-300">
             {showComparison && currentImage.translatedUrl ? (
               <div className="w-full h-full max-w-5xl mx-auto">
@@ -164,8 +218,9 @@ const ReaderView: React.FC = () => {
             ) : (
               <img
                 src={currentImage?.translatedUrl || currentImage?.originalUrl}
-                className="max-w-full max-h-full object-contain drop-shadow-2xl"
+                className="max-w-full max-h-full object-contain drop-shadow-2xl select-none"
                 alt="Page"
+                draggable={false}
               />
             )}
           </div>

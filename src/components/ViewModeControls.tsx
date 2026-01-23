@@ -7,6 +7,7 @@ interface Props {
   onToggleComparison: () => void;
   comparisonMode: ViewMode;
   onChangeMode: (mode: ViewMode) => void;
+  hasTranslation?: boolean;
 }
 
 const ViewModeControls: React.FC<Props> = ({
@@ -14,10 +15,12 @@ const ViewModeControls: React.FC<Props> = ({
   onToggleComparison,
   comparisonMode,
   onChangeMode,
+  hasTranslation = true,
 }) => {
+  if (!hasTranslation) return null;
+
   return (
     <div className="flex items-center gap-2 sm:gap-3">
-      {/* Toggle Comparison */}
       <button
         onClick={onToggleComparison}
         className={`px-3 sm:px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all flex items-center gap-2 border ${
@@ -35,7 +38,6 @@ const ViewModeControls: React.FC<Props> = ({
         <span className="hidden md:inline">Compare</span>
       </button>
 
-      {/* Mode Selector - Only visible when comparison is enabled */}
       {showComparison && (
         <div className="flex bg-slate-800/50 p-1 rounded-xl border border-slate-700 gap-1">
           {(["slider", "side-by-side", "toggle"] as ViewMode[]).map((mode) => (
@@ -55,8 +57,8 @@ const ViewModeControls: React.FC<Props> = ({
                 {mode === "side-by-side"
                   ? "SPL"
                   : mode === "slider"
-                  ? "SLI"
-                  : "TOG"}
+                    ? "SLI"
+                    : "TOG"}
               </span>
             </button>
           ))}

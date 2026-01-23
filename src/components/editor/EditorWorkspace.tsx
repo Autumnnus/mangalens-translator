@@ -1,4 +1,5 @@
 import React from "react";
+import { useConfirm } from "../../hooks/useConfirm";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useImageUpload } from "../../hooks/useImageUpload";
 import { useSeriesStore } from "../../stores/useSeriesStore";
@@ -24,11 +25,12 @@ const EditorWorkspace: React.FC = () => {
   }, [viewMode]);
 
   const {
-    openConfirmModal,
     toggleCategoryModal,
     toggleSettingsModal,
+    toggleNewSeriesModal,
     setSelectedImageId,
   } = useUIStore();
+  const { confirm } = useConfirm();
   const { isViewOnly, toggleViewOnly } = useSettingsStore();
   const { handleFileUpload } = useImageUpload();
 
@@ -51,7 +53,7 @@ const EditorWorkspace: React.FC = () => {
   }, [images]);
 
   const clearAll = () => {
-    openConfirmModal({
+    confirm({
       title: "Wipe Series",
       message: "This will remove ALL images from this series. Are you sure?",
       onConfirm: () => {
@@ -69,19 +71,43 @@ const EditorWorkspace: React.FC = () => {
 
   return (
     <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
-      {images.length === 0 ? (
+      {!activeSeries ? (
         <div className="flex flex-col items-center justify-center h-[65vh] rounded-[4rem] border-4 border-dashed border-slate-800/50 bg-slate-900/10 group transition-all duration-700 hover:border-indigo-500/40">
-          {/* Empty State (unchanged) */}
+          <div className="mb-10 relative">
+            <div className="absolute inset-0 bg-indigo-500/20 blur-3xl rounded-full group-hover:bg-indigo-500/30 transition-all duration-700"></div>
+            <i className="fas fa-layer-group text-7xl text-slate-700 group-hover:text-indigo-400 group-hover:scale-110 transition-all duration-500 relative z-10"></i>
+          </div>
+          <h2 className="text-3xl font-black text-slate-700 uppercase tracking-tighter mb-4 group-hover:text-slate-500 transition-colors">
+            No Series Selected
+          </h2>
+          <p className="text-slate-500 font-medium mb-8 max-w-md text-center leading-relaxed">
+            Select a series from the sidebar or create a new one to start
+            translating your manga.
+          </p>
+          <button
+            onClick={() => toggleNewSeriesModal(true)}
+            className="bg-indigo-600 text-white px-10 py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-500 hover:scale-105 active:scale-95 transition-all shadow-xl shadow-indigo-500/20 border border-indigo-500"
+          >
+            Create New Series
+          </button>
+        </div>
+      ) : images.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-[65vh] rounded-[4rem] border-4 border-dashed border-slate-800/50 bg-slate-900/10 group transition-all duration-700 hover:border-indigo-500/40">
           <div className="mb-10 relative">
             <div className="absolute inset-0 bg-indigo-500/20 blur-3xl rounded-full group-hover:bg-indigo-500/30 transition-all duration-700"></div>
             <i className="fas fa-cloud-upload-alt text-7xl text-slate-700 group-hover:text-indigo-400 group-hover:scale-110 transition-all duration-500 relative z-10"></i>
           </div>
-          <h2 className="text-3xl font-black text-slate-700 uppercase tracking-tighter mb-4 group-hover:text-slate-500 transition-colors">
-            Start Translating
-          </h2>
+          <div className="text-center">
+            <h2 className="text-3xl font-black text-slate-700 uppercase tracking-tighter mb-1 group-hover:text-slate-500 transition-colors">
+              Add Pages to
+            </h2>
+            <div className="text-indigo-400 font-black italic text-xl uppercase tracking-tighter mb-4">
+              {activeSeries.name}
+            </div>
+          </div>
           <p className="text-slate-500 font-medium mb-8 max-w-md text-center leading-relaxed">
-            Drag and drop your manga pages here, or upload files to begin the
-            magic.
+            Drag and drop your manga pages here or use the button below to add
+            them to this series.
           </p>
           <label className="cursor-pointer bg-slate-800 text-white px-10 py-5 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-indigo-600 hover:scale-105 active:scale-95 transition-all shadow-xl shadow-slate-900/20 group-hover:shadow-indigo-500/30 border border-slate-700 group-hover:border-indigo-500">
             <input

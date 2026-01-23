@@ -10,6 +10,7 @@ import SettingsModal from "./SettingsModal";
 import EditorWorkspace from "./editor/EditorWorkspace";
 import ReaderView from "./viewer/ReaderView";
 
+import { useConfirm } from "../hooks/useConfirm";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
@@ -39,7 +40,6 @@ const MainApp: React.FC = () => {
   } = useSeriesStore();
   const { settings, updateSettings, isViewOnly } = useSettingsStore();
   const {
-    isSidebarOpen,
     toggleSidebar,
     isCategoryModalOpen,
     toggleCategoryModal,
@@ -48,12 +48,12 @@ const MainApp: React.FC = () => {
     isSettingsModalOpen,
     toggleSettingsModal,
     confirmConfig,
-    closeConfirmModal,
     editingSeriesId,
     setEditingSeriesId,
     selectedImageId,
     setSelectedImageId,
   } = useUIStore();
+  const { confirm, close: closeConfirmModal } = useConfirm();
 
   const activeSeries = series.find((s) => s.id === activeSeriesId) || series[0];
   const images = activeSeries?.images || [];
@@ -112,6 +112,26 @@ const MainApp: React.FC = () => {
     toggleNewSeriesModal(false);
   };
 
+  const handleDeleteSeries = (id: string) => {
+    const s = series.find((item) => item.id === id);
+    confirm({
+      title: "Delete Series",
+      message: `Are you sure you want to delete "${s?.name}"? All associated images and metadata will be permanently removed.`,
+      onConfirm: () => deleteSeries(id),
+      type: "danger",
+    });
+  };
+
+  const handleDeleteCategory = (id: string) => {
+    const c = categories.find((item) => item.id === id);
+    confirm({
+      title: "Delete Category",
+      message: `Are you sure you want to delete the category "${c?.name}"? Series inside this category will become uncategorized.`,
+      onConfirm: () => deleteCategory(id),
+      type: "danger",
+    });
+  };
+
   const selectedImg = selectedImageId
     ? images.find((i) => i.id === selectedImageId)
     : null;
@@ -151,7 +171,7 @@ const MainApp: React.FC = () => {
           activeId={activeSeriesId}
           onSelect={handleSelectSeries}
           onAdd={() => toggleNewSeriesModal(true)}
-          onDelete={deleteSeries}
+          onDelete={handleDeleteSeries}
           onEdit={handleEditSeries}
           isViewOnly={isViewOnly}
           categories={categories}
@@ -181,7 +201,7 @@ const MainApp: React.FC = () => {
           onClose={() => toggleCategoryModal(false)}
           categories={categories}
           onUpdateCategory={updateCategory}
-          onDeleteCategory={deleteCategory}
+          onDeleteCategory={handleDeleteCategory}
           onAddCategory={addCategory}
         />
 
@@ -294,6 +314,15 @@ const MainApp: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Confirmation Modal */}
+      <ConfirmModal
+        isOpen={confirmConfig.isOpen}
+        onClose={closeConfirmModal}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+      />
     </>
   );
 };

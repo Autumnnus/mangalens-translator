@@ -1,6 +1,7 @@
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
@@ -56,6 +57,38 @@ export const deleteObject = async (key: string) => {
   const command = new DeleteObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
+  });
+  await s3Client.send(command);
+};
+
+export const listObjects = async (prefix?: string) => {
+  const command = new ListObjectsV2Command({
+    Bucket: S3_BUCKET,
+    Prefix: prefix,
+  });
+  const result = await s3Client.send(command);
+  return result.Contents || [];
+};
+
+export const getObjectBuffer = async (key: string) => {
+  const command = new GetObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+  });
+  const response = await s3Client.send(command);
+  return response.Body?.transformToByteArray();
+};
+
+export const uploadObject = async (
+  key: string,
+  body: Uint8Array | Buffer | string,
+  contentType?: string,
+) => {
+  const command = new PutObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
   });
   await s3Client.send(command);
 };
