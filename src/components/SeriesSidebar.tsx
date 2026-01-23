@@ -36,8 +36,8 @@ const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
   const [isExpanded, setIsExpanded] = React.useState(false);
   if (images.length === 0) {
     return (
-      <div className="w-10 h-10 flex items-center justify-center bg-slate-800 rounded-lg border border-slate-700">
-        <Hash className="w-4 h-4 text-slate-500" />
+      <div className="w-10 h-10 flex items-center justify-center bg-surface-raised rounded-lg border border-border-muted group-hover:border-primary/50 transition-colors shadow-sm">
+        <Hash className="w-4 h-4 text-text-dark group-hover:text-primary/70" />
       </div>
     );
   }
@@ -65,7 +65,7 @@ const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
         }}
       >
         <div
-          className="bg-slate-900 border border-slate-700 rounded-2xl p-4 max-w-sm w-full shadow-2xl"
+          className="glass-card animate-slide-up rounded-2xl p-4 max-w-sm w-full"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="grid grid-cols-3 gap-2">
@@ -98,7 +98,7 @@ const SeriesIcon = ({ images }: { images: ProcessedImage[] }) => {
       {indices.map((idx, i) => (
         <div
           key={idx + "-" + i}
-          className="absolute w-7 h-7 border border-slate-700 rounded-md overflow-hidden bg-slate-800 shadow-lg"
+          className="absolute w-7 h-7 border border-border-muted rounded-md overflow-hidden bg-surface-raised shadow-lg transition-transform group-hover:border-primary/50"
           style={{
             top: `${i * 3}px`,
             left: `${i * 3}px`,
@@ -200,7 +200,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
   };
 
   return (
-    <div className="border-b border-slate-800/50 last:border-b-0">
+    <div className="border-b border-border-subtle last:border-b-0">
       {/* Category Header */}
       <div
         className="group relative"
@@ -211,7 +211,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
           onClick={() => toggleCategory(category.id)}
           draggable={!isViewOnly}
           onDragStart={(e) => handleDragStart(e, "category", category.id)}
-          className={`w-full flex items-center justify-between hover:bg-slate-800/30 transition-colors group-hover:bg-slate-800/50
+          className={`w-full flex items-center justify-between hover:bg-surface-raised/30 transition-colors group-hover:bg-surface-raised/50
               ${isSidebarCollapsed ? "px-2 py-3 justify-center" : "px-4 py-3"}
             `}
           style={{
@@ -228,10 +228,10 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
             ></i>
             {!isSidebarCollapsed && (
               <>
-                <span className="text-xs font-black uppercase tracking-wider text-slate-400 truncate">
+                <span className="text-xs font-black uppercase tracking-wider text-text-muted/80 truncate group-hover:text-primary transition-colors">
                   {category.name}
                 </span>
-                <span className="text-[10px] font-bold text-slate-600 bg-slate-800 px-2 py-0.5 rounded-full shrink-0">
+                <span className="text-[10px] font-bold text-text-dark bg-surface-raised/80 px-2 py-0.5 rounded-full shrink-0">
                   {directSeries.length}
                 </span>
               </>
@@ -283,18 +283,22 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                     ? `${(depth + 1) * 12 + 12}px`
                     : "4px",
                 }}
-                className={`group flex items-center gap-3 px-2 py-2 rounded-xl transition-all cursor-pointer ${
+                className={`group flex items-center gap-3 px-2 py-2 rounded-xl transition-all cursor-pointer border ${
                   activeId === s.id
-                    ? "bg-indigo-600/20 border border-indigo-500/50"
-                    : "hover:bg-slate-800/50 border border-transparent"
+                    ? "bg-primary/10 border-primary/40 shadow-glow"
+                    : "hover:bg-surface-raised/50 border-transparent hover:border-border-muted"
                 }`}
               >
                 <SeriesIcon images={s.images} />
                 {!isSidebarCollapsed && (
                   <>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold truncate">{s.name}</p>
-                      <p className="text-[10px] text-slate-500 font-bold">
+                      <p
+                        className={`text-sm font-bold truncate transition-colors ${activeId === s.id ? "text-primary" : "text-text-main group-hover:text-primary/90"}`}
+                      >
+                        {s.name}
+                      </p>
+                      <p className="text-[10px] text-text-dark font-bold">
                         {s.images.length} pages
                       </p>
                     </div>
@@ -305,7 +309,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                             e.stopPropagation();
                             onEdit(s.id);
                           }}
-                          className="w-7 h-7 bg-slate-800 hover:bg-indigo-600 rounded-lg flex items-center justify-center transition-colors"
+                          className="w-7 h-7 bg-surface-elevated hover:bg-primary rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
                         >
                           <i className="fas fa-edit text-[10px]"></i>
                         </button>
@@ -314,7 +318,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                             e.stopPropagation();
                             onDelete(s.id);
                           }}
-                          className="w-7 h-7 bg-slate-800 hover:bg-red-600 rounded-lg flex items-center justify-center transition-colors"
+                          className="w-7 h-7 bg-surface-elevated hover:bg-red-600/80 rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -441,21 +445,21 @@ const SeriesSidebar: React.FC<Props> = ({
       <div
         className={`p-6 flex items-center ${
           isSidebarCollapsed ? "justify-center" : "justify-between"
-        } border-b border-slate-800`}
+        } border-b border-border-muted`}
       >
         {!isSidebarCollapsed && (
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-tr from-indigo-600 to-fuchsia-600 rounded-lg flex items-center justify-center">
-              <i className="fas fa-eye-low-vision text-sm"></i>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-gradient-to-tr from-primary to-secondary rounded-xl flex items-center justify-center shadow-glow shadow-primary/20">
+              <i className="fas fa-eye-low-vision text-white text-sm"></i>
             </div>
-            <h5 className="text-xl font-black tracking-tighter uppercase leading-none italic">
-              Manga<span className="text-indigo-400">Lens</span>
+            <h5 className="text-xl font-black tracking-tighter uppercase leading-none italic select-none">
+              Manga<span className="text-primary text-glow">Lens</span>
             </h5>
           </div>
         )}
         <button
           onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors md:flex hidden"
+          className="w-8 h-8 rounded-xl bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main flex items-center justify-center transition-all md:flex hidden border border-border-muted"
         >
           <i
             className={`fas fa-chevron-${
@@ -473,17 +477,17 @@ const SeriesSidebar: React.FC<Props> = ({
 
       {/* Action Buttons */}
       {!isViewOnly && !isSidebarCollapsed && (
-        <div className="px-4 py-2 space-y-2 border-b border-slate-800">
+        <div className="px-4 py-3 space-y-2 border-b border-border-muted bg-surface/30">
           <button
             onClick={onAdd}
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-500/20"
+            className="w-full bg-primary hover:bg-primary-hover text-white px-4 py-2.5 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/25 hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="w-4 h-4" />
             New Series
           </button>
           <button
             onClick={() => setIsFilterModalOpen(true)}
-            className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all border border-slate-700"
+            className="w-full bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main px-3 py-2 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all border border-border-muted"
           >
             <Filter className="w-3.5 h-3.5" />
             Filter
@@ -758,9 +762,9 @@ const SeriesSidebar: React.FC<Props> = ({
       <aside
         className={`
           ${isSidebarCollapsed ? "w-20" : "w-72"} 
-          bg-[#0a0f1a] border-r border-slate-800 
+          bg-surface border-r border-border-muted 
           flex flex-col h-screen overflow-hidden
-          transition-all duration-300
+          transition-all duration-300 ease-in-out
           fixed md:relative inset-y-0 left-0 z-[80]
           ${
             isMobileOpen

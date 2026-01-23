@@ -28,13 +28,13 @@ const ConfirmModal: React.FC<Props> = ({
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300"
+        className="absolute inset-0 bg-background/80 backdrop-blur-md animate-in fade-in duration-300"
         onClick={onClose}
       />
 
       {/* Modal Container */}
       <div
-        className="relative bg-slate-900/40 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] shadow-[0_0_100px_-20px_rgba(0,0,0,0.5)] w-full max-w-sm overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-5 duration-300"
+        className="relative bg-surface/40 backdrop-blur-2xl border border-border-muted rounded-[2.5rem] shadow-glow w-full max-w-sm overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-5 duration-300 glass-card"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Top Gradient Bar */}
@@ -67,10 +67,10 @@ const ConfirmModal: React.FC<Props> = ({
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-2xl font-black text-white uppercase tracking-tighter">
+              <h3 className="text-2xl font-black text-text-main uppercase tracking-tighter">
                 {title}
               </h3>
-              <p className="text-slate-400 text-sm font-medium leading-relaxed max-w-[240px]">
+              <p className="text-text-muted text-sm font-medium leading-relaxed max-w-[240px]">
                 {message}
               </p>
             </div>
@@ -93,7 +93,7 @@ const ConfirmModal: React.FC<Props> = ({
             </button>
             <button
               onClick={onClose}
-              className="w-full py-4 px-6 bg-white/5 hover:bg-white/10 text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-white/5 hover:border-white/10 active:scale-95"
+              className="w-full py-4 px-6 bg-surface-raised/50 hover:bg-surface-elevated text-text-muted rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-border-muted hover:border-border-accent active:scale-95"
             >
               {cancelText}
             </button>
@@ -103,7 +103,7 @@ const ConfirmModal: React.FC<Props> = ({
         {/* Close Icon Shortcut */}
         <button
           onClick={onClose}
-          className="absolute top-6 right-6 p-2 text-slate-500 hover:text-white transition-colors rounded-full hover:bg-white/5"
+          className="absolute top-6 right-6 p-2 text-text-dark hover:text-text-main transition-colors rounded-full hover:bg-surface-raised"
         >
           <X className="w-4 h-4" />
         </button>

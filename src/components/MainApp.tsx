@@ -165,7 +165,7 @@ const MainApp: React.FC = () => {
         type={confirmConfig.type}
       />
 
-      <div className="flex h-screen bg-[#020617] text-slate-100 font-sans overflow-hidden">
+      <div className="flex h-screen bg-background text-text-main font-sans overflow-hidden">
         <SeriesSidebar
           series={series}
           activeId={activeSeriesId}
