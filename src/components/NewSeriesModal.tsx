@@ -10,7 +10,7 @@ interface Props {
     category: string,
     sequenceNumber: number,
     categoryId?: string,
-    metadata?: { author?: string; group?: string; originalTitle?: string }
+    metadata?: { author?: string; group?: string; originalTitle?: string },
   ) => void;
   existingTitles: string[];
   categories: Category[];
@@ -40,7 +40,7 @@ const NewSeriesModal: React.FC<Props> = ({
   const [name, setName] = useState(initialName);
   const [categoryName, setCategoryName] = useState(
     initialCategory ||
-      (categories.length > 0 ? categories[0].name : "Uncategorized")
+      (categories.length > 0 ? categories[0].name : "Uncategorized"),
   );
   const [sequenceNumber, setSequenceNumber] = useState(initialSequenceNumber);
   const [author, setAuthor] = useState(initialAuthor);
@@ -56,7 +56,7 @@ const NewSeriesModal: React.FC<Props> = ({
       setName(initialName);
       setCategoryName(
         initialCategory ||
-          (categories.length > 0 ? categories[0].name : "Uncategorized")
+          (categories.length > 0 ? categories[0].name : "Uncategorized"),
       );
       setSequenceNumber(initialSequenceNumber);
       setAuthor(initialAuthor);
@@ -114,10 +114,10 @@ const NewSeriesModal: React.FC<Props> = ({
   const flattenedCategories = useMemo(() => {
     const buildList = (
       parentId: string | null = null,
-      depth = 0
+      depth = 0,
     ): { id: string; name: string; level: number }[] => {
       const children = categories.filter(
-        (c) => c.parentId === (parentId || null)
+        (c) => c.parentId === (parentId || null),
       );
       let list: { id: string; name: string; level: number }[] = [];
       children.forEach((child) => {
@@ -140,19 +140,19 @@ const NewSeriesModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        className="w-full max-w-md bg-surface border border-border-muted rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 glass-card"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-800/50">
-          <h2 className="text-xl font-black uppercase tracking-tight text-white italic">
+        <div className="p-6 border-b border-border-muted flex items-center justify-between bg-surface-raised/50">
+          <h2 className="text-xl font-black uppercase tracking-tight text-text-main italic">
             {initialName ? "Edit" : "Create"}{" "}
-            <span className="text-indigo-400">
+            <span className="text-primary text-glow">
               {initialName ? "Series" : "New Series"}
             </span>
           </h2>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white transition-colors"
+            className="p-2 text-text-dark hover:text-text-main transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
@@ -160,7 +160,7 @@ const NewSeriesModal: React.FC<Props> = ({
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
               Series Title
             </label>
             <input
@@ -169,7 +169,7 @@ const NewSeriesModal: React.FC<Props> = ({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., One Piece - Chapter 1100"
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+              className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
             />
             {error && (
               <p className="text-xs font-bold text-rose-500 mt-1">{error}</p>
@@ -177,20 +177,20 @@ const NewSeriesModal: React.FC<Props> = ({
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
               Sequence Number
             </label>
             <input
               type="number"
               value={sequenceNumber}
               onChange={(e) => setSequenceNumber(parseInt(e.target.value) || 0)}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+              className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
                 Author
               </label>
               <input
@@ -198,11 +198,11 @@ const NewSeriesModal: React.FC<Props> = ({
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
                 placeholder="Author name"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
                 Group
               </label>
               <input
@@ -210,13 +210,13 @@ const NewSeriesModal: React.FC<Props> = ({
                 value={group}
                 onChange={(e) => setGroup(e.target.value)}
                 placeholder="Scan group"
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+                className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
               />
             </div>
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
               Original Title
             </label>
             <input
@@ -224,12 +224,12 @@ const NewSeriesModal: React.FC<Props> = ({
               value={originalTitle}
               onChange={(e) => setOriginalTitle(e.target.value)}
               placeholder="Original series title"
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all"
+              className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">
+            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
               Category
             </label>
             {!isAddingCategory ? (
@@ -237,11 +237,15 @@ const NewSeriesModal: React.FC<Props> = ({
                 <select
                   value={categoryName}
                   onChange={(e) => setCategoryName(e.target.value)}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all appearance-none cursor-pointer"
+                  className="flex-1 bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all appearance-none cursor-pointer text-text-main"
                 >
                   <option value="">Select or Uncategorized</option>
                   {flattenedCategories.map((cat) => (
-                    <option key={cat.id} value={cat.name}>
+                    <option
+                      key={cat.id}
+                      value={cat.name}
+                      className="bg-surface text-text-main"
+                    >
                       {"\u00A0\u00A0".repeat(cat.level) +
                         (cat.level > 0 ? "└ " : "") +
                         cat.name}
@@ -251,7 +255,7 @@ const NewSeriesModal: React.FC<Props> = ({
                 <button
                   type="button"
                   onClick={() => setIsAddingCategory(true)}
-                  className="p-3 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 hover:text-indigo-400 hover:border-indigo-500/30 transition-all"
+                  className="p-3 bg-surface-raised border border-border-muted rounded-xl text-text-dark hover:text-primary hover:border-primary/50 transition-all"
                   title="Add new category"
                 >
                   <Plus className="w-5 h-5" />
@@ -264,19 +268,19 @@ const NewSeriesModal: React.FC<Props> = ({
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
                   placeholder="New Category..."
-                  className="flex-1 bg-slate-800 border border-indigo-500/50 rounded-xl px-4 py-3 text-sm outline-none transition-all"
+                  className="flex-1 bg-surface-raised border border-primary/50 rounded-xl px-4 py-3 text-sm outline-none transition-all text-text-main"
                 />
                 <button
                   type="button"
                   onClick={handleAddCategory}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-indigo-500 transition-all"
+                  className="px-4 py-2 bg-primary text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-primary-hover transition-all shadow-glow shadow-primary/20"
                 >
                   Add
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsAddingCategory(false)}
-                  className="px-4 py-2 bg-slate-800 text-slate-400 rounded-xl text-xs font-black uppercase tracking-widest hover:text-white transition-all"
+                  className="px-4 py-2 bg-surface-raised text-text-dark rounded-xl text-xs font-black uppercase tracking-widest hover:text-text-main transition-all border border-border-muted"
                 >
                   Back
                 </button>
@@ -287,7 +291,7 @@ const NewSeriesModal: React.FC<Props> = ({
           <div className="pt-4">
             <button
               type="submit"
-              className="w-full py-4 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-0.5 active:translate-y-0 transition-all"
+              className="w-full py-4 bg-gradient-to-r from-primary to-primary-hover text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all border border-white/10"
             >
               {initialName ? "Confirm Changes" : "Initialize Series"}
             </button>

@@ -52,28 +52,28 @@ const FilterSortModal: React.FC<Props> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4">
       <div
-        className="bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-200"
+        className="bg-surface/40 backdrop-blur-2xl border border-border-muted rounded-[2.5rem] shadow-glow w-full max-w-md animate-in zoom-in-95 duration-200 glass-card overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-slate-800">
-          <h3 className="text-xl font-black uppercase tracking-tight">
+        <div className="flex items-center justify-between p-8 border-b border-border-muted">
+          <h3 className="text-2xl font-black text-text-main uppercase tracking-tighter text-glow">
             Filter & Sort
           </h3>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors"
+            className="w-10 h-10 rounded-xl bg-surface-raised hover:bg-surface-elevated flex items-center justify-center transition-all border border-border-muted hover:border-border-accent group"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5 text-text-muted group-hover:text-text-main transition-colors" />
           </button>
         </div>
 
         <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
           {/* Search */}
           <div>
-            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2 block">
+            <label className="text-[10px] font-black uppercase tracking-widest text-text-dark mb-2.5 block ml-1">
               Search
             </label>
             <input
@@ -83,20 +83,20 @@ const FilterSortModal: React.FC<Props> = ({
                 setFilters({ ...filters, search: e.target.value })
               }
               placeholder="Series name..."
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm focus:ring-2 ring-indigo-500 outline-none"
+              className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-3 text-sm focus:ring-2 ring-primary outline-none transition-all placeholder:text-text-dark/50"
             />
           </div>
 
           {/* Categories */}
           <div>
-            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2 block">
+            <label className="text-[10px] font-black uppercase tracking-widest text-text-dark mb-2.5 block ml-1">
               Categories
             </label>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
+            <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar pr-2">
               {availableCategories.map((cat) => (
                 <label
                   key={cat}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-raised cursor-pointer transition-all border border-transparent hover:border-border-muted group"
                 >
                   <input
                     type="checkbox"
@@ -111,14 +111,16 @@ const FilterSortModal: React.FC<Props> = ({
                         setFilters({
                           ...filters,
                           categories: filters.categories.filter(
-                            (c) => c !== cat
+                            (c) => c !== cat,
                           ),
                         });
                       }
                     }}
-                    className="w-4 h-4 rounded border-slate-600 accent-indigo-600"
+                    className="w-4 h-4 rounded border-border-muted accent-primary cursor-pointer"
                   />
-                  <span className="text-sm font-bold">{cat}</span>
+                  <span className="text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
+                    {cat}
+                  </span>
                 </label>
               ))}
             </div>
@@ -126,7 +128,7 @@ const FilterSortModal: React.FC<Props> = ({
 
           {/* Sort By */}
           <div>
-            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2 block">
+            <label className="text-[10px] font-black uppercase tracking-widest text-text-dark mb-2.5 block ml-1">
               Sort By
             </label>
             <select
@@ -137,7 +139,7 @@ const FilterSortModal: React.FC<Props> = ({
                   sortBy: e.target.value as FilterSortOptions["sortBy"],
                 })
               }
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm font-bold focus:ring-2 ring-indigo-500 outline-none"
+              className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-3 text-sm font-bold focus:ring-2 ring-primary outline-none transition-all appearance-none cursor-pointer"
             >
               <option value="name-asc">Name (A-Z)</option>
               <option value="name-desc">Name (Z-A)</option>
@@ -150,47 +152,51 @@ const FilterSortModal: React.FC<Props> = ({
 
           {/* Status Filter */}
           <div>
-            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2 block">
+            <label className="text-[10px] font-black uppercase tracking-widest text-text-dark mb-2.5 block ml-1">
               Status
             </label>
-            <div className="space-y-2">
-              <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors">
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-raised cursor-pointer transition-all border border-transparent hover:border-border-muted group">
                 <input
                   type="checkbox"
                   checked={filters.showCompleted}
                   onChange={(e) =>
                     setFilters({ ...filters, showCompleted: e.target.checked })
                   }
-                  className="w-4 h-4 rounded border-slate-600 accent-indigo-600"
+                  className="w-4 h-4 rounded border-border-muted accent-primary cursor-pointer"
                 />
-                <span className="text-sm font-bold">Show Completed</span>
+                <span className="text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
+                  Show Completed
+                </span>
               </label>
-              <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors">
+              <label className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-raised cursor-pointer transition-all border border-transparent hover:border-border-muted group">
                 <input
                   type="checkbox"
                   checked={filters.showInProgress}
                   onChange={(e) =>
                     setFilters({ ...filters, showInProgress: e.target.checked })
                   }
-                  className="w-4 h-4 rounded border-slate-600 accent-indigo-600"
+                  className="w-4 h-4 rounded border-border-muted accent-primary cursor-pointer"
                 />
-                <span className="text-sm font-bold">Show In Progress</span>
+                <span className="text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
+                  Show In Progress
+                </span>
               </label>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-3 p-6 border-t border-slate-800">
+        <div className="flex items-center gap-3 p-8 border-t border-border-muted bg-surface/20">
           <button
             onClick={handleReset}
-            className="flex-1 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-black text-xs uppercase transition-all"
+            className="flex-1 py-3.5 px-4 bg-surface-raised hover:bg-surface-elevated text-text-muted rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-border-muted hover:border-border-accent active:scale-[0.98]"
           >
             Reset
           </button>
           <button
             onClick={handleApply}
-            className="flex-1 py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs uppercase transition-all shadow-lg shadow-indigo-500/20"
+            className="flex-1 py-3.5 px-4 bg-primary hover:bg-primary-hover text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-primary/20 border border-primary/20 active:scale-[0.98]"
           >
             Apply
           </button>

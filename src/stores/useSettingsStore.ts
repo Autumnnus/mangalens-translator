@@ -22,7 +22,7 @@ export const useSettingsStore = create<SettingsState>()(
         backgroundColor: "#ffffff",
         strokeColor: "#ffffff",
       },
-      isViewOnly: false,
+      isViewOnly: process.env.NODE_ENV === "production",
 
       updateSettings: (newSettings) =>
         set((state) => ({
@@ -33,7 +33,7 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "mangalens_settings",
-      partialize: (state) => ({ settings: state.settings }), // Don't persist viewOnly mode if not desired, or include it if you do
-    }
-  )
+      partialize: (state) => ({ settings: state.settings }),
+    },
+  ),
 );

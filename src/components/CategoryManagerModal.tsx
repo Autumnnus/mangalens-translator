@@ -9,6 +9,7 @@ interface Props {
   onUpdateCategory: (id: string, name: string) => void;
   onDeleteCategory: (id: string) => void;
   onAddCategory: (name: string, parentId?: string) => void;
+  initialParentId?: string;
 }
 
 const CategoryManagerModal: React.FC<Props> = ({
@@ -18,11 +19,22 @@ const CategoryManagerModal: React.FC<Props> = ({
   onUpdateCategory,
   onDeleteCategory,
   onAddCategory,
+  initialParentId,
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [selectedParentId, setSelectedParentId] = useState<string>("");
+  const [selectedParentId, setSelectedParentId] = useState<string>(
+    initialParentId || "",
+  );
+
+  React.useEffect(() => {
+    if (isOpen && initialParentId) {
+      setSelectedParentId(initialParentId);
+    } else if (isOpen) {
+      setSelectedParentId("");
+    }
+  }, [isOpen, initialParentId]);
 
   if (!isOpen) return null;
 
@@ -43,7 +55,7 @@ const CategoryManagerModal: React.FC<Props> = ({
     if (newCategoryName.trim()) {
       onAddCategory(
         newCategoryName.trim(),
-        selectedParentId === "" ? undefined : selectedParentId
+        selectedParentId === "" ? undefined : selectedParentId,
       );
       setNewCategoryName("");
       // Keep parent selection or reset? Resetting is probably safer.
@@ -61,8 +73,8 @@ const CategoryManagerModal: React.FC<Props> = ({
     return (
       <div key={cat.id} className="space-y-1">
         <div
-          className={`group flex items-center gap-3 p-3 bg-slate-800/40 rounded-xl border border-slate-800 hover:border-slate-700 transition-all ${
-            level > 0 ? "ml-6 border-l-2 border-l-indigo-500/30" : ""
+          className={`group flex items-center gap-3 p-3 bg-surface-raised/50 rounded-xl border border-border-muted hover:border-border-accent transition-all ${
+            level > 0 ? "ml-6 border-l-2 border-l-primary/30" : ""
           }`}
         >
           {isEditing ? (
@@ -72,7 +84,7 @@ const CategoryManagerModal: React.FC<Props> = ({
                 type="text"
                 value={editValue}
                 onChange={(e) => setEditValue(e.target.value)}
-                className="flex-1 bg-slate-900 border border-indigo-500/50 rounded-lg px-3 py-1 text-sm outline-none"
+                className="flex-1 bg-surface-elevated border border-primary/50 rounded-lg px-3 py-1 text-sm outline-none text-text-main"
                 onKeyDown={(e) => e.key === "Enter" && handleSaveEdit(cat)}
               />
               <button
@@ -84,18 +96,18 @@ const CategoryManagerModal: React.FC<Props> = ({
             </div>
           ) : (
             <>
-              <span className="flex-1 text-sm font-bold text-slate-300">
+              <span className="flex-1 text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
                 {cat.name}
               </span>
               <button
                 onClick={() => handleStartEdit(cat)}
-                className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-indigo-400 transition-all"
+                className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dark hover:text-primary transition-all"
               >
                 <Edit2 className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onDeleteCategory(cat.id)}
-                className="opacity-0 group-hover:opacity-100 p-1.5 text-slate-500 hover:text-rose-400 transition-all"
+                className="opacity-0 group-hover:opacity-100 p-1.5 text-text-dark hover:text-rose-400 transition-all"
               >
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -104,7 +116,7 @@ const CategoryManagerModal: React.FC<Props> = ({
         </div>
         {/* Render Children */}
         {getChildren(cat.id).map((child) =>
-          renderCategoryItem(child, level + 1)
+          renderCategoryItem(child, level + 1),
         )}
       </div>
     );
@@ -113,22 +125,22 @@ const CategoryManagerModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh]"
+        className="w-full max-w-lg bg-surface border border-border-muted rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh] glass-card"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="p-6 border-b border-slate-800 flex items-center justify-between bg-slate-800/50 shrink-0">
-          <h2 className="text-xl font-black uppercase tracking-tight text-white italic">
-            Manage <span className="text-indigo-400">Categories</span>
+        <div className="p-6 border-b border-border-muted flex items-center justify-between bg-surface-raised/50 shrink-0">
+          <h2 className="text-xl font-black uppercase tracking-tight text-text-main italic">
+            Manage <span className="text-primary text-glow">Categories</span>
           </h2>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white transition-colors"
+            className="p-2 text-text-dark hover:text-text-main transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-4 border-b border-slate-800 bg-slate-800/20 shrink-0">
+        <div className="p-4 border-b border-border-muted bg-surface-raised/20 shrink-0">
           <form onSubmit={handleAddSubmit} className="flex gap-2">
             <div className="flex-1 flex gap-2">
               <input
@@ -136,12 +148,12 @@ const CategoryManagerModal: React.FC<Props> = ({
                 value={newCategoryName}
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 placeholder="New Category Name..."
-                className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2 text-sm focus:border-indigo-500 outline-none transition-all"
+                className="flex-1 bg-surface-raised border border-border-muted rounded-xl px-4 py-2 text-sm focus:border-primary outline-none transition-all placeholder:text-text-dark/50"
               />
               <select
                 value={selectedParentId}
                 onChange={(e) => setSelectedParentId(e.target.value)}
-                className="w-1/3 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm focus:border-indigo-500 outline-none cursor-pointer"
+                className="w-1/3 bg-surface-raised border border-border-muted rounded-xl px-3 py-2 text-sm focus:border-primary outline-none cursor-pointer text-text-muted"
               >
                 <option value="">No Parent</option>
                 {categories.map((c) => (
@@ -154,7 +166,7 @@ const CategoryManagerModal: React.FC<Props> = ({
             <button
               type="submit"
               disabled={!newCategoryName.trim()}
-              className="p-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-glow shadow-primary/10"
             >
               <Plus className="w-5 h-5" />
             </button>
@@ -171,8 +183,8 @@ const CategoryManagerModal: React.FC<Props> = ({
           )}
         </div>
 
-        <div className="p-6 bg-slate-800/30 border-t border-slate-800 shrink-0">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center italic">
+        <div className="p-6 bg-surface-raised/30 border-t border-border-subtle shrink-0">
+          <p className="text-[10px] font-bold text-text-dark uppercase tracking-widest text-center italic">
             Deleting a category will NOT delete the series inside it.
           </p>
         </div>

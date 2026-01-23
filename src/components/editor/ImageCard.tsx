@@ -1,5 +1,5 @@
-import { saveAs } from "file-saver";
 import React from "react";
+import { useConfirm } from "../../hooks/useConfirm";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useUIStore } from "../../stores/useUIStore";
@@ -21,57 +21,60 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
     series,
     reorderImages,
   } = useSeriesStore();
-  const { openConfirmModal, setSelectedImageId } = useUIStore();
+  const { setSelectedImageId } = useUIStore();
+  const { confirm } = useConfirm();
   const { processImage } = useImageProcessor();
 
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
 
-  const handleDownload = async () => {
-    const url = displayUrl;
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      saveAs(blob, `translated_${image.fileName}`);
-    } catch (e) {
-      console.error("Single download failed:", e);
-    }
-  };
-
-  const moveImage = (dir: "up" | "down") => {
+  const moveImage = (dir: "up" | "down" | "jump", targetPos?: number) => {
     const activeSeries = series.find((s) => s.id === activeSeriesId);
     if (!activeSeries) return;
 
     const currentImages = [...activeSeries.images];
-    const targetIndex = dir === "up" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= currentImages.length) return;
 
-    // Swap
-    [currentImages[index], currentImages[targetIndex]] = [
-      currentImages[targetIndex],
-      currentImages[index],
-    ];
+    if (dir === "jump" && targetPos !== undefined) {
+      // Logic: Move from current position to targetPos
+      const [item] = currentImages.splice(index, 1);
+      const insertIdx = Math.max(
+        0,
+        Math.min(targetPos - 1, currentImages.length),
+      );
+      currentImages.splice(insertIdx, 0, item);
+    } else {
+      const targetIndex = dir === "up" ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= currentImages.length) return;
 
-    // Extract IDs in new order
+      [currentImages[index], currentImages[targetIndex]] = [
+        currentImages[targetIndex],
+        currentImages[index],
+      ];
+    }
+
     const orderedIds = currentImages.map((img) => img.id);
-    reorderImages(activeSeriesId, orderedIds);
+    if (activeSeriesId) {
+      reorderImages(activeSeriesId, orderedIds);
+    }
   };
 
   const handleRemove = () => {
-    openConfirmModal({
+    confirm({
       title: "Remove Image",
       message:
         "Are you sure you want to remove this image? This action cannot be undone.",
       onConfirm: () => {
         if (image.originalUrl.startsWith("blob:"))
           URL.revokeObjectURL(image.originalUrl);
-        removeImageFromSeries(activeSeriesId, image.id);
+        if (activeSeriesId) {
+          removeImageFromSeries(activeSeriesId, image.id);
+        }
       },
       type: "danger",
     });
   };
 
   return (
-    <div className="bg-slate-800/50 backdrop-blur-sm rounded-3xl border border-slate-700/50 overflow-hidden hover:border-indigo-500/50 transition-all group duration-300 hover:shadow-2xl hover:shadow-indigo-500/10">
+    <div className="glass-card rounded-[2rem] overflow-hidden group transition-all duration-500 hover:scale-[1.02] active:scale-[0.98]">
       <div
         className="relative aspect-[2/3] bg-black/40 group-hover:bg-black/20 transition-colors cursor-pointer"
         onClick={() => setSelectedImageId(image.id)}
@@ -86,14 +89,14 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
         {/* Status Overlay */}
         <div className="absolute top-4 left-4 flex flex-col gap-2">
           <div
-            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest backdrop-blur-md border shadow-lg ${
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest backdrop-blur-md border shadow-lg transition-colors ${
               image.status === "completed"
                 ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
                 : image.status === "processing"
-                ? "bg-indigo-500/20 border-indigo-500/30 text-indigo-400 animate-pulse"
-                : image.status === "error"
-                ? "bg-red-500/20 border-red-500/30 text-red-400"
-                : "bg-slate-800/80 border-slate-600/50 text-slate-300"
+                  ? "bg-primary/20 border-primary/30 text-primary animate-pulse"
+                  : image.status === "error"
+                    ? "bg-red-500/20 border-red-500/30 text-red-400"
+                    : "bg-surface-raised/80 border-border-muted text-text-muted"
             }`}
           >
             {image.status === "processing" ? (
@@ -109,7 +112,7 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
 
         {/* Cost Badge */}
         {image.cost !== undefined && (
-          <div className="absolute top-4 right-4 bg-slate-900/90 backdrop-blur border border-slate-700 px-2 py-1 rounded-lg text-[10px] font-mono font-bold text-indigo-300">
+          <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-md border border-border-muted px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold text-primary shadow-glow">
             ${image.cost.toFixed(5)}
           </div>
         )}
@@ -119,14 +122,14 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
         <div className="flex items-start justify-between gap-4 mb-4">
           <div className="overflow-hidden">
             <h4
-              className="text-white font-bold text-sm truncate mb-1"
+              className="text-text-main font-bold text-sm truncate mb-1"
               title={image.fileName}
             >
               {image.fileName}
             </h4>
-            <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-text-dark uppercase tracking-wider">
               <span>IMG {String(index + 1).padStart(2, "0")}</span>
-              <span className="w-1 h-1 rounded-full bg-slate-700"></span>
+              <span className="w-1 h-1 rounded-full bg-border-muted"></span>
               <span>
                 {(image.usage?.totalTokenCount || 0).toLocaleString()} tok
               </span>
@@ -142,18 +145,11 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          {image.status === "completed" ? (
-            <button
-              onClick={handleDownload}
-              className="flex-1 bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-400 border border-emerald-500/20 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
-            >
-              Download
-            </button>
-          ) : (
+          {image.status === "completed" ? null : (
             <button
               onClick={() => processImage(image)}
               disabled={image.status === "processing"}
-              className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:cursor-not-allowed group/btn"
+              className="flex-1 bg-primary hover:bg-primary-hover disabled:bg-surface-elevated disabled:text-text-dark text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:cursor-not-allowed group/btn shadow-lg shadow-primary/20 border border-primary/30"
             >
               <span className="group-hover/btn:hidden">
                 {image.status === "error" ? "Retry" : "Translate"}
@@ -164,36 +160,42 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
             </button>
           )}
 
-          <div className="flex bg-slate-900 rounded-xl border border-slate-700 p-0.5 items-center">
-            <input
-              type="number"
-              className="w-12 bg-transparent text-center text-[10px] font-bold text-slate-300 focus:outline-none focus:text-white"
-              value={image.sequenceNumber}
-              onChange={(e) => {
-                const val = parseInt(e.target.value);
-                if (!isNaN(val)) {
-                  updateImageInSeries(activeSeriesId, image.id, {
-                    sequenceNumber: val,
-                  });
-                }
-              }}
-              title="Sequence Number"
-            />
-            <div className="w-px bg-slate-800 my-1 h-full"></div>
+          {/* Premium Order Control */}
+          <div className="flex bg-background/50 rounded-2xl border border-border-muted p-1 items-center shadow-inner group/order">
             <button
               onClick={() => moveImage("up")}
               disabled={index === 0}
-              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+              className="w-9 h-9 flex items-center justify-center text-text-dark hover:text-primary hover:bg-primary/10 rounded-xl transition-all disabled:opacity-20 active:scale-90"
+              title="Move Up"
             >
-              <i className="fas fa-chevron-left"></i>
+              <i className="fas fa-chevron-left text-xs"></i>
             </button>
-            <div className="w-px bg-slate-800 my-1 h-full"></div>
+
+            <div className="relative flex items-center px-1">
+              <span className="absolute left-1/2 -translate-x-1/2 text-[8px] font-black text-text-dark/40 uppercase tracking-tighter -top-3 opacity-0 group-hover/order:opacity-100 transition-opacity">
+                Pos
+              </span>
+              <input
+                type="number"
+                className="w-10 bg-transparent text-center text-xs font-black text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 rounded-lg py-1 transition-all"
+                value={image.sequenceNumber}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value);
+                  if (!isNaN(val)) {
+                    moveImage("jump", val);
+                  }
+                }}
+                onFocus={(e) => e.target.select()}
+              />
+            </div>
+
             <button
               onClick={() => moveImage("down")}
               disabled={index === total - 1}
-              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:bg-slate-800 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:hover:bg-transparent"
+              className="w-9 h-9 flex items-center justify-center text-text-dark hover:text-primary hover:bg-primary/10 rounded-xl transition-all disabled:opacity-20 active:scale-90"
+              title="Move Down"
             >
-              <i className="fas fa-chevron-right"></i>
+              <i className="fas fa-chevron-right text-xs"></i>
             </button>
           </div>
         </div>

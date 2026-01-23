@@ -1,36 +1,90 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
-import { ProcessedImage, ViewMode } from "../../types";
-import ComparisonView from "../ComparisonView";
+import { ViewMode } from "../../types";
 import ViewModeControls from "../ViewModeControls";
+import ReaderHeader from "./ReaderHeader";
+import ReaderImageArea from "./ReaderImageArea";
+import ThumbnailStrip from "./ThumbnailStrip";
 
 const ReaderView: React.FC = () => {
-  const { series, activeSeriesId } = useSeriesStore();
-  const { currentImageIndex, setCurrentImageIndex } = useUIStore();
-  const { toggleViewOnly } = useSettingsStore();
+  // Selective store access
+  const series = useSeriesStore((state) => state.series);
+  const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
+  const currentImageIndex = useUIStore((state) => state.currentImageIndex);
+  const setCurrentImageIndex = useUIStore(
+    (state) => state.setCurrentImageIndex,
+  );
+  const toggleViewOnly = useSettingsStore((state) => state.toggleViewOnly);
 
-  // Local state for reader-specific toggles
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonMode, setComparisonMode] = useState<ViewMode>("slider");
 
-  const activeSeries = series.find((s) => s.id === activeSeriesId);
-  const images = activeSeries?.images || [];
+  const activeSeries = useMemo(
+    () => series.find((s) => s.id === activeSeriesId),
+    [series, activeSeriesId],
+  );
+  const images = useMemo(() => activeSeries?.images || [], [activeSeries]);
+
+  const thumbnailsPerPage = 20;
+  const currentThumbPage = Math.floor(currentImageIndex / thumbnailsPerPage);
+  const totalThumbPages = Math.ceil(images.length / thumbnailsPerPage);
+
+  const currentThumbSet = useMemo(() => {
+    const start = currentThumbPage * thumbnailsPerPage;
+    return images.slice(start, start + thumbnailsPerPage);
+  }, [images, currentThumbPage]);
 
   const currentImage = images[currentImageIndex];
 
-  const handleNext = () => {
-    if (currentImageIndex < images.length - 1) {
-      setCurrentImageIndex(currentImageIndex + 1);
-    }
-  };
+  const handleNext = useCallback(() => {
+    setCurrentImageIndex(Math.min(currentImageIndex + 1, images.length - 1));
+  }, [currentImageIndex, images.length, setCurrentImageIndex]);
 
-  const handlePrev = () => {
-    if (currentImageIndex > 0) {
-      setCurrentImageIndex(currentImageIndex - 1);
-    }
-  };
+  const handlePrev = useCallback(() => {
+    setCurrentImageIndex(Math.max(0, currentImageIndex - 1));
+  }, [currentImageIndex, setCurrentImageIndex]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") handleNext();
+      if (e.key === "ArrowLeft") handlePrev();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleNext, handlePrev]);
+
+  // Touch Handling
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const [touchEnd, setTouchEnd] = useState<number | null>(null);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const minSwipeDistance = 50;
+    if (distance > minSwipeDistance) handleNext();
+    if (distance < -minSwipeDistance) handlePrev();
+  }, [touchStart, touchEnd, handleNext, handlePrev]);
+
+  const handleThumbPagePrev = useCallback(() => {
+    setCurrentImageIndex(Math.max(0, currentImageIndex - thumbnailsPerPage));
+  }, [currentImageIndex, setCurrentImageIndex]);
+
+  const handleThumbPageNext = useCallback(() => {
+    setCurrentImageIndex(
+      Math.min(images.length - 1, currentImageIndex + thumbnailsPerPage),
+    );
+  }, [currentImageIndex, images.length, setCurrentImageIndex]);
 
   if (images.length === 0) {
     return (
@@ -40,207 +94,54 @@ const ReaderView: React.FC = () => {
     );
   }
 
-  // Helper for ComparisonView pair prop
-  // Helper for ComparisonView pair prop
-  const getPair = (img: ProcessedImage) => ({
-    id: img.id,
-    title: img.fileName,
-    sourceUrl: img.originalUrl,
-    convertedUrl: img.translatedUrl || img.originalUrl,
-    createdAt: 0, // Mock or ignore if not used strictly
-  });
-
   return (
     <div className="flex-1 flex flex-col h-full animate-in fade-in duration-700 min-h-0">
-      {/* Premium Viewer Header - Mobile Optimized */}
-      <div className="bg-slate-900/40 backdrop-blur-xl p-2 sm:p-6 rounded-xl sm:rounded-[2.5rem] border border-white/5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-6 mb-2 sm:mb-8 shadow-2xl shrink-0 mx-2 sm:mx-4 mt-2 sm:mt-4">
-        <div className="flex flex-col">
-          <h2 className="text-sm sm:text-2xl font-black text-white italic uppercase tracking-tight truncate max-w-[150px] sm:max-w-none">
-            {activeSeries?.name}
-          </h2>
-          <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-0">
-            <span className="text-[8px] sm:text-[10px] font-black text-indigo-400 uppercase tracking-widest bg-indigo-500/10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-indigo-500/20">
-              {activeSeries?.category}
-            </span>
-            <span className="text-[8px] sm:text-[10px] font-black text-slate-500 uppercase tracking-widest">
-              Page {currentImageIndex + 1} / {images.length}
-            </span>
-          </div>
-        </div>
+      <ReaderHeader
+        activeSeries={activeSeries}
+        currentImageIndex={currentImageIndex}
+        imageCount={images.length}
+        toggleViewOnly={toggleViewOnly}
+        setCurrentImageIndex={setCurrentImageIndex}
+        comparisonMode={comparisonMode}
+        setComparisonMode={setComparisonMode}
+      >
+        {comparisonMode !== "grid" && (
+          <ViewModeControls
+            showComparison={showComparison}
+            onToggleComparison={() => setShowComparison(!showComparison)}
+            comparisonMode={comparisonMode}
+            onChangeMode={setComparisonMode}
+            hasTranslation={!!currentImage?.translatedUrl}
+          />
+        )}
+      </ReaderHeader>
 
-        <div className="flex items-center justify-between md:justify-end gap-2 sm:gap-3">
-          <button
-            onClick={toggleViewOnly}
-            className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg sm:rounded-xl font-black text-[10px] uppercase tracking-wider transition-all border border-slate-700"
-          >
-            <i className="fas fa-edit"></i>{" "}
-            <span className="hidden sm:inline">Edit</span>
-          </button>
-
-          {/* Quick Nav */}
-          <div className="hidden sm:flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
-            <button
-              onClick={() => setCurrentImageIndex(0)}
-              disabled={currentImageIndex === 0}
-              className="p-1.5 sm:p-2 hover:bg-slate-700 rounded-md disabled:opacity-30 transition-colors"
-              title="First Page"
-            >
-              <i className="fas fa-step-backward text-[10px] sm:text-xs text-slate-400"></i>
-            </button>
-            <button
-              onClick={() => setCurrentImageIndex(images.length - 1)}
-              disabled={currentImageIndex === images.length - 1}
-              className="p-1.5 sm:p-2 hover:bg-slate-700 rounded-md disabled:opacity-30 transition-colors"
-              title="Last Page"
-            >
-              <i className="fas fa-step-forward text-[10px] sm:text-xs text-slate-400"></i>
-            </button>
-          </div>
-
-          <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700 gap-1">
-            <button
-              onClick={() => setComparisonMode("grid")}
-              className={`p-1.5 sm:p-2 rounded-md transition-all ${
-                comparisonMode === "grid"
-                  ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white"
-              }`}
-              title="Grid View"
-            >
-              <i className="fas fa-th text-[10px] sm:text-xs"></i>
-            </button>
-            <button
-              onClick={() => setComparisonMode("slider")}
-              className={`p-1.5 sm:p-2 rounded-md transition-all ${
-                comparisonMode !== "grid"
-                  ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:text-white"
-              }`}
-              title="Single View"
-            >
-              <i className="fas fa-image text-[10px] sm:text-xs"></i>
-            </button>
-          </div>
-
-          {comparisonMode !== "grid" && (
-            <ViewModeControls
-              showComparison={showComparison}
-              onToggleComparison={() => setShowComparison(!showComparison)}
-              comparisonMode={comparisonMode}
-              onChangeMode={setComparisonMode}
-            />
-          )}
-
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={handlePrev}
-              disabled={currentImageIndex === 0}
-              className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-slate-800 text-slate-400 hover:bg-indigo-600 hover:text-white disabled:opacity-30 disabled:hover:bg-slate-800 transition-all flex items-center justify-center border border-slate-700 shadow-xl"
-            >
-              <i className="fas fa-chevron-left text-xs sm:text-lg"></i>
-            </button>
-            <button
-              onClick={handleNext}
-              disabled={currentImageIndex === images.length - 1}
-              className="w-8 h-8 sm:w-12 sm:h-12 rounded-lg sm:rounded-2xl bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/30 disabled:opacity-30 transition-all flex items-center justify-center border border-indigo-500/30"
-            >
-              <i className="fas fa-chevron-right text-xs sm:text-lg"></i>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Image Area */}
       {comparisonMode !== "grid" && (
-        <div className="flex-1 min-h-0 flex items-center justify-center p-4 relative overflow-hidden">
-          <div className="w-full h-full flex items-center justify-center relative z-10 transition-all duration-300">
-            {showComparison && currentImage.translatedUrl ? (
-              <div className="w-full h-full max-w-5xl mx-auto">
-                <ComparisonView
-                  pair={getPair(currentImage)}
-                  mode={comparisonMode}
-                />
-              </div>
-            ) : (
-              <img
-                src={currentImage?.translatedUrl || currentImage?.originalUrl}
-                className="max-w-full max-h-full object-contain drop-shadow-2xl"
-                alt="Page"
-              />
-            )}
-          </div>
-
-          {/* Background Blur Effect */}
-          <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
-            <img
-              src={currentImage?.translatedUrl || currentImage?.originalUrl}
-              alt=""
-              className="w-full h-full object-cover blur-3xl scale-110"
-            />
-          </div>
-        </div>
+        <ReaderImageArea
+          currentImage={currentImage}
+          showComparison={showComparison}
+          comparisonMode={comparisonMode}
+          onNext={handleNext}
+          onPrev={handlePrev}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        />
       )}
 
-      {/* Thumbnail Strip */}
-      <div
-        className={`mt-4 sm:mt-8 p-2 sm:p-4 shrink-0 transition-all ${
-          comparisonMode === "grid"
-            ? "overflow-y-auto max-h-[50vh]"
-            : "overflow-x-auto no-scrollbar max-w-full mx-auto"
-        }`}
-      >
-        {comparisonMode === "grid" ? (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-            {images.map((img, idx) => (
-              <button
-                key={img.id}
-                onClick={() => {
-                  setCurrentImageIndex(idx);
-                  setComparisonMode("slider"); // Exit grid mode
-                }}
-                className={`relative aspect-auto group rounded-xl overflow-hidden border-2 transition-all ${
-                  idx === currentImageIndex
-                    ? "border-indigo-500 shadow-xl scale-105 z-10"
-                    : "border-slate-800 hover:border-indigo-400 opacity-70 hover:opacity-100"
-                }`}
-              >
-                <img
-                  src={img.originalUrl}
-                  alt={`Page ${idx + 1}`}
-                  className="w-full h-auto object-cover"
-                />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <span className="text-white font-bold text-xs">
-                    Pg {idx + 1}
-                  </span>
-                </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="flex items-center justify-start sm:justify-center gap-2 sm:gap-3">
-            {images.map((img, idx) => (
-              <button
-                key={img.id}
-                onClick={() => setCurrentImageIndex(idx)}
-                className={`relative w-12 h-16 sm:w-16 sm:h-24 shrink-0 rounded-lg sm:rounded-xl overflow-hidden border-2 transition-all ${
-                  idx === currentImageIndex
-                    ? "border-indigo-500 shadow-lg shadow-indigo-500/50 scale-110 z-10"
-                    : "border-slate-700 opacity-50 hover:opacity-100 hover:scale-105"
-                }`}
-              >
-                <img
-                  src={img.originalUrl}
-                  alt={`Page ${idx + 1}`}
-                  className="w-full h-full object-cover"
-                />
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <ThumbnailStrip
+        images={images}
+        currentThumbSet={currentThumbSet}
+        currentImageIndex={currentImageIndex}
+        currentThumbPage={currentThumbPage}
+        totalThumbPages={totalThumbPages}
+        comparisonMode={comparisonMode}
+        onSelectIndex={setCurrentImageIndex}
+        onPagePrev={handleThumbPagePrev}
+        onPageNext={handleThumbPageNext}
+      />
     </div>
   );
 };
 
-export default ReaderView;
+export default React.memo(ReaderView);

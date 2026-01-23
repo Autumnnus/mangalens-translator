@@ -55,13 +55,13 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
 
   if (!hasTranslation) {
     return (
-      <div className="relative h-[400px] md:h-[600px] overflow-hidden rounded-xl border border-slate-700 bg-black/40">
+      <div className="relative h-[400px] md:h-[600px] overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
         <img
           src={pair.sourceUrl}
           alt="Original"
           className="w-full h-full object-contain"
         />
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-slate-800/80 backdrop-blur rounded-full text-xs font-bold text-slate-300">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-surface-raised/80 backdrop-blur-xl border border-border-muted rounded-2xl text-xs font-black text-text-muted uppercase tracking-widest shadow-premium">
           NO TRANSLATION AVAILABLE
         </div>
       </div>
@@ -70,24 +70,24 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
 
   if (mode === "side-by-side") {
     return (
-      <div className="grid grid-cols-2 gap-2 h-[400px] md:h-[600px]">
-        <div className="relative overflow-hidden rounded-lg border border-slate-700 bg-black/40">
+      <div className="grid grid-cols-2 gap-4 h-[400px] md:h-[600px]">
+        <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
           <img
             src={pair.sourceUrl}
             alt="Source"
             className="w-full h-full object-contain"
           />
-          <div className="absolute top-2 left-2 bg-black/60 backdrop-blur px-2 py-1 text-[10px] font-bold rounded text-white uppercase tracking-widest">
+          <div className="absolute top-4 left-4 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium">
             Source
           </div>
         </div>
-        <div className="relative overflow-hidden rounded-lg border border-slate-700 bg-black/40">
+        <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
           <img
             src={pair.convertedUrl}
             alt="Converted"
             className="w-full h-full object-contain"
           />
-          <div className="absolute top-2 left-2 bg-indigo-600/80 backdrop-blur px-2 py-1 text-[10px] font-bold rounded text-white uppercase tracking-widest">
+          <div className="absolute top-4 left-4 bg-primary/80 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-white border border-primary/20 uppercase tracking-widest shadow-glow">
             Converted
           </div>
         </div>
@@ -98,7 +98,7 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
   if (mode === "toggle") {
     return (
       <div
-        className="relative h-[400px] md:h-[600px] cursor-pointer overflow-hidden rounded-xl border border-slate-700 bg-black/40"
+        className="relative h-[400px] md:h-[600px] cursor-pointer overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass group"
         onClick={() => setIsToggled(!isToggled)}
       >
         <img
@@ -108,25 +108,25 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
         />
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
           <div
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+            className={`px-5 py-2 rounded-2xl text-[10px] font-black tracking-widest transition-all shadow-premium border ${
               !isToggled
-                ? "bg-white text-black scale-110 shadow-xl"
-                : "bg-black/40 text-white/50"
+                ? "bg-text-main text-background scale-110 shadow-glow border-white/20"
+                : "bg-surface-raised/40 text-text-muted border-border-muted"
             }`}
           >
             SOURCE
           </div>
           <div
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+            className={`px-5 py-2 rounded-2xl text-[10px] font-black tracking-widest transition-all shadow-premium border ${
               isToggled
-                ? "bg-indigo-600 text-white scale-110 shadow-xl"
-                : "bg-black/40 text-white/50"
+                ? "bg-primary text-white scale-110 shadow-glow border-primary/20"
+                : "bg-surface-raised/40 text-text-muted border-border-muted"
             }`}
           >
             CONVERTED
           </div>
         </div>
-        <div className="absolute top-4 right-4 bg-black/50 backdrop-blur rounded-full p-2 text-white/70">
+        <div className="absolute top-6 right-6 bg-surface-raised/80 backdrop-blur-md rounded-2xl p-3 text-text-main border border-border-muted shadow-premium group-hover:scale-110 transition-transform">
           <MousePointer2 className="w-4 h-4" />
         </div>
       </div>
@@ -137,7 +137,7 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
   return (
     <div
       ref={containerRef}
-      className="relative h-[400px] md:h-[600px] select-none overflow-hidden rounded-xl border border-slate-700 cursor-col-resize group bg-black/40"
+      className="relative h-[400px] md:h-[600px] select-none overflow-hidden rounded-[2.5rem] border border-border-muted cursor-col-resize group bg-background/40 glass-card"
       onMouseDown={handleMouseDown}
       onTouchMove={handleMove}
     >
@@ -159,22 +159,22 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
           className="absolute inset-0 w-full h-full object-contain"
           style={{ width: `${100 / (sliderPos / 100)}%`, maxWidth: "none" }} // Ensure image scales correctly relative to parent
         />
-        <div className="absolute top-4 left-4 bg-black/60 backdrop-blur px-2 py-1 text-[10px] font-bold rounded text-white uppercase tracking-widest">
+        <div className="absolute top-4 left-4 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium z-20">
           Source
         </div>
       </div>
 
-      <div className="absolute top-4 right-4 bg-indigo-600/80 backdrop-blur px-2 py-1 text-[10px] font-bold rounded text-white uppercase tracking-widest">
+      <div className="absolute top-4 right-4 bg-primary/80 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-white border border-primary/20 uppercase tracking-widest shadow-glow z-20">
         Converted
       </div>
 
       {/* Slider Bar */}
       <div
-        className="absolute inset-y-0 w-1 bg-white shadow-[0_0_10px_rgba(0,0,0,0.5)] z-10"
+        className="absolute inset-y-0 w-0.5 bg-primary/50 shadow-glow z-30"
         style={{ left: `${sliderPos}%`, transform: "translateX(-50%)" }}
       >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white text-slate-900 rounded-full flex items-center justify-center shadow-2xl border-4 border-slate-900 group-hover:scale-110 transition-transform">
-          <MoveHorizontal className="w-4 h-4" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-primary text-white rounded-2xl flex items-center justify-center shadow-glow border border-primary/50 group-hover:scale-110 transition-transform active:scale-95">
+          <MoveHorizontal className="w-5 h-5" />
         </div>
       </div>
     </div>

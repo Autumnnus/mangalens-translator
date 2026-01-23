@@ -7,6 +7,7 @@ interface Props {
   onToggleComparison: () => void;
   comparisonMode: ViewMode;
   onChangeMode: (mode: ViewMode) => void;
+  hasTranslation?: boolean;
 }
 
 const ViewModeControls: React.FC<Props> = ({
@@ -14,16 +15,18 @@ const ViewModeControls: React.FC<Props> = ({
   onToggleComparison,
   comparisonMode,
   onChangeMode,
+  hasTranslation = true,
 }) => {
+  if (!hasTranslation) return null;
+
   return (
     <div className="flex items-center gap-2 sm:gap-3">
-      {/* Toggle Comparison */}
       <button
         onClick={onToggleComparison}
-        className={`px-3 sm:px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all flex items-center gap-2 border ${
+        className={`px-3 sm:px-4 py-2.5 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-2 border ${
           showComparison
-            ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-500/30"
-            : "bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700"
+            ? "bg-primary border-primary/30 text-white shadow-lg shadow-primary/25"
+            : "bg-surface-raised border-border-muted text-text-muted hover:bg-surface-elevated hover:text-text-main"
         }`}
         title="Show original images for comparison"
       >
@@ -35,17 +38,16 @@ const ViewModeControls: React.FC<Props> = ({
         <span className="hidden md:inline">Compare</span>
       </button>
 
-      {/* Mode Selector - Only visible when comparison is enabled */}
       {showComparison && (
-        <div className="flex bg-slate-800/50 p-1 rounded-xl border border-slate-700 gap-1">
+        <div className="flex bg-surface-raised/50 p-1.5 rounded-2xl border border-border-muted gap-1.5 glass">
           {(["slider", "side-by-side", "toggle"] as ViewMode[]).map((mode) => (
             <button
               key={mode}
               onClick={() => onChangeMode(mode)}
-              className={`px-2 sm:px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+              className={`px-3 sm:px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${
                 comparisonMode === mode
-                  ? "bg-indigo-600 text-white shadow-lg"
-                  : "text-slate-400 hover:text-white hover:bg-slate-700"
+                  ? "bg-primary text-white shadow-glow"
+                  : "text-text-dark hover:text-text-main hover:bg-surface-elevated"
               }`}
             >
               <span className="sm:inline hidden">
@@ -55,8 +57,8 @@ const ViewModeControls: React.FC<Props> = ({
                 {mode === "side-by-side"
                   ? "SPL"
                   : mode === "slider"
-                  ? "SLI"
-                  : "TOG"}
+                    ? "SLI"
+                    : "TOG"}
               </span>
             </button>
           ))}

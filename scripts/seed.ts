@@ -1,0 +1,36 @@
+import * as dotenv from "dotenv";
+dotenv.config({ path: ".env.local" });
+
+import { eq } from "drizzle-orm";
+import { db } from "../src/db";
+import { users } from "../src/db/schema";
+
+async function seed() {
+  console.log("Seeding database...");
+
+  const email = "admin@example.com";
+  const password = "password";
+
+  const existingUser = await db.query.users.findFirst({
+    where: eq(users.email, email),
+  });
+
+  if (!existingUser) {
+    await db.insert(users).values({
+      email,
+      password,
+      name: "Admin User",
+      role: "admin",
+    });
+    console.log("Created admin user: admin@example.com / password");
+  } else {
+    console.log("Admin user already exists.");
+  }
+
+  process.exit(0);
+}
+
+// seed().catch((err) => {
+//   console.error("Seed failed:", err);
+//   process.exit(1);
+// });

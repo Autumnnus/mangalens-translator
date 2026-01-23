@@ -19,6 +19,7 @@ interface UIState {
   editingSeriesId: string | null;
   currentImageIndex: number;
   selectedImageId: string | null; // For modal view
+  categoryInitialParentId: string | null;
 
   // Confirmation Modal
   confirmConfig: ConfirmConfig;
@@ -26,7 +27,10 @@ interface UIState {
   // Actions
   toggleSidebar: (value?: boolean) => void;
   toggleSettingsModal: (value?: boolean) => void;
-  toggleCategoryModal: (value?: boolean) => void;
+  toggleCategoryModal: (
+    value?: boolean,
+    initialParentId?: string | null,
+  ) => void;
   toggleNewSeriesModal: (value?: boolean) => void;
 
   setEditingSeriesId: (id: string | null) => void;
@@ -46,6 +50,7 @@ export const useUIStore = create<UIState>((set) => ({
   editingSeriesId: null,
   currentImageIndex: 0,
   selectedImageId: null,
+  categoryInitialParentId: null,
 
   confirmConfig: {
     isOpen: false,
@@ -60,9 +65,10 @@ export const useUIStore = create<UIState>((set) => ({
     set((state) => ({
       isSettingsModalOpen: value ?? !state.isSettingsModalOpen,
     })),
-  toggleCategoryModal: (value) =>
+  toggleCategoryModal: (value, initialParentId = null) =>
     set((state) => ({
       isCategoryModalOpen: value ?? !state.isCategoryModalOpen,
+      categoryInitialParentId: initialParentId,
     })),
   toggleNewSeriesModal: (value) =>
     set((state) => ({
