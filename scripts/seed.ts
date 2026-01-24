@@ -1,6 +1,7 @@
 import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 
+import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 
 async function seed() {
@@ -11,6 +12,7 @@ async function seed() {
 
   const email = "admin@example.com";
   const password = "password";
+  const hashedPassword = await bcrypt.hash(password, 10);
 
   const existingUser = await db.query.users.findFirst({
     where: eq(users.email, email),
@@ -19,7 +21,7 @@ async function seed() {
   if (!existingUser) {
     await db.insert(users).values({
       email,
-      password,
+      password: hashedPassword,
       name: "Admin User",
       role: "admin",
     });
@@ -31,7 +33,7 @@ async function seed() {
   process.exit(0);
 }
 
-// seed().catch((err) => {
-//   console.error("Seed failed:", err);
-//   process.exit(1);
-// });
+seed().catch((err) => {
+  console.error("Seed failed:", err);
+  process.exit(1);
+});

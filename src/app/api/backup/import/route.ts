@@ -35,8 +35,6 @@ export async function POST(req: NextRequest) {
       throw new Error("Empty file received");
     }
 
-    console.log(`Received buffer: ${arrayBuffer.byteLength} bytes`);
-
     const buffer = Buffer.from(arrayBuffer);
 
     if (buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
@@ -88,9 +86,6 @@ export async function POST(req: NextRequest) {
         conflictTarget?: PgColumn | PgColumn[],
       ) => {
         const tableName = getTableName(table);
-        console.log(
-          `Restoring table ${tableName} with ${rows?.length || 0} rows...`,
-        );
         const processed = processRows(table, rows);
         if (processed.length === 0) return;
 
@@ -150,13 +145,10 @@ export async function POST(req: NextRequest) {
 
     const fileFolder = zip.folder("files");
     if (fileFolder) {
-      console.log("Restoring files...");
       const allFiles: { path: string; entry: JSZip.JSZipObject }[] = [];
       fileFolder.forEach((path, entry) => {
         if (!entry.dir) allFiles.push({ path, entry });
       });
-
-      console.log(`Found ${allFiles.length} files to restore.`);
 
       const batchSize = 10;
       for (let i = 0; i < allFiles.length; i += batchSize) {

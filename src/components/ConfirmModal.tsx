@@ -18,7 +18,7 @@ const ConfirmModal: React.FC<Props> = ({
   onConfirm,
   title,
   message,
-  confirmText = "Delete",
+  confirmText = "Confirm",
   cancelText = "Cancel",
   type = "danger",
 }) => {

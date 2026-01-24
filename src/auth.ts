@@ -1,4 +1,5 @@
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
+import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
@@ -23,12 +24,30 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           const user = await db.query.users.findFirst({
             where: eq(users.email, email),
           });
-          if (!user) return null;
+          if (!user || !user.password) return null;
 
-          if (password === user.password) return user;
+          let passwordsMatch = false;
+          try {
+            // Try to compare as bcrypt hash
+            passwordsMatch = await bcrypt.compare(password, user.password);
+          } catch {
+            // If user.password is not a valid hash, it might throw or just be false
+          }
+
+          if (passwordsMatch) return user;
+
+          // Fallback: Check plain text (legacy)
+          if (password === user.password) {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            await db
+              .update(users)
+              .set({ password: hashedPassword })
+              .where(eq(users.id, user.id));
+            return user;
+          }
         }
 
-        console.log("Invalid credentials");
+        console.error("Invalid credentials");
         return null;
       },
     }),

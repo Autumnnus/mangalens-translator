@@ -1,5 +1,7 @@
-import { Download, Upload } from "lucide-react";
+import { Download, LogOut, Upload } from "lucide-react";
+import { signOut } from "next-auth/react";
 import React, { useCallback } from "react";
+import { useConfirm } from "../../hooks/useConfirm";
 
 interface SidebarFooterProps {
   isSidebarCollapsed: boolean;
@@ -12,6 +14,7 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
 }) => {
   const [isExporting, setIsExporting] = React.useState(false);
   const [isImporting, setIsImporting] = React.useState(false);
+  const { confirm } = useConfirm();
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -85,6 +88,15 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
     [],
   );
 
+  const handleLogout = () => {
+    confirm({
+      title: "Sign Out",
+      message: "Are you sure you want to sign out?",
+      onConfirm: () => signOut(),
+      type: "danger",
+    });
+  };
+
   if (isSidebarCollapsed || isViewOnly) return null;
 
   return (
@@ -130,6 +142,18 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Logout Button */}
+      <button
+        onClick={handleLogout}
+        className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 p-2.5 rounded-xl transition-all group mt-2"
+        title="Sign Out"
+      >
+        <LogOut className="w-3.5 h-3.5 text-red-400 group-hover:text-red-300 transition-colors" />
+        <span className="text-[10px] font-black text-red-400 group-hover:text-red-300 uppercase tracking-widest">
+          Sign Out
+        </span>
+      </button>
     </div>
   );
 };
