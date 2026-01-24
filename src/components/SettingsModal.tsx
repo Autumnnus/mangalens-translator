@@ -1,14 +1,103 @@
 import {
   Baseline,
   Languages,
+  Lock,
   Palette,
   Sliders,
   Square,
   Text,
   X,
 } from "lucide-react";
-import React from "react";
+import React, { useState } from "react";
 import { TranslationSettings } from "../types";
+
+const PasswordChangeForm = () => {
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState<{
+    text: string;
+    type: "success" | "error";
+  } | null>(null);
+
+  const handleChangePassword = async () => {
+    if (!password) return;
+    if (password !== confirm) {
+      setMessage({ text: "Passwords do not match", type: "error" });
+      return;
+    }
+    if (password.length < 6) {
+      setMessage({
+        text: "Password must be at least 6 characters",
+        type: "error",
+      });
+      return;
+    }
+
+    setLoading(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || "Failed to update password");
+
+      setMessage({ text: "Password updated successfully", type: "success" });
+      setPassword("");
+      setConfirm("");
+    } catch (err: unknown) {
+      setMessage({
+        text: err instanceof Error ? err.message : "Error",
+        type: "error",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-surface-raised/50 p-4 rounded-2xl border border-border-muted space-y-3">
+      {message && (
+        <div
+          className={`text-[10px] font-bold px-3 py-2 rounded-xl ${message.type === "success" ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}
+        >
+          {message.text}
+        </div>
+      )}
+      <div className="space-y-1">
+        <input
+          type="password"
+          placeholder="New Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-xs font-medium focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-text-muted/50"
+        />
+      </div>
+      <div className="space-y-1">
+        <input
+          type="password"
+          placeholder="Confirm Password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-xs font-medium focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-text-muted/50"
+        />
+      </div>
+      <button
+        onClick={handleChangePassword}
+        disabled={loading || !password}
+        className="w-full py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all"
+      >
+        {loading ? "Updating..." : "Update Password"}
+      </button>
+    </div>
+  );
+};
 
 interface Props {
   isOpen: boolean;
@@ -204,6 +293,20 @@ const SettingsModal: React.FC<Props> = ({
                 </div>
               </div>
             </div>
+          </div>
+
+          <div className="h-px bg-white/5"></div>
+
+          {/* Account Security (Password Change) */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-primary">
+              <Lock className="w-4 h-4" />
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                Security
+              </label>
+            </div>
+
+            <PasswordChangeForm />
           </div>
         </div>
 
