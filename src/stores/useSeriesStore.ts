@@ -380,7 +380,11 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
 
   saveTranslatedImage: async (seriesId, imageId, blob, fileName, meta) => {
     try {
-      // 1. Get Presigned Upload URL for Translated Key
+      const activeSeries = get().series.find((s) => s.id === seriesId);
+      const existingImage = activeSeries?.images.find(
+        (img) => img.id === imageId,
+      );
+
       const res = await fetch("/api/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -388,6 +392,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
           fileName: `translated_${fileName}`,
           contentType: blob.type,
           seriesId,
+          key: existingImage?.translatedKey,
         }),
       });
 

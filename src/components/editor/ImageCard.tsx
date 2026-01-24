@@ -145,20 +145,34 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          {image.status === "completed" ? null : (
-            <button
-              onClick={() => processImage(image)}
-              disabled={image.status === "processing"}
-              className="flex-1 bg-primary hover:bg-primary-hover disabled:bg-surface-elevated disabled:text-text-dark text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:cursor-not-allowed group/btn shadow-lg shadow-primary/20 border border-primary/30"
-            >
-              <span className="group-hover/btn:hidden">
-                {image.status === "error" ? "Retry" : "Translate"}
-              </span>
-              <span className="hidden group-hover/btn:inline">
-                <i className="fas fa-bolt"></i> Run
-              </span>
-            </button>
-          )}
+          <button
+            onClick={() => {
+              if (image.status === "completed") {
+                confirm({
+                  title: "Re-translate Image",
+                  message:
+                    "This will overwrite the existing translation and usage data. Are you sure?",
+                  onConfirm: () => processImage(image),
+                  type: "warning",
+                });
+              } else {
+                processImage(image);
+              }
+            }}
+            disabled={image.status === "processing"}
+            className="flex-1 bg-primary hover:bg-primary-hover disabled:bg-surface-elevated disabled:text-text-dark text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:cursor-not-allowed group/btn shadow-lg shadow-primary/20 border border-primary/30"
+          >
+            <span className="group-hover/btn:hidden">
+              {image.status === "completed"
+                ? "Re-translate"
+                : image.status === "error"
+                  ? "Retry"
+                  : "Translate"}
+            </span>
+            <span className="hidden group-hover/btn:inline">
+              <i className="fas fa-bolt"></i> Run
+            </span>
+          </button>
 
           {/* Premium Order Control */}
           <div className="flex bg-background/50 rounded-2xl border border-border-muted p-1 items-center shadow-inner group/order">

@@ -9,7 +9,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { fileName, contentType, seriesId } = await req.json();
+    const {
+      fileName,
+      contentType,
+      seriesId,
+      key: existingKey,
+    } = await req.json();
 
     if (!fileName || !contentType || !seriesId) {
       return NextResponse.json(
@@ -19,7 +24,7 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanFileName = fileName.replace(/\s+/g, "-");
-    const key = `${seriesId}/${Date.now()}_${cleanFileName}`;
+    const key = existingKey || `${seriesId}/${Date.now()}_${cleanFileName}`;
 
     const { uploadUrl, publicUrl } = await getPresignedUploadUrl(
       key,

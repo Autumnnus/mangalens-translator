@@ -1,25 +1,32 @@
-import { auth } from "@/auth";
+import { authConfig } from "@/auth.config";
+import NextAuth from "next-auth";
 import { NextResponse } from "next/server";
+
+const { auth } = NextAuth(authConfig);
 
 export default auth((req) => {
   const isLoggedIn = !!req.auth;
-  const isAuthPage = req.nextUrl.pathname.startsWith("/auth");
-  const isApiAuth = req.nextUrl.pathname.startsWith("/api/auth");
-  const isPublicApi =
-    req.nextUrl.pathname.startsWith("/api/upload") ||
-    req.nextUrl.pathname.startsWith("/api/delete"); // Adjust visibility
+  const { nextUrl } = req;
 
-  if (isApiAuth) return NextResponse.next();
+  const isApiAuthRoute = nextUrl.pathname.startsWith("/api/auth");
+  const isAuthRoute = nextUrl.pathname.startsWith("/auth");
+  const isPublicRoute =
+    nextUrl.pathname.startsWith("/api/upload") ||
+    nextUrl.pathname.startsWith("/api/delete") ||
+    nextUrl.pathname.startsWith("/_next") ||
+    nextUrl.pathname.includes("favicon.ico");
 
-  if (isAuthPage) {
+  if (isApiAuthRoute) return NextResponse.next();
+
+  if (isAuthRoute) {
     if (isLoggedIn) {
-      return NextResponse.redirect(new URL("/", req.nextUrl));
+      return NextResponse.redirect(new URL("/", nextUrl));
     }
     return NextResponse.next();
   }
 
-  if (!isLoggedIn && !isPublicApi) {
-    return NextResponse.redirect(new URL("/auth/login", req.nextUrl));
+  if (!isLoggedIn && !isPublicRoute) {
+    return NextResponse.redirect(new URL("/auth/login", nextUrl));
   }
 
   return NextResponse.next();

@@ -2,11 +2,12 @@ import * as dotenv from "dotenv";
 dotenv.config({ path: ".env.local" });
 
 import { eq } from "drizzle-orm";
-import { db } from "../src/db";
-import { users } from "../src/db/schema";
 
 async function seed() {
   console.log("Seeding database...");
+
+  const { db } = await import("../src/db");
+  const { users } = await import("../src/db/schema");
 
   const email = "admin@example.com";
   const password = "password";
