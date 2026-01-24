@@ -1,5 +1,5 @@
 export interface TextBubble {
-  box_2d: [number, number, number, number]; // [ymin, xmin, ymax, xmax] 0-1000
+  box_2d: [number, number, number, number];
   original_text: string;
   translated_text: string;
   type: "dialogue" | "environmental";
@@ -22,7 +22,7 @@ export interface ProcessedImage {
   translatedKey?: string;
   sequenceNumber: number;
   usage?: UsageMetadata;
-  cost?: number; // Calculated USD cost
+  cost?: number;
 }
 
 export interface TranslationSettings {
@@ -30,7 +30,7 @@ export interface TranslationSettings {
   fontSize: number;
   fontColor: string;
   backgroundColor: string;
-  strokeColor: string; // Added for white outline
+  strokeColor: string;
 }
 
 export interface ImagePair {
@@ -52,8 +52,8 @@ export interface Series {
   id: string;
   name: string;
   description: string;
-  category: string; // Keep for display/fallback
-  categoryId?: string; // Link to Category
+  category: string;
+  categoryId?: string;
   tags: string[];
   images: ProcessedImage[];
   previewImages?: string[];

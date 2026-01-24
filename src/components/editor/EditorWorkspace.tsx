@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "../../hooks/useConfirm";
+import { useReorderImagesMutation } from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useImageUpload } from "../../hooks/useImageUpload";
 import { useSeriesStore } from "../../stores/useSeriesStore";
@@ -108,6 +109,44 @@ const EditorWorkspace: React.FC = () => {
     [setSelectedImage],
   );
 
+  const { mutate: reorderImages } = useReorderImagesMutation();
+
+  const handleMoveImage = useCallback(
+    (imageId: string, dir: "up" | "down" | "jump", targetPos?: number) => {
+      if (!images) return;
+
+      const currentIndex = images.findIndex((img) => img.id === imageId);
+      if (currentIndex === -1) return;
+
+      const newImages = [...images];
+
+      if (dir === "jump" && targetPos !== undefined) {
+        // targetPos is 1-based sequence number
+        const [item] = newImages.splice(currentIndex, 1);
+        // Convert to 0-based index, clamp
+        const insertIdx = Math.max(
+          0,
+          Math.min(targetPos - 1, newImages.length),
+        );
+        newImages.splice(insertIdx, 0, item);
+      } else {
+        const targetIndex = dir === "up" ? currentIndex - 1 : currentIndex + 1;
+        if (targetIndex < 0 || targetIndex >= newImages.length) return;
+
+        [newImages[currentIndex], newImages[targetIndex]] = [
+          newImages[targetIndex],
+          newImages[currentIndex],
+        ];
+      }
+
+      const orderedIds = newImages.map((img) => img.id);
+      if (activeSeriesId) {
+        reorderImages({ seriesId: activeSeriesId, imageIds: orderedIds });
+      }
+    },
+    [images, activeSeriesId, reorderImages],
+  );
+
   if (!activeSeries) {
     return (
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
@@ -198,6 +237,9 @@ const EditorWorkspace: React.FC = () => {
               image={image}
               index={globalIndex}
               total={images.length}
+              onMove={(dir, targetPos) =>
+                handleMoveImage(image.id, dir, targetPos)
+              }
             />
           );
         })}

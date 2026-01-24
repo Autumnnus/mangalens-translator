@@ -120,11 +120,19 @@ export const useImageProcessor = () => {
     if (!images || !images.length) return;
 
     setIsProcessingAll(true);
-    for (const image of images) {
-      if (image.status === "idle" || image.status === "error") {
-        await processImage(image);
-      }
+
+    // Use a copy to avoid mutating the original array and sort by sequenceNumber to maintain order
+    const imagesToProcess = [...images]
+      .filter((img) => img.status === "idle" || img.status === "error")
+      .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
+
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < imagesToProcess.length; i += CHUNK_SIZE) {
+      const chunk = imagesToProcess.slice(i, i + CHUNK_SIZE);
+      // Process 10 images at once
+      await Promise.all(chunk.map((image) => processImage(image)));
     }
+
     setIsProcessingAll(false);
   };
 

@@ -45,7 +45,6 @@ export async function updateCategoryAction(
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
-  // Explicit null check for parentId to allow unsetting
   const updateData: {
     name: string;
     updatedAt: Date;

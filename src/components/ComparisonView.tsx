@@ -50,7 +50,6 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
     };
   }, []);
 
-  // Check if we have a real conversion to compare
   const hasTranslation = pair.sourceUrl !== pair.convertedUrl;
 
   if (!hasTranslation) {
@@ -133,7 +132,6 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
     );
   }
 
-  // Default: Slider Mode
   return (
     <div
       ref={containerRef}

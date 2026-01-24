@@ -10,16 +10,16 @@ interface Props {
   image: ProcessedImage;
   index: number;
   total: number;
+  onMove: (dir: "up" | "down" | "jump", targetPos?: number) => void;
 }
 
-const ImageCard: React.FC<Props> = ({ image, index, total }) => {
+const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   const {
     activeSeriesId,
 
     removeImageFromSeries,
     updateImageInSeries,
     series,
-    reorderImages,
   } = useSeriesStore();
   const { setSelectedImage } = useUIStore();
   const { confirm } = useConfirm();
@@ -29,34 +29,35 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
 
   const moveImage = (dir: "up" | "down" | "jump", targetPos?: number) => {
-    const activeSeries = series.find((s) => s.id === activeSeriesId);
-    if (!activeSeries) return;
-
-    const currentImages = [...activeSeries.images];
-
-    if (dir === "jump" && targetPos !== undefined) {
-      // Logic: Move from current position to targetPos
-      const [item] = currentImages.splice(index, 1);
-      const insertIdx = Math.max(
-        0,
-        Math.min(targetPos - 1, currentImages.length),
-      );
-      currentImages.splice(insertIdx, 0, item);
-    } else {
-      const targetIndex = dir === "up" ? index - 1 : index + 1;
-      if (targetIndex < 0 || targetIndex >= currentImages.length) return;
-
-      [currentImages[index], currentImages[targetIndex]] = [
-        currentImages[targetIndex],
-        currentImages[index],
-      ];
-    }
-
-    const orderedIds = currentImages.map((img) => img.id);
-    if (activeSeriesId) {
-      reorderImages(activeSeriesId, orderedIds);
-    }
+    onMove(dir, targetPos);
   };
+
+  const [sequenceInput, setSequenceInput] = React.useState(
+    String(image.sequenceNumber),
+  );
+  const [isUpdatingSequence, setIsUpdatingSequence] = React.useState(false);
+
+  React.useEffect(() => {
+    setSequenceInput(String(image.sequenceNumber));
+  }, [image.sequenceNumber]);
+
+  React.useEffect(() => {
+    const val = parseInt(sequenceInput);
+
+    if (isNaN(val) || val === image.sequenceNumber) {
+      setIsUpdatingSequence(false);
+      return;
+    }
+
+    setIsUpdatingSequence(true);
+    const timer = setTimeout(() => {
+      moveImage("jump", val);
+
+      setIsUpdatingSequence(false);
+    }, 3000);
+
+    return () => clearTimeout(timer);
+  }, [sequenceInput, image.sequenceNumber]);
 
   const handleRemove = () => {
     confirm({
@@ -196,18 +197,21 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
               <span className="absolute left-1/2 -translate-x-1/2 text-[8px] font-black text-text-dark/40 uppercase tracking-tighter -top-3 opacity-0 group-hover/order:opacity-100 transition-opacity">
                 Pos
               </span>
-              <input
-                type="number"
-                className="w-10 bg-transparent text-center text-xs font-black text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 rounded-lg py-1 transition-all"
-                value={image.sequenceNumber}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value);
-                  if (!isNaN(val)) {
-                    moveImage("jump", val);
-                  }
-                }}
-                onFocus={(e) => e.target.select()}
-              />
+
+              <div className="relative">
+                <input
+                  type="number"
+                  className={`w-10 bg-transparent text-center text-xs font-black text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 rounded-lg py-1 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${isUpdatingSequence ? "opacity-50" : ""}`}
+                  value={sequenceInput}
+                  onChange={(e) => setSequenceInput(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                />
+                {isUpdatingSequence && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <i className="fas fa-circle-notch fa-spin text-primary text-[10px]"></i>
+                  </div>
+                )}
+              </div>
             </div>
 
             <button

@@ -28,7 +28,6 @@ export async function POST(req: NextRequest) {
       if (!file) throw new Error("No file uploaded in FormData");
       arrayBuffer = await file.arrayBuffer();
     } else {
-      // Direct binary upload
       arrayBuffer = await req.arrayBuffer();
     }
 
@@ -38,10 +37,8 @@ export async function POST(req: NextRequest) {
 
     console.log(`Received buffer: ${arrayBuffer.byteLength} bytes`);
 
-    // JSZip sometimes works better with Buffer or Uint8Array than raw ArrayBuffer
     const buffer = Buffer.from(arrayBuffer);
 
-    // Check for ZIP magic number (PK\x03\x04)
     if (buffer[0] !== 0x50 || buffer[1] !== 0x4b) {
       console.error(
         "Magic number mismatch:",
@@ -52,7 +49,6 @@ export async function POST(req: NextRequest) {
 
     const zip = await JSZip.loadAsync(buffer);
 
-    // 1. Restore DB
     const dbFile = zip.file("db_dump.json");
     if (!dbFile) throw new Error("Invalid backup: missing db_dump.json");
 
@@ -72,7 +68,6 @@ export async function POST(req: NextRequest) {
             const val = rowData[key];
             if (val === undefined) continue;
 
-            // Handle date strings from JSON
             if (
               typeof val === "string" &&
               /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(val)
@@ -114,7 +109,6 @@ export async function POST(req: NextRequest) {
 
             columnKeys.forEach((key) => {
               const column = columns[key] as Column;
-              // Don't update the columns that are part of the conflict target
               const isTarget = Array.isArray(conflictTarget)
                 ? conflictTarget.some(
                     (t: PgColumn) => t === column || t.name === column.name,
@@ -123,8 +117,6 @@ export async function POST(req: NextRequest) {
                   (conflictTarget as PgColumn)?.name === column.name;
 
               if (!isTarget) {
-                // Postgres 'excluded' table should not be qualified with the source table name.
-                // It must be excluded."column_name", not excluded."table"."column_name"
                 updateSet[key] = sql.raw(`excluded."${column.name}"`);
               }
             });
@@ -143,26 +135,19 @@ export async function POST(req: NextRequest) {
         }
       };
 
-      // Restore in dependency order
-      console.log("Restoring users...");
       await restoreTable(schema.users, data.users, [schema.users.id]);
 
-      console.log("Restoring accounts...");
       await restoreTable(schema.accounts, data.accounts);
 
-      console.log("Restoring categories...");
       await restoreTable(schema.categories, data.categories, [
         schema.categories.id,
       ]);
 
-      console.log("Restoring series...");
       await restoreTable(schema.series, data.series, [schema.series.id]);
 
-      console.log("Restoring images...");
       await restoreTable(schema.images, data.images, [schema.images.id]);
     });
 
-    // 2. Restore Files
     const fileFolder = zip.folder("files");
     if (fileFolder) {
       console.log("Restoring files...");
@@ -179,7 +164,7 @@ export async function POST(req: NextRequest) {
         await Promise.all(
           batch.map(async ({ path, entry }) => {
             try {
-              const content = await entry.async("uint8array"); // Using uint8array as it is more universal than nodebuffer
+              const content = await entry.async("uint8array");
               await uploadObject(path, content);
             } catch (e) {
               console.error(`Failed to restore file ${path}:`, e);

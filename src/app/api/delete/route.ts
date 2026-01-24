@@ -15,7 +15,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid keys" }, { status: 400 });
     }
 
-    // Delete multiple objects from Storage
     const results = await Promise.allSettled(
       keys
         .filter((k) => k && typeof k === "string")

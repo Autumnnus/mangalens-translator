@@ -49,7 +49,6 @@ const CategoryManagerModal: React.FC<Props> = ({
     }
   }, [isOpen, initialParentId]);
 
-  // Organize by hierarchy for display
   const rootCategories = useMemo(() => {
     const ids = new Set(categories.map((c) => c.id));
     return categories.filter((c) => !c.parentId || !ids.has(c.parentId));

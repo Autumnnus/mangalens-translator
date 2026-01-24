@@ -5,7 +5,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { getPresignedViewUrl } from "@/lib/storage";
 import { SeriesInput } from "@/types";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 
 export async function fetchSeriesAction(
   userId?: string,
@@ -43,17 +43,14 @@ export async function fetchSeriesAction(
     .limit(pageSize)
     .offset((page - 1) * pageSize);
 
-  // Get total for the user
   const allSeriesCount = await db
     .select({ count: sql<number>`count(*)` })
     .from(schema.series)
     .where(eq(schema.series.userId, id));
   const total = Number(allSeriesCount[0]?.count || 0);
 
-  // Fetch preview images for each series
   const itemsWithPreviews = await Promise.all(
     seriesData.map(async (item) => {
-      // Get all images sorted by sequence
       const allImages = await db.query.images.findMany({
         where: eq(schema.images.seriesId, item.id),
         orderBy: schema.images.sequenceNumber,
@@ -65,18 +62,15 @@ export async function fetchSeriesAction(
 
       const previewKeys: string[] = [];
       if (allImages.length > 0) {
-        // Start
         previewKeys.push(
           allImages[0].translatedKey || allImages[0].originalKey,
         );
-        // Middle
         if (allImages.length > 2) {
           const mid = Math.floor(allImages.length / 2);
           previewKeys.push(
             allImages[mid].translatedKey || allImages[mid].originalKey,
           );
         }
-        // End
         if (allImages.length > 1) {
           previewKeys.push(
             allImages[allImages.length - 1].translatedKey ||
@@ -105,7 +99,7 @@ export async function fetchSeriesImagesAction(seriesId: string) {
 
   const images = await db.query.images.findMany({
     where: eq(schema.images.seriesId, seriesId),
-    orderBy: desc(schema.images.sequenceNumber),
+    orderBy: asc(schema.images.sequenceNumber),
   });
 
   const signedImages = await Promise.all(
@@ -153,7 +147,6 @@ export async function deleteSeriesAction(id: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
-  // Explicitly fetch images to get storage keys before deletion
   const s = await db.query.series.findFirst({
     where: and(
       eq(schema.series.id, id),
@@ -168,8 +161,6 @@ export async function deleteSeriesAction(id: string) {
     (img) => [img.originalKey, img.translatedKey].filter(Boolean) as string[],
   );
 
-  // We explicitly delete images and series to ensure no FK issues if cascade is unstable
-  // and to be 100% sure we are removing them from the DB.
   await db.delete(schema.images).where(eq(schema.images.seriesId, id));
   await db.delete(schema.series).where(eq(schema.series.id, id));
 

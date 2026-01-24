@@ -10,7 +10,6 @@ export async function GET() {
   try {
     const zip = new JSZip();
 
-    // 1. Export DB
     const data = {
       users: await db.select().from(schema.users),
       accounts: await db.select().from(schema.accounts),
@@ -20,11 +19,9 @@ export async function GET() {
     };
     zip.file("db_dump.json", JSON.stringify(data, null, 2));
 
-    // 2. Export Files
     const files = await listObjects();
     const folder = zip.folder("files");
 
-    // Limit concurrency to avoid memory/network spikes
     const chunkSize = 5;
     for (let i = 0; i < files.length; i += chunkSize) {
       const chunk = files.slice(i, i + chunkSize);
