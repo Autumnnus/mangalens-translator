@@ -70,11 +70,16 @@ const ReaderView: React.FC = () => {
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length !== 1) {
+      setTouchStart(null);
+      return;
+    }
     setTouchEnd(null);
     setTouchStart(e.targetTouches[0].clientX);
   }, []);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (e.touches.length !== 1) return;
     setTouchEnd(e.targetTouches[0].clientX);
   }, []);
 
