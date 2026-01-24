@@ -66,6 +66,7 @@ export const useImageProcessor = () => {
       const { bubbles, usage } = await geminiService.current.translateImage(
         base64,
         settings.targetLanguage,
+        settings.customInstructions,
       );
 
       const tBlob = await createTranslatedImageBlob(

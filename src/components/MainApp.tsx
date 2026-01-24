@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo } from "react";
+import { getUserSettingsAction } from "../actions/settings";
 import {
   useCategoriesQuery,
   useUpdateCategoryMutation,
@@ -51,10 +52,18 @@ const MainApp: React.FC = () => {
 
   const { confirm } = useConfirm();
 
+  const initializeSettings = useSettingsStore(
+    (state) => state.initializeSettings,
+  );
+
   // Mount effects
   useEffect(() => {
-    // setActiveSeriesId(null);
-  }, []);
+    getUserSettingsAction().then((dbSettings) => {
+      if (dbSettings) {
+        initializeSettings(dbSettings);
+      }
+    });
+  }, [initializeSettings]);
 
   // Optimized callbacks
   const handleSelectSeries = useCallback(

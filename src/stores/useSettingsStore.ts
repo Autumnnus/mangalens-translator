@@ -7,7 +7,11 @@ interface SettingsState {
   isViewOnly: boolean;
 
   // Actions
-  updateSettings: (settings: Partial<TranslationSettings>) => void;
+  updateSettings: (
+    settings: Partial<TranslationSettings>,
+    syncWithDb?: boolean,
+  ) => void;
+  initializeSettings: (settings: TranslationSettings) => void;
   toggleViewOnly: () => void;
   setViewOnly: (value: boolean) => void;
 }
@@ -21,13 +25,25 @@ export const useSettingsStore = create<SettingsState>()(
         fontColor: "#000000",
         backgroundColor: "#ffffff",
         strokeColor: "#ffffff",
+        customInstructions: "",
       },
       isViewOnly: process.env.NODE_ENV === "production",
 
-      updateSettings: (newSettings) =>
+      updateSettings: (newSettings, syncWithDb = true) => {
         set((state) => ({
           settings: { ...state.settings, ...newSettings },
-        })),
+        }));
+
+        if (syncWithDb) {
+          // Import dynamic to avoid circular dependencies if any or keep it simple
+          import("../actions/settings").then((mod) => {
+            mod.updateUserSettingsAction(newSettings);
+          });
+        }
+      },
+      initializeSettings: (dbSettings) => {
+        set({ settings: dbSettings });
+      },
       toggleViewOnly: () => set((state) => ({ isViewOnly: !state.isViewOnly })),
       setViewOnly: (value) => set({ isViewOnly: value }),
     }),

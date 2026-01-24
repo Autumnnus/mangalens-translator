@@ -4,6 +4,7 @@ import {
   Lock,
   Palette,
   Sliders,
+  Sparkles,
   Square,
   Text,
   X,
@@ -172,6 +173,40 @@ const SettingsModal: React.FC<Props> = ({
               <option value="French">French</option>
               <option value="German">German</option>
             </select>
+          </div>
+
+          <div className="h-px bg-white/5"></div>
+
+          {/* AI Custom Instructions */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-primary">
+                <Sparkles className="w-4 h-4" />
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                  AI Prompt Guidelines
+                </label>
+              </div>
+              <span className="text-[9px] font-black text-primary/60 uppercase tracking-widest bg-primary/5 px-2 py-1 rounded border border-primary/10">
+                Extension
+              </span>
+            </div>
+            <div className="relative group">
+              <textarea
+                value={settings.customInstructions || ""}
+                onChange={(e) =>
+                  handleChange("customInstructions", e.target.value)
+                }
+                placeholder="Example: Keep sound effects in Japanese but add small Turkish translations below them..."
+                className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-4 text-xs font-medium focus:ring-2 ring-primary outline-none text-text-main transition-all min-h-[120px] resize-none placeholder:text-text-muted/30"
+              />
+              <div className="absolute bottom-4 right-4 text-[9px] font-bold text-text-dark/40 uppercase tracking-widest pointer-events-none">
+                Guideline #6+
+              </div>
+            </div>
+            <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+              Every new line will be added as a strict guideline to the AI
+              engine (e.g. Rule #6, #7...).
+            </p>
           </div>
 
           <div className="h-px bg-white/5"></div>

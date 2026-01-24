@@ -31,6 +31,7 @@ export interface TranslationSettings {
   fontColor: string;
   backgroundColor: string;
   strokeColor: string;
+  customInstructions?: string;
 }
 
 export interface ImagePair {

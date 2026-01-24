@@ -22,8 +22,9 @@ export class GeminiService {
   async translateImage(
     base64Image: string,
     targetLanguage: string,
+    customInstructions?: string,
   ): Promise<{ bubbles: TextBubble[]; usage: UsageMetadata }> {
-    const prompt = `
+    let prompt = `
       role: Professional manga and comic translator.
       TASK: Detect every text bubble, sound effect, and caption in this image and translate them into ${targetLanguage}.
       
@@ -35,7 +36,18 @@ export class GeminiService {
       5. CATEGORIZATION: 
          - Use type "dialogue" for character speech.
          - Use type "environmental" for sound effects (SFX), narration, or labels.
-      
+    `;
+
+    if (customInstructions) {
+      const lines = customInstructions
+        .split("\n")
+        .filter((l) => l.trim().length > 0);
+      lines.forEach((line, index) => {
+        prompt += `      ${index + 6}. ${line.trim()}\n`;
+      });
+    }
+
+    prompt += `
       OUTPUT: Return a JSON array of objects with:
       - box_2d: [ymin, xmin, ymax, xmax] (0-1000). CRITICAL: Provide the bounding box of the text container (the bubble). It must be precise and follow the inner edges of the bubble/text area.
       - original_text: Text from the image.
@@ -79,6 +91,7 @@ export class GeminiService {
               threshold: HarmBlockThreshold.BLOCK_NONE,
             },
           ],
+          temperature: 2,
           responseSchema: {
             type: Type.ARRAY,
             items: {

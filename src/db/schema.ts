@@ -8,6 +8,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import { TranslationSettings } from "../types";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -18,6 +19,7 @@ export const users = pgTable("users", {
   image: text("image"),
   role: text("role").default("user"),
   createdAt: timestamp("created_at").defaultNow(),
+  settings: jsonb("settings").$type<TranslationSettings>(),
 });
 
 export const accounts = pgTable("accounts", {
