@@ -1,19 +1,19 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use server";
 
 import { auth } from "@/auth";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
+import { ImageUpdateInput } from "@/types";
 import { eq } from "drizzle-orm";
 
-export async function addImageAction(seriesId: string, data: any) {
+export async function addImageAction(seriesId: string, data: ImageUpdateInput) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
   await db.insert(schema.images).values({
     seriesId,
-    fileName: data.fileName,
-    originalKey: data.originalKey,
+    fileName: data.fileName || "unknown",
+    originalKey: data.originalKey || "",
     status: data.status || "idle",
     sequenceNumber: data.sequenceNumber || 0,
   });
@@ -35,7 +35,10 @@ export async function deleteImageAction(imageId: string) {
   return [img.originalKey, img.translatedKey].filter(Boolean) as string[];
 }
 
-export async function updateImageAction(imageId: string, data: any) {
+export async function updateImageAction(
+  imageId: string,
+  data: Partial<ImageUpdateInput>,
+) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 

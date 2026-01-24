@@ -8,10 +8,19 @@ import ReaderHeader from "./ReaderHeader";
 import ReaderImageArea from "./ReaderImageArea";
 import ThumbnailStrip from "./ThumbnailStrip";
 
+import {
+  useSeriesImagesQuery,
+  useSeriesQuery,
+} from "../../hooks/useSeriesQueries";
+
 const ReaderView: React.FC = () => {
   // Selective store access
-  const series = useSeriesStore((state) => state.series);
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
+
+  const { data: seriesListData } = useSeriesQuery();
+  const { data: imagesData, isLoading: isImagesLoading } =
+    useSeriesImagesQuery(activeSeriesId);
+
   const currentImageIndex = useUIStore((state) => state.currentImageIndex);
   const setCurrentImageIndex = useUIStore(
     (state) => state.setCurrentImageIndex,
@@ -22,10 +31,10 @@ const ReaderView: React.FC = () => {
   const [comparisonMode, setComparisonMode] = useState<ViewMode>("slider");
 
   const activeSeries = useMemo(
-    () => series.find((s) => s.id === activeSeriesId),
-    [series, activeSeriesId],
+    () => seriesListData?.items.find((s) => s.id === activeSeriesId),
+    [seriesListData, activeSeriesId],
   );
-  const images = useMemo(() => activeSeries?.images || [], [activeSeries]);
+  const images = useMemo(() => imagesData || [], [imagesData]);
 
   const thumbnailsPerPage = 20;
   const currentThumbPage = Math.floor(currentImageIndex / thumbnailsPerPage);
@@ -86,10 +95,36 @@ const ReaderView: React.FC = () => {
     );
   }, [currentImageIndex, images.length, setCurrentImageIndex]);
 
+  if (
+    isImagesLoading ||
+    (images.length === 0 && (activeSeries?.imageCount || 0) > 0)
+  ) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-10">
+        <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-6" />
+        <h3 className="text-xl font-bold text-text-main mb-2">
+          Opening Grimoire...
+        </h3>
+        <p className="text-text-muted animate-pulse">
+          Fetching and signing pages for your viewing pleasure.
+        </p>
+      </div>
+    );
+  }
+
   if (images.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center p-10 opacity-50">
-        <p>No images to view.</p>
+      <div className="flex-1 flex flex-col items-center justify-center p-20 text-center">
+        <div className="w-20 h-20 bg-surface-muted/30 rounded-3xl flex items-center justify-center mb-6">
+          <i className="fas fa-image-slash text-3xl text-text-muted/40" />
+        </div>
+        <h3 className="text-xl font-bold text-text-main mb-2">
+          No Pages Found
+        </h3>
+        <p className="text-text-muted max-w-xs">
+          This series is currently empty. Add some images in the editor to get
+          started.
+        </p>
       </div>
     );
   }

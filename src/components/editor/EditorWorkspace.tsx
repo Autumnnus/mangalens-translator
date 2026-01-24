@@ -12,16 +12,24 @@ import ImageCard from "./ImageCard";
 import ListViewItem from "./ListViewItem";
 import NoImagesState from "./NoImagesState";
 
+import {
+  useSeriesImagesQuery,
+  useSeriesQuery,
+} from "../../hooks/useSeriesQueries";
+
 const EditorWorkspace: React.FC = () => {
   // Selective store access for performance
-  const series = useSeriesStore((state) => state.series);
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
   const setImages = useSeriesStore((state) => state.setImages);
+
+  const { data: seriesListData } = useSeriesQuery();
+  const { data: imagesData, isLoading: isImagesLoading } =
+    useSeriesImagesQuery(activeSeriesId);
 
   const toggleNewSeriesModal = useUIStore(
     (state) => state.toggleNewSeriesModal,
   );
-  const setSelectedImageId = useUIStore((state) => state.setSelectedImageId);
+  const setSelectedImage = useUIStore((state) => state.setSelectedImage);
 
   const isViewOnly = useSettingsStore((state) => state.isViewOnly);
 
@@ -43,11 +51,11 @@ const EditorWorkspace: React.FC = () => {
   }, [viewMode]);
 
   const activeSeries = useMemo(
-    () => series.find((s) => s.id === activeSeriesId),
-    [series, activeSeriesId],
+    () => seriesListData?.items.find((s) => s.id === activeSeriesId),
+    [seriesListData, activeSeriesId],
   );
 
-  const images = useMemo(() => activeSeries?.images || [], [activeSeries]);
+  const images = useMemo(() => imagesData || [], [imagesData]);
 
   const totalStats = useMemo(() => {
     return images.reduce(
@@ -94,10 +102,10 @@ const EditorWorkspace: React.FC = () => {
   }, [confirm, images, activeSeriesId, setImages]);
 
   const handleSelectImage = useCallback(
-    (id: string) => {
-      setSelectedImageId(id);
+    (image: import("../../types").ProcessedImage) => {
+      setSelectedImage(image);
     },
-    [setSelectedImageId],
+    [setSelectedImage],
   );
 
   if (!activeSeries) {
@@ -108,13 +116,43 @@ const EditorWorkspace: React.FC = () => {
     );
   }
 
-  if (images.length === 0) {
+  if (isImagesLoading) {
+    return (
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
+        <div className="flex flex-col gap-10">
+          <div className="h-32 bg-surface-muted/30 rounded-[3rem] animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[...Array(8)].map((_, i) => (
+              <div
+                key={i}
+                className="aspect-[2/3] bg-surface-muted/30 rounded-[2rem] animate-pulse border border-border-muted"
+              />
+            ))}
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  if (images.length === 0 && (activeSeries.imageCount || 0) === 0) {
     return (
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
         <NoImagesState
           seriesName={activeSeries.name}
           onUpload={handleFileUpload}
         />
+      </main>
+    );
+  }
+
+  if (images.length === 0 && (activeSeries.imageCount || 0) > 0) {
+    // This case covers when imageCount is positive but images array is empty (should not happen with autozustand but good for safety)
+    return (
+      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+          <p className="text-text-muted animate-pulse">Loading Images...</p>
+        </div>
       </main>
     );
   }
@@ -150,7 +188,7 @@ const EditorWorkspace: React.FC = () => {
               <ListViewItem
                 key={image.id}
                 image={image}
-                onSelect={handleSelectImage}
+                onSelect={() => handleSelectImage(image)}
               />
             );
           }

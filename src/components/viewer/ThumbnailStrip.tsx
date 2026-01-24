@@ -75,7 +75,7 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
               <button
                 key={img.id}
                 onClick={() => onSelectIndex(idx)}
-                className={`relative aspect-[2/3] group rounded-2xl overflow-hidden border-2 transition-all shadow-premium ${
+                className={`relative aspect-[2/3] group rounded-2xl overflow-hidden border-2 transition-all shadow-premium bg-surface-muted/30 ${
                   idx === currentImageIndex
                     ? "border-primary shadow-glow scale-105 z-10"
                     : "border-border-muted hover:border-primary/50 opacity-70 hover:opacity-100"
@@ -84,7 +84,10 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
                 <img
                   src={img.originalUrl}
                   alt={`Page ${idx + 1}`}
-                  className="w-full h-full object-cover"
+                  loading="lazy"
+                  className="w-full h-full object-cover transition-opacity duration-300"
+                  onLoad={(e) => (e.currentTarget.style.opacity = "1")}
+                  style={{ opacity: 0 }}
                 />
                 <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
                   <span className="text-white font-black text-xs uppercase tracking-widest bg-primary/80 px-2 py-1 rounded-lg">
@@ -103,7 +106,7 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
               <button
                 key={img.id}
                 onClick={() => onSelectIndex(idx)}
-                className={`relative w-14 h-20 sm:w-24 sm:h-36 shrink-0 rounded-2xl overflow-hidden border-2 transition-all shadow-premium ${
+                className={`relative w-14 h-20 sm:w-24 sm:h-36 shrink-0 rounded-2xl overflow-hidden border-2 transition-all shadow-premium bg-surface-muted/30 ${
                   idx === currentImageIndex
                     ? "border-primary shadow-glow scale-110 z-10"
                     : "border-border-muted opacity-40 hover:opacity-100 hover:scale-105"
@@ -112,7 +115,10 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
                 <img
                   src={img.originalUrl}
                   alt={`Page ${idx + 1}`}
-                  className="w-full h-full object-cover"
+                  loading="lazy"
+                  className="w-full h-full object-cover transition-opacity duration-300"
+                  onLoad={(e) => (e.currentTarget.style.opacity = "1")}
+                  style={{ opacity: 0 }}
                 />
                 <div className="absolute bottom-0 inset-x-0 bg-surface/80 backdrop-blur-md py-1.5 border-t border-border-muted">
                   <span className="text-[10px] font-black text-text-main uppercase tracking-tighter">

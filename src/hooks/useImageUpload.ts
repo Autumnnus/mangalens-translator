@@ -1,17 +1,21 @@
 import { useState } from "react";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { ProcessedImage } from "../types";
-// import { imageDb } from "../utils/db"; // Removed
 import { extractImagesFromPdf } from "../utils/pdf";
+
+import { useAddImageMutation } from "./useImageMutations";
+import { useSeriesImagesQuery } from "./useSeriesQueries";
 
 export const useImageUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
-  const { addImageToSeries, activeSeriesId, series } = useSeriesStore();
-  const activeSeries = series.find((s) => s.id === activeSeriesId);
-  let nextSequenceNumber = activeSeries?.images.length || 0;
+  const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
+  const { data: images } = useSeriesImagesQuery(activeSeriesId);
+  const { mutateAsync: addImageMutation } = useAddImageMutation();
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || !activeSeriesId) return;
+
+    let nextSequenceNumber = images?.length || 0;
 
     setIsUploading(true);
     try {
@@ -20,42 +24,38 @@ export const useImageUpload = () => {
           try {
             const extracted = await extractImagesFromPdf(file);
             for (const img of extracted) {
-              const id = Math.random().toString(36).substring(2, 11);
               const res = await fetch(img.url);
               const blob = await res.blob();
 
-              // await imageDb.saveImage(id, "original", blob); // Removed
-
-              const newImage: ProcessedImage = {
-                id,
+              const newImage: Partial<ProcessedImage> = {
                 fileName: img.name,
-                originalUrl: URL.createObjectURL(blob),
-                translatedUrl: null,
                 status: "idle",
                 bubbles: [],
                 sequenceNumber: nextSequenceNumber++,
               };
 
-              addImageToSeries(activeSeriesId, newImage);
+              await addImageMutation({
+                seriesId: activeSeriesId,
+                image: newImage,
+                file: blob,
+              });
             }
           } catch (err) {
             console.error("PDF extraction failed", err);
           }
         } else {
-          const id = Math.random().toString(36).substring(2, 11);
-          // await imageDb.saveImage(id, "original", file); // Removed
-
-          const newImage: ProcessedImage = {
-            id,
+          const newImage: Partial<ProcessedImage> = {
             fileName: file.name,
-            originalUrl: URL.createObjectURL(file),
-            translatedUrl: null,
             status: "idle",
             bubbles: [],
             sequenceNumber: nextSequenceNumber++,
           };
 
-          addImageToSeries(activeSeriesId, newImage);
+          await addImageMutation({
+            seriesId: activeSeriesId,
+            image: newImage,
+            file: file,
+          });
         }
       }
     } catch (error) {

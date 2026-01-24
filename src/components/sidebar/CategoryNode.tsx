@@ -123,6 +123,10 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
             ></i>
             {!isSidebarCollapsed && (
               <div className="flex items-center gap-2 truncate">
+                <div
+                  className="w-2 h-2 rounded-full shrink-0 shadow-sm"
+                  style={{ backgroundColor: category.color || "#6366f1" }}
+                />
                 <span
                   className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${
                     isCollapsed
@@ -133,7 +137,9 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                   {category.name}
                 </span>
                 <span className="text-[9px] font-bold text-text-dark bg-surface-raised/80 px-1.5 py-0.5 rounded-md shrink-0 border border-border-muted/30">
-                  {directSeries.length}
+                  {category.id === "uncategorized"
+                    ? series.filter((s) => !s.categoryId).length
+                    : directSeries.length}
                 </span>
               </div>
             )}
@@ -203,7 +209,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                     : "hover:bg-surface-raised/50 border-transparent hover:border-border-muted"
                 }`}
               >
-                <SeriesIcon images={s.images} />
+                <SeriesIcon images={s.images} previewImages={s.previewImages} />
                 {!isSidebarCollapsed && (
                   <>
                     <div className="flex-1 min-w-0">
@@ -213,7 +219,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                         {s.name}
                       </p>
                       <p className="text-[10px] text-text-dark font-bold">
-                        {s.images.length} pages
+                        {s.imageCount ?? s.images.length} pages
                       </p>
                     </div>
                     {!isViewOnly && (

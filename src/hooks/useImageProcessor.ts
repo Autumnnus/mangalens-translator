@@ -6,6 +6,12 @@ import { ProcessedImage, UsageMetadata } from "../types";
 import { createTranslatedImageBlob } from "../utils/image";
 import { resolveImageUrl } from "../utils/url";
 
+import {
+  useSaveTranslatedImageMutation,
+  useUpdateImageMutation,
+} from "./useImageMutations";
+import { useSeriesImagesQuery } from "./useSeriesQueries";
+
 const INPUT_COST_PER_1K = 0.0005;
 const OUTPUT_COST_PER_1K = 0.003;
 
@@ -13,12 +19,14 @@ export const useImageProcessor = () => {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const geminiService = useRef(new GeminiService());
 
-  const { series, activeSeriesId, updateImageInSeries, saveTranslatedImage } =
-    useSeriesStore();
-  const { settings } = useSettingsStore();
+  const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
+  const { data: images } = useSeriesImagesQuery(activeSeriesId);
 
-  const activeSeries = series.find((s) => s.id === activeSeriesId);
-  const images = activeSeries?.images || [];
+  const { mutateAsync: updateImageStatus } = useUpdateImageMutation();
+  const { mutateAsync: saveTranslatedImageMutation } =
+    useSaveTranslatedImageMutation();
+
+  const { settings } = useSettingsStore();
 
   const calculateCost = (usage: UsageMetadata) => {
     const inputCost = (usage.promptTokenCount / 1000) * INPUT_COST_PER_1K;
@@ -43,45 +51,50 @@ export const useImageProcessor = () => {
 
   const processImage = async (
     image: ProcessedImage,
-    retryCount = 0
+    retryCount = 0,
   ): Promise<boolean> => {
     if (!activeSeriesId) return false;
 
-    updateImageInSeries(activeSeriesId, image.id, { status: "processing" });
+    await updateImageStatus({
+      seriesId: activeSeriesId,
+      imageId: image.id,
+      updates: { status: "processing" },
+    });
 
     try {
       const base64 = await urlToBase64(image.originalUrl);
       const { bubbles, usage } = await geminiService.current.translateImage(
         base64,
-        settings.targetLanguage
+        settings.targetLanguage,
       );
 
       const tBlob = await createTranslatedImageBlob(
         image.originalUrl,
         bubbles,
-        settings
+        settings,
       );
 
       const cost = calculateCost(usage);
 
       // Persistence via Supabase/R2
       try {
-        await saveTranslatedImage(
-          activeSeriesId,
-          image.id,
-          tBlob,
-          image.fileName,
-          { bubbles, usage, cost }
-        );
+        await saveTranslatedImageMutation({
+          seriesId: activeSeriesId,
+          imageId: image.id,
+          blob: tBlob,
+          fileName: image.fileName,
+          meta: { bubbles, usage, cost },
+        });
       } catch (e) {
         console.error("Failed to save translated image", e);
         // Fallback or error state?
       }
 
       return true;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      const errorStr = (error?.message || "").toLowerCase();
+    } catch (error) {
+      const errorStr = (
+        error instanceof Error ? error.message : String(error)
+      ).toLowerCase();
       const isRateLimit =
         errorStr.includes("429") ||
         errorStr.includes("limit") ||
@@ -94,13 +107,17 @@ export const useImageProcessor = () => {
       }
 
       console.error("Processing failed for", image.fileName, error);
-      updateImageInSeries(activeSeriesId, image.id, { status: "error" });
+      await updateImageStatus({
+        seriesId: activeSeriesId,
+        imageId: image.id,
+        updates: { status: "error" },
+      });
       return false;
     }
   };
 
   const processAll = async () => {
-    if (!images.length) return;
+    if (!images || !images.length) return;
 
     setIsProcessingAll(true);
     for (const image of images) {

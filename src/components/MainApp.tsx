@@ -1,26 +1,42 @@
 "use client";
 
-import React, { useCallback, useEffect } from "react";
-import GlobalModals from "./GlobalModals";
-import SeriesSidebar from "./SeriesSidebar";
-import EditorWorkspace from "./editor/EditorWorkspace";
-import ReaderView from "./viewer/ReaderView";
-
+import React, { useCallback, useEffect, useMemo } from "react";
+import {
+  useCategoriesQuery,
+  useUpdateCategoryMutation,
+} from "../hooks/useCategoryQueries";
 import { useConfirm } from "../hooks/useConfirm";
+import {
+  useDeleteSeriesMutation,
+  useSeriesQuery,
+  useUpdateSeriesMutation,
+} from "../hooks/useSeriesQueries";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
+import GlobalModals from "./GlobalModals";
+import SeriesSidebar from "./SeriesSidebar";
+
+const ReaderView = React.lazy(() => import("./viewer/ReaderView"));
+const EditorWorkspace = React.lazy(() => import("./editor/EditorWorkspace"));
 
 const MainApp: React.FC = () => {
   // Selective store access for performance
-  const series = useSeriesStore((state) => state.series);
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
-  const categories = useSeriesStore((state) => state.categories);
-  const rehydrateImages = useSeriesStore((state) => state.rehydrateImages);
-  const deleteSeries = useSeriesStore((state) => state.deleteSeries);
   const setActiveSeriesId = useSeriesStore((state) => state.setActiveSeriesId);
-  const updateCategory = useSeriesStore((state) => state.updateCategory);
-  const updateSeries = useSeriesStore((state) => state.updateSeries);
+
+  // TanStack Queries
+  const { data: seriesData, isLoading: isSeriesLoading } = useSeriesQuery();
+  const { data: categoriesData } = useCategoriesQuery();
+
+  // Mutations
+  const { mutate: deleteSeries } = useDeleteSeriesMutation();
+  const { mutate: updateSeries } = useUpdateSeriesMutation();
+  const { mutate: updateCategory } = useUpdateCategoryMutation();
+
+  const series = useMemo(() => seriesData?.items || [], [seriesData]);
+  const categories = useMemo(() => categoriesData || [], [categoriesData]);
+  const isLoading = isSeriesLoading;
 
   const isViewOnly = useSettingsStore((state) => state.isViewOnly);
 
@@ -35,8 +51,8 @@ const MainApp: React.FC = () => {
 
   // Mount effects
   useEffect(() => {
-    rehydrateImages();
-  }, [rehydrateImages]);
+    // setActiveSeriesId(null);
+  }, []);
 
   // Optimized callbacks
   const handleSelectSeries = useCallback(
@@ -70,23 +86,24 @@ const MainApp: React.FC = () => {
 
   const handleMoveSeries = useCallback(
     (seriesId: string, categoryId: string) => {
-      const targetCategory = categories.find((c) => c.id === categoryId);
-      updateSeries(seriesId, {
-        categoryId,
-        category: targetCategory?.name || "Uncategorized",
+      updateSeries({
+        id: seriesId,
+        updates: {
+          categoryId,
+        },
       });
     },
-    [categories, updateSeries],
+    [updateSeries],
   );
 
   const handleMoveCategory = useCallback(
     (categoryId: string, targetParentId: string | undefined) => {
       if (categoryId === targetParentId) return;
-      updateCategory(
-        categoryId,
-        categories.find((c) => c.id === categoryId)?.name || "Unknown",
-        targetParentId,
-      );
+      updateCategory({
+        id: categoryId,
+        name: categories.find((c) => c.id === categoryId)?.name || "Unknown",
+        parentId: targetParentId,
+      });
     },
     [categories, updateCategory],
   );
@@ -127,10 +144,24 @@ const MainApp: React.FC = () => {
           onMoveSeries={handleMoveSeries}
           onMoveCategory={handleMoveCategory}
           onAddSubcategory={handleAddSubcategory}
+          isLoading={isLoading}
         />
 
         <div className="flex-1 flex flex-col h-full overflow-x-hidden overflow-y-auto custom-scrollbar relative">
-          {isViewOnly ? <ReaderView /> : <EditorWorkspace />}
+          <React.Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
+                  <p className="text-text-muted animate-pulse">
+                    Preparing Workspace...
+                  </p>
+                </div>
+              </div>
+            }
+          >
+            {isViewOnly ? <ReaderView /> : <EditorWorkspace />}
+          </React.Suspense>
         </div>
       </div>
     </>

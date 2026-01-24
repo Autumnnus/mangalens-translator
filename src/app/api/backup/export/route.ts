@@ -1,9 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { getObjectBuffer, listObjects } from "@/lib/storage";
 import JSZip from "jszip";
 import { NextResponse } from "next/server";
+
+export const maxDuration = 300;
 
 export async function GET() {
   try {
@@ -49,11 +50,14 @@ export async function GET() {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
-        "Content-Disposition": `attachment; filename=mangalens_backup_${new Date().toISOString()}.zip`,
+        "Content-Disposition": `attachment; filename=mangalens_backup_${
+          new Date().toISOString().split("T")[0]
+        }.zip`,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error("Export failed:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Export failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

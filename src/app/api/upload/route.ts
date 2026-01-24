@@ -32,11 +32,10 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({ uploadUrl, key, publicUrl });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Upload error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+    const message =
+      error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

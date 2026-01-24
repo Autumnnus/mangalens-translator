@@ -10,7 +10,11 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
   isSidebarCollapsed,
   isViewOnly,
 }) => {
+  const [isExporting, setIsExporting] = React.useState(false);
+  const [isImporting, setIsImporting] = React.useState(false);
+
   const handleExport = useCallback(async () => {
+    setIsExporting(true);
     try {
       const res = await fetch("/api/backup/export");
       if (!res.ok) throw new Error("Export failed");
@@ -25,6 +29,8 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
       document.body.removeChild(a);
     } catch (e) {
       alert("Export failed: " + e);
+    } finally {
+      setIsExporting(false);
     }
   }, []);
 
@@ -33,27 +39,48 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
       const file = e.target.files?.[0];
       if (!file) return;
 
-      if (!confirm("This will merge/restore data. Continue?")) return;
-
-      const formData = new FormData();
-      formData.append("file", file);
+      setIsImporting(true);
 
       try {
         const res = await fetch("/api/backup/import", {
           method: "POST",
-          body: formData,
+          body: file, // Send file directly as binary
+          headers: {
+            "Content-Type": "application/zip",
+          },
         });
+
+        const contentType = res.headers.get("content-type");
+        if (!res.ok) {
+          let errorMessage = "Import failed";
+          if (contentType?.includes("application/json")) {
+            const errorData = await res.json();
+            errorMessage = errorData.error || errorMessage;
+          } else {
+            errorMessage = `Server error: ${res.status} ${res.statusText}`;
+          }
+          throw new Error(errorMessage);
+        }
+
         const json = await res.json();
         if (json.success) {
           alert("Backup restored successfully!");
           window.location.reload();
         } else {
-          throw new Error(json.error);
+          throw new Error(json.error || "Unknown error occurred");
         }
       } catch (err: Error | unknown) {
-        alert("Import failed: " + (err as Error).message);
+        console.error("Import error:", err);
+        alert(
+          "Import failed: " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      } finally {
+        setIsImporting(false);
+        if (e.target) {
+          e.target.value = "";
+        }
       }
-      e.target.value = "";
     },
     [],
   );
@@ -65,12 +92,17 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={handleExport}
-          className="flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-indigo-600/20 border border-slate-700/50 hover:border-indigo-500/50 p-2 rounded-xl transition-all group"
+          disabled={isExporting}
+          className="flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-indigo-600/20 border border-slate-700/50 hover:border-indigo-500/50 p-2 rounded-xl transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
           title="Export Backup"
         >
-          <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400" />
+          {isExporting ? (
+            <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400" />
+          )}
           <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-400 uppercase tracking-wider">
-            Export
+            {isExporting ? "Busy" : "Export"}
           </span>
         </button>
 
@@ -78,16 +110,22 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
           <input
             type="file"
             accept=".zip"
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+            disabled={isImporting}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
             onChange={handleImport}
           />
           <button
-            className="w-full flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-emerald-600/20 border border-slate-700/50 hover:border-emerald-500/50 p-2 rounded-xl transition-all group"
+            disabled={isImporting}
+            className="w-full flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-emerald-600/20 border border-slate-700/50 hover:border-emerald-500/50 p-2 rounded-xl transition-all group disabled:opacity-50"
             title="Import Backup"
           >
-            <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-400" />
+            {isImporting ? (
+              <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-400" />
+            )}
             <span className="text-[10px] font-bold text-slate-400 group-hover:text-emerald-400 uppercase tracking-wider">
-              Import
+              {isImporting ? "Busy" : "Import"}
             </span>
           </button>
         </div>

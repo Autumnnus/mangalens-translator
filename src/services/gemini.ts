@@ -13,7 +13,7 @@ export class GeminiService {
     const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error(
-        "NEXT_PUBLIC_GEMINI_API_KEY is not defined. Please add it to your .env.local file."
+        "NEXT_PUBLIC_GEMINI_API_KEY is not defined. Please add it to your .env.local file.",
       );
     }
     this.ai = new GoogleGenAI({ apiKey });
@@ -21,7 +21,7 @@ export class GeminiService {
 
   async translateImage(
     base64Image: string,
-    targetLanguage: string
+    targetLanguage: string,
   ): Promise<{ bubbles: TextBubble[]; usage: UsageMetadata }> {
     const prompt = `
       role: Professional manga and comic translator.
@@ -100,18 +100,24 @@ export class GeminiService {
           },
         },
       });
-      console.log("result", result);
+
       const text = result.text;
-      const usage = result.usageMetadata as unknown as UsageMetadata;
+      const usageMetadata = result.usageMetadata;
+      const usage: UsageMetadata = {
+        promptTokenCount: usageMetadata?.promptTokenCount || 0,
+        candidatesTokenCount: usageMetadata?.candidatesTokenCount || 0,
+        totalTokenCount: usageMetadata?.totalTokenCount || 0,
+      };
+
       if (!text) throw new Error("No response from Gemini");
 
       return {
         bubbles: JSON.parse(text.trim()) as TextBubble[],
         usage: usage,
       };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Gemini Translation Error:", error);
-      throw error;
+      throw error instanceof Error ? error : new Error(String(error));
     }
   }
 }

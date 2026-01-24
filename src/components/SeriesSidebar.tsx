@@ -24,6 +24,7 @@ interface Props {
     targetParentId: string | undefined,
   ) => void;
   onAddSubcategory?: (parentId: string) => void;
+  isLoading?: boolean;
 }
 
 const SeriesSidebar: React.FC<Props> = ({
@@ -38,6 +39,7 @@ const SeriesSidebar: React.FC<Props> = ({
   onMoveSeries,
   onMoveCategory,
   onAddSubcategory,
+  isLoading = false,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -79,10 +81,11 @@ const SeriesSidebar: React.FC<Props> = ({
     }
 
     result = result.filter((s) => {
-      const isCompleted = s.images.every((img) => img.status === "completed");
-      const isInProgress = s.images.some(
-        (img) => img.status !== "idle" && img.status !== "completed",
-      );
+      const totalImgs = s.imageCount || 0;
+      const compImgs = s.completedCount || 0;
+
+      const isCompleted = totalImgs > 0 && totalImgs === compImgs;
+      const isInProgress = totalImgs > 0 && compImgs < totalImgs;
 
       if (!filters.showCompleted && isCompleted) return false;
       if (!filters.showInProgress && isInProgress) return false;
@@ -103,20 +106,22 @@ const SeriesSidebar: React.FC<Props> = ({
         result.sort((a, b) => a.createdAt - b.createdAt);
         break;
       case "most-images":
-        result.sort((a, b) => b.images.length - a.images.length);
+        result.sort((a, b) => (b.imageCount || 0) - (a.imageCount || 0));
         break;
       case "least-images":
-        result.sort((a, b) => a.images.length - b.images.length);
+        result.sort((a, b) => (a.imageCount || 0) - (b.imageCount || 0));
         break;
     }
 
     return result;
   }, [series, filters]);
 
-  const rootCategories = useMemo(
-    () => categories.filter((c) => !c.parentId),
-    [categories],
-  );
+  const rootCategories = useMemo(() => {
+    const categoryIds = new Set(categories.map((c) => c.id));
+    return categories.filter(
+      (c) => !c.parentId || !categoryIds.has(c.parentId),
+    );
+  }, [categories]);
 
   const uncategorizedSeries = useMemo(() => {
     const categoryIds = new Set(categories.map((c) => c.id));
@@ -148,7 +153,19 @@ const SeriesSidebar: React.FC<Props> = ({
       <SystemActions isViewOnly={isViewOnly} />
 
       <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {filteredAndSortedSeries.length === 0 ? (
+        {isLoading ? (
+          <div className="p-4 space-y-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="space-y-2 animate-pulse">
+                <div className="h-4 bg-surface-muted rounded-md w-24 mb-3" />
+                <div className="space-y-2">
+                  <div className="h-10 bg-surface-muted/50 rounded-xl w-full" />
+                  <div className="h-10 bg-surface-muted/50 rounded-xl w-[90%] ml-auto" />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : filteredAndSortedSeries.length === 0 ? (
           <div className="p-6 text-center text-slate-500 text-sm">
             No series found
           </div>

@@ -1,4 +1,5 @@
 import {
+  _Object,
   DeleteObjectCommand,
   GetObjectCommand,
   ListObjectsV2Command,
@@ -61,13 +62,23 @@ export const deleteObject = async (key: string) => {
   await s3Client.send(command);
 };
 
-export const listObjects = async (prefix?: string) => {
-  const command = new ListObjectsV2Command({
-    Bucket: S3_BUCKET,
-    Prefix: prefix,
-  });
-  const result = await s3Client.send(command);
-  return result.Contents || [];
+export const listObjects = async (prefix?: string): Promise<_Object[]> => {
+  let allContents: _Object[] = [];
+  let isTruncated = true;
+  let nextContinuationToken: string | undefined = undefined;
+
+  while (isTruncated) {
+    const command: ListObjectsV2Command = new ListObjectsV2Command({
+      Bucket: S3_BUCKET,
+      Prefix: prefix,
+      ContinuationToken: nextContinuationToken,
+    });
+    const result = await s3Client.send(command);
+    allContents = allContents.concat(result.Contents || []);
+    isTruncated = result.IsTruncated || false;
+    nextContinuationToken = result.NextContinuationToken;
+  }
+  return allContents;
 };
 
 export const getObjectBuffer = async (key: string) => {

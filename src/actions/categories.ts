@@ -15,7 +15,11 @@ export async function fetchCategoriesAction() {
   });
 }
 
-export async function createCategoryAction(name: string, parentId?: string) {
+export async function createCategoryAction(
+  name: string,
+  parentId?: string,
+  color?: string,
+) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
@@ -24,6 +28,7 @@ export async function createCategoryAction(name: string, parentId?: string) {
     .values({
       name,
       parentId,
+      color,
       userId: session.user.id,
     })
     .returning();
@@ -35,17 +40,27 @@ export async function updateCategoryAction(
   id: string,
   name: string,
   parentId?: string | null,
+  color?: string,
 ) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
   // Explicit null check for parentId to allow unsetting
-  const data: any = { name, updatedAt: new Date() };
-  if (parentId !== undefined) data.parentId = parentId;
+  const updateData: {
+    name: string;
+    updatedAt: Date;
+    parentId?: string | null;
+    color?: string;
+  } = {
+    name,
+    updatedAt: new Date(),
+  };
+  if (parentId !== undefined) updateData.parentId = parentId;
+  if (color !== undefined) updateData.color = color;
 
   await db
     .update(schema.categories)
-    .set(data)
+    .set(updateData)
     .where(
       and(
         eq(schema.categories.id, id),

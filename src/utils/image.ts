@@ -4,7 +4,7 @@ import { resolveImageUrl } from "./url";
 export const createTranslatedImageBlob = (
   originalUrl: string,
   bubbles: TextBubble[],
-  settings: TranslationSettings
+  settings: TranslationSettings,
 ): Promise<Blob> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -40,7 +40,7 @@ export const createTranslatedImageBlob = (
             left + width,
             top + height,
             left + width - radius,
-            top + height
+            top + height,
           );
           ctx.lineTo(left + radius, top + height);
           ctx.quadraticCurveTo(left, top + height, left, top + height - radius);
@@ -70,7 +70,7 @@ export const createTranslatedImageBlob = (
           totalHeight = lines.length * lineHeight;
           const maxLineWidth = lines.reduce(
             (max, line) => Math.max(max, ctx.measureText(line).width),
-            0
+            0,
           );
           if (
             totalHeight <= height - paddingVert * 2 &&
@@ -105,7 +105,7 @@ export const createTranslatedImageBlob = (
           else reject("Canvas to Blob failed");
         },
         "image/jpeg",
-        0.9
+        0.9,
       );
     };
     img.onerror = (err) => reject(err);
@@ -116,7 +116,7 @@ export const createTranslatedImageBlob = (
 function wrapText(
   ctx: CanvasRenderingContext2D,
   text: string,
-  maxWidth: number
+  maxWidth: number,
 ): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];

@@ -1,7 +1,43 @@
-declare const pdfjsLib: any;
+interface PDFPage {
+  getViewport: (options: { scale: number }) => {
+    width: number;
+    height: number;
+  };
+  render: (options: {
+    canvasContext: CanvasRenderingContext2D | null;
+    viewport: unknown;
+  }) => { promise: Promise<void> };
+}
+
+interface PDFDocument {
+  numPages: number;
+  getPage: (index: number) => Promise<PDFPage>;
+}
+
+declare const pdfjsLib: {
+  getDocument: (options: { data: ArrayBuffer }) => {
+    promise: Promise<PDFDocument>;
+  };
+};
+
+interface JsPDF {
+  internal: {
+    pageSize: { getWidth: () => number; getHeight: () => number };
+  };
+  addPage: () => void;
+  addImage: (
+    url: string,
+    format: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+  ) => void;
+  save: (filename: string) => void;
+}
 
 export const extractImagesFromPdf = async (
-  file: File
+  file: File,
 ): Promise<{ url: string; name: string }[]> => {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -25,13 +61,13 @@ export const extractImagesFromPdf = async (
 };
 
 export const bundleToPdf = async (imageUrls: string[], filename: string) => {
-  const { jsPDF } = (window as any).jspdf;
+  const { jsPDF } = (window as unknown as { jspdf: { jsPDF: new () => JsPDF } })
+    .jspdf;
   const pdf = new jsPDF();
 
   for (let i = 0; i < imageUrls.length; i++) {
     const url = imageUrls[i];
 
-    // Create an image to get dimensions
     const img = new Image();
     img.src = url;
     await new Promise((resolve) => {

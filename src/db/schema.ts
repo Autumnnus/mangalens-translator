@@ -44,6 +44,7 @@ export const categories = pgTable("categories", {
     .notNull()
     .references(() => users.id, { onDelete: "cascade" }),
   parentId: uuid("parent_id"),
+  color: text("color").default("#6366f1"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

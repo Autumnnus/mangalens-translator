@@ -26,11 +26,10 @@ export async function POST(req: NextRequest) {
       message: "Deletion processed",
       results: results.map((r) => r.status),
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Delete error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+    const message =
+      error instanceof Error ? error.message : "Internal Server Error";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -21,10 +21,11 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
     series,
     reorderImages,
   } = useSeriesStore();
-  const { setSelectedImageId } = useUIStore();
+  const { setSelectedImage } = useUIStore();
   const { confirm } = useConfirm();
   const { processImage } = useImageProcessor();
 
+  const [isLoaded, setIsLoaded] = React.useState(false);
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
 
   const moveImage = (dir: "up" | "down" | "jump", targetPos?: number) => {
@@ -76,14 +77,20 @@ const ImageCard: React.FC<Props> = ({ image, index, total }) => {
   return (
     <div className="glass-card rounded-[2rem] overflow-hidden group transition-all duration-500 hover:scale-[1.02] active:scale-[0.98]">
       <div
-        className="relative aspect-[2/3] bg-black/40 group-hover:bg-black/20 transition-colors cursor-pointer"
-        onClick={() => setSelectedImageId(image.id)}
+        className="relative aspect-[2/3] bg-black/40 group-hover:bg-black/20 transition-colors cursor-pointer overflow-hidden"
+        onClick={() => setSelectedImage(image)}
       >
+        {!isLoaded && (
+          <div className="absolute inset-0 bg-surface-muted/30 animate-pulse flex items-center justify-center">
+            <i className="fas fa-image text-text-muted/20 text-4xl" />
+          </div>
+        )}
         <img
           src={displayUrl}
           alt={image.fileName}
-          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+          className={`w-full h-full object-cover transition-all duration-500 ${isLoaded ? "opacity-100 scale-100 group-hover:scale-110" : "opacity-0 scale-105"}`}
           loading="lazy"
+          onLoad={() => setIsLoaded(true)}
         />
 
         {/* Status Overlay */}

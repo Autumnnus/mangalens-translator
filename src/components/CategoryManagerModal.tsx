@@ -1,16 +1,24 @@
-import { Check, Edit2, Plus, Trash2, X } from "lucide-react";
-import React, { useState } from "react";
+import { Check, Edit2, Palette, Plus, Trash2, X } from "lucide-react";
+import randomColor from "randomcolor";
+import React, { useMemo, useState } from "react";
 import { Category } from "../types";
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   categories: Category[];
-  onUpdateCategory: (id: string, name: string) => void;
+  onUpdateCategory: (
+    id: string,
+    name: string,
+    parentId?: string | null,
+    color?: string,
+  ) => void;
   onDeleteCategory: (id: string) => void;
-  onAddCategory: (name: string, parentId?: string) => void;
+  onAddCategory: (name: string, parentId?: string, color?: string) => void;
   initialParentId?: string;
 }
+
+const getRandomColor = () => randomColor({ luminosity: "bright" });
 
 const CategoryManagerModal: React.FC<Props> = ({
   isOpen,
@@ -23,29 +31,41 @@ const CategoryManagerModal: React.FC<Props> = ({
 }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [editColor, setEditColor] = useState("");
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryColor, setNewCategoryColor] = useState("#6366f1");
   const [selectedParentId, setSelectedParentId] = useState<string>(
     initialParentId || "",
   );
 
   React.useEffect(() => {
-    if (isOpen && initialParentId) {
-      setSelectedParentId(initialParentId);
-    } else if (isOpen) {
-      setSelectedParentId("");
+    if (isOpen) {
+      setNewCategoryColor(getRandomColor());
+      if (initialParentId) {
+        setSelectedParentId(initialParentId);
+      } else {
+        setSelectedParentId("");
+      }
     }
   }, [isOpen, initialParentId]);
+
+  // Organize by hierarchy for display
+  const rootCategories = useMemo(() => {
+    const ids = new Set(categories.map((c) => c.id));
+    return categories.filter((c) => !c.parentId || !ids.has(c.parentId));
+  }, [categories]);
 
   if (!isOpen) return null;
 
   const handleStartEdit = (cat: Category) => {
     setEditingId(cat.id);
     setEditValue(cat.name);
+    setEditColor(cat.color || "#6366f1");
   };
 
   const handleSaveEdit = (cat: Category) => {
-    if (editValue.trim() && editValue !== cat.name) {
-      onUpdateCategory(cat.id, editValue.trim());
+    if (editValue.trim()) {
+      onUpdateCategory(cat.id, editValue.trim(), cat.parentId, editColor);
     }
     setEditingId(null);
   };
@@ -56,14 +76,13 @@ const CategoryManagerModal: React.FC<Props> = ({
       onAddCategory(
         newCategoryName.trim(),
         selectedParentId === "" ? undefined : selectedParentId,
+        newCategoryColor,
       );
       setNewCategoryName("");
-      // Keep parent selection or reset? Resetting is probably safer.
+      setNewCategoryColor(getRandomColor());
     }
   };
 
-  // Organize by hierarchy for display
-  const rootCategories = categories.filter((c) => !c.parentId);
   const getChildren = (parentId: string) =>
     categories.filter((c) => c.parentId === parentId);
 
@@ -78,7 +97,13 @@ const CategoryManagerModal: React.FC<Props> = ({
           }`}
         >
           {isEditing ? (
-            <div className="flex-1 flex gap-2">
+            <div className="flex-1 flex gap-2 items-center">
+              <input
+                type="color"
+                value={editColor}
+                onChange={(e) => setEditColor(e.target.value)}
+                className="w-8 h-8 rounded-lg cursor-pointer bg-transparent border-none p-0"
+              />
               <input
                 autoFocus
                 type="text"
@@ -96,6 +121,10 @@ const CategoryManagerModal: React.FC<Props> = ({
             </div>
           ) : (
             <>
+              <div
+                className="w-3 h-3 rounded-full shrink-0 shadow-sm"
+                style={{ backgroundColor: cat.color || "#6366f1" }}
+              />
               <span className="flex-1 text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
                 {cat.name}
               </span>
@@ -123,13 +152,14 @@ const CategoryManagerModal: React.FC<Props> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-200 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div
         className="w-full max-w-lg bg-surface border border-border-muted rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[80vh] glass-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-border-muted flex items-center justify-between bg-surface-raised/50 shrink-0">
-          <h2 className="text-xl font-black uppercase tracking-tight text-text-main italic">
+          <h2 className="text-xl font-black uppercase tracking-tight text-text-main italic flex items-center gap-2">
+            <Palette className="w-5 h-5 text-primary" />
             Manage <span className="text-primary text-glow">Categories</span>
           </h2>
           <button
@@ -141,21 +171,44 @@ const CategoryManagerModal: React.FC<Props> = ({
         </div>
 
         <div className="p-4 border-b border-border-muted bg-surface-raised/20 shrink-0">
-          <form onSubmit={handleAddSubmit} className="flex gap-2">
-            <div className="flex-1 flex gap-2">
-              <input
-                type="text"
-                value={newCategoryName}
-                onChange={(e) => setNewCategoryName(e.target.value)}
-                placeholder="New Category Name..."
-                className="flex-1 bg-surface-raised border border-border-muted rounded-xl px-4 py-2 text-sm focus:border-primary outline-none transition-all placeholder:text-text-dark/50"
-              />
+          <form onSubmit={handleAddSubmit} className="flex flex-col gap-3">
+            <div className="flex gap-2">
+              <div className="flex-1 flex gap-2">
+                <div className="relative group">
+                  <input
+                    type="color"
+                    value={newCategoryColor}
+                    onChange={(e) => setNewCategoryColor(e.target.value)}
+                    className="w-10 h-10 rounded-xl cursor-pointer bg-surface-raised border border-border-muted p-1 hover:border-primary transition-all"
+                  />
+                </div>
+                <input
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  placeholder="New Category Name..."
+                  className="flex-1 bg-surface-raised border border-border-muted rounded-xl px-4 py-2 text-sm focus:border-primary outline-none transition-all placeholder:text-text-dark/50"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!newCategoryName.trim()}
+                className="px-4 py-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-glow shadow-primary/10 flex items-center gap-2 font-bold text-sm"
+              >
+                <Plus className="w-4 h-4" />
+                ADD
+              </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-black text-text-dark uppercase tracking-widest pl-1">
+                Parent Category:
+              </span>
               <select
                 value={selectedParentId}
                 onChange={(e) => setSelectedParentId(e.target.value)}
-                className="w-1/3 bg-surface-raised border border-border-muted rounded-xl px-3 py-2 text-sm focus:border-primary outline-none cursor-pointer text-text-muted"
+                className="flex-1 bg-surface-raised/50 border border-border-muted rounded-lg px-3 py-1.5 text-[11px] font-bold uppercase tracking-tight focus:border-primary outline-none cursor-pointer text-text-muted"
               >
-                <option value="">No Parent</option>
+                <option value="">No Parent (Root)</option>
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -163,13 +216,6 @@ const CategoryManagerModal: React.FC<Props> = ({
                 ))}
               </select>
             </div>
-            <button
-              type="submit"
-              disabled={!newCategoryName.trim()}
-              className="p-2 bg-primary hover:bg-primary-hover text-white rounded-xl transition-all disabled:opacity-30 disabled:cursor-not-allowed shadow-glow shadow-primary/10"
-            >
-              <Plus className="w-5 h-5" />
-            </button>
           </form>
         </div>
 
@@ -179,13 +225,13 @@ const CategoryManagerModal: React.FC<Props> = ({
               No categories yet. Add one above.
             </div>
           ) : (
-            rootCategories.map((cat) => renderCategoryItem(cat))
+            rootCategories.map((cat: Category) => renderCategoryItem(cat))
           )}
         </div>
 
-        <div className="p-6 bg-surface-raised/30 border-t border-border-subtle shrink-0">
-          <p className="text-[10px] font-bold text-text-dark uppercase tracking-widest text-center italic">
-            Deleting a category will NOT delete the series inside it.
+        <div className="p-4 bg-surface-raised/30 border-t border-border-subtle shrink-0">
+          <p className="text-[10px] font-bold text-text-dark uppercase tracking-widest text-center italic opacity-60">
+            Tip: Click the color square to customize category color.
           </p>
         </div>
       </div>

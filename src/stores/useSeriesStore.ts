@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { create } from "zustand";
 import {
   createCategoryAction,
@@ -16,12 +15,15 @@ import {
   createSeriesAction,
   deleteSeriesAction,
   fetchSeriesAction,
+  fetchSeriesImagesAction,
   updateSeriesAction,
 } from "../actions/series";
 import {
   Category,
+  ImageUpdateInput,
   ProcessedImage,
   Series,
+  SeriesInput,
   TextBubble,
   UsageMetadata,
 } from "../types";
@@ -31,6 +33,7 @@ interface SeriesState {
   activeSeriesId: string | null;
   categories: Category[];
   isLoading: boolean;
+  isImagesLoading: boolean;
   error: string | null;
 
   // Pagination
@@ -42,6 +45,7 @@ interface SeriesState {
   // Sync Actions
   fetchSeries: () => Promise<void>;
   fetchCategories: () => Promise<void>;
+  fetchImages: (seriesId: string) => Promise<void>;
 
   // Actions
   setSeries: (series: Series[] | ((prev: Series[]) => Series[])) => void;
@@ -68,7 +72,7 @@ interface SeriesState {
     imageId: string,
     blob: Blob,
     fileName: string,
-    meta?: Record<string, unknown>,
+    meta?: { bubbles: TextBubble[]; usage: UsageMetadata; cost: number },
   ) => Promise<void>;
 
   // Ordering Actions
@@ -77,11 +81,16 @@ interface SeriesState {
 
   // Category Actions
   setCategories: (categories: Category[]) => void;
-  addCategory: (name: string, parentId?: string) => Promise<void>;
+  addCategory: (
+    name: string,
+    parentId?: string,
+    color?: string,
+  ) => Promise<void>;
   updateCategory: (
     id: string,
     name: string,
     parentId?: string | null,
+    color?: string,
   ) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
 
@@ -94,6 +103,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   activeSeriesId: null,
   categories: [],
   isLoading: false,
+  isImagesLoading: false,
   error: null,
 
   // Pagination defaults
@@ -109,12 +119,13 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   fetchCategories: async () => {
     try {
       const categoriesData = await fetchCategoriesAction();
-      const categories: Category[] = categoriesData.map((c: any) => ({
+      const transformedCategories: Category[] = categoriesData.map((c) => ({
         id: c.id,
         name: c.name,
         parentId: c.parentId,
+        color: c.color || undefined,
       }));
-      set({ categories });
+      set({ categories: transformedCategories });
     } catch (err) {
       console.error("Fetch Categories Error", err);
     }
@@ -130,37 +141,23 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
         get().pageSize,
       );
 
-      const transformedSeries: Series[] = items.map((s: any) => ({
+      const transformedSeries: Series[] = items.map((s) => ({
         id: s.id,
         name: s.name,
         description: s.description || "",
-        category: s.categoryName || "Uncategorized",
+        category: "Uncategorized",
         categoryId: s.categoryId || undefined,
         tags: s.tags || [],
-        createdAt: new Date(s.createdAt).getTime(),
-        updatedAt: new Date(s.updatedAt).getTime(),
+        createdAt: new Date(s.createdAt || Date.now()).getTime(),
+        updatedAt: new Date(s.updatedAt || Date.now()).getTime(),
         sequenceNumber: s.sequenceNumber || 0,
         author: s.author || undefined,
         group: s.groupName || undefined,
         originalTitle: s.originalTitle || undefined,
-        images: (s.images || [])
-          .map((img: any) => ({
-            id: img.id,
-            fileName: img.fileName,
-            originalUrl: img.originalUrl, // Signed URL
-            translatedUrl: img.translatedUrl, // Signed URL
-            status: img.status,
-            originalKey: img.originalKey,
-            translatedKey: img.translatedKey,
-            sequenceNumber: img.sequenceNumber,
-            bubbles: (img.bubbles as TextBubble[]) || [],
-            usage: (img.usage as UsageMetadata) || undefined,
-            cost: img.cost || 0,
-          }))
-          .sort(
-            (a: any, b: any) =>
-              (a.sequenceNumber || 0) - (b.sequenceNumber || 0),
-          ),
+        imageCount: Number(s.imageCount) || 0,
+        completedCount: Number(s.completedCount) || 0,
+        previewImages: s.previewImages || [],
+        images: [], // Images are now lazy loaded
       }));
 
       set({
@@ -170,11 +167,47 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       });
 
       if (transformedSeries.length > 0 && !get().activeSeriesId) {
-        set({ activeSeriesId: transformedSeries[0].id });
+        get().setActiveSeriesId(transformedSeries[0].id);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error("Fetch Series Error:", err);
-      set({ error: err.message, isLoading: false });
+      const message = err instanceof Error ? err.message : "Fetch failed";
+      set({ error: message, isLoading: false });
+    }
+  },
+
+  fetchImages: async (id: string) => {
+    const sIndex = get().series.findIndex((s) => s.id === id);
+    if (sIndex === -1) return;
+
+    set({ isImagesLoading: true });
+    try {
+      const images = await fetchSeriesImagesAction(id);
+      const transformedImages: ProcessedImage[] = images.map((img) => ({
+        id: img.id,
+        fileName: img.fileName,
+        originalUrl: img.originalUrl,
+        translatedUrl: img.translatedUrl,
+        status: img.status as ProcessedImage["status"],
+        originalKey: img.originalKey,
+        translatedKey: img.translatedKey || undefined,
+        sequenceNumber: img.sequenceNumber || 0,
+        bubbles: (img.bubbles as unknown as TextBubble[]) || [],
+        usage: (img.usage as unknown as UsageMetadata) || undefined,
+        cost: img.cost || 0,
+      }));
+
+      set((state) => {
+        const newSeries = [...state.series];
+        newSeries[sIndex] = {
+          ...newSeries[sIndex],
+          images: transformedImages,
+        };
+        return { series: newSeries, isImagesLoading: false };
+      });
+    } catch (err) {
+      console.error("Fetch Images Error:", err);
+      set({ isImagesLoading: false });
     }
   },
 
@@ -191,7 +224,6 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
 
     try {
       await createSeriesAction({
-        id: newSeries.id.length < 10 ? undefined : newSeries.id,
         name: newSeries.name,
         description: newSeries.description,
         categoryId: newSeries.categoryId,
@@ -215,7 +247,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     }));
 
     try {
-      const dbUpdates: any = {};
+      const dbUpdates: Partial<SeriesInput> = {};
       if (updates.name !== undefined) dbUpdates.name = updates.name;
       if (updates.description !== undefined)
         dbUpdates.description = updates.description;
@@ -263,7 +295,12 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     }
   },
 
-  setActiveSeriesId: (id) => set({ activeSeriesId: id }),
+  setActiveSeriesId: (id) => {
+    set({ activeSeriesId: id });
+    if (id) {
+      get().fetchImages(id);
+    }
+  },
 
   setImages: (seriesId, action) => {
     set((state) => {
@@ -372,7 +409,8 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     }));
 
     try {
-      await updateImageAction(imageId, updates);
+      const dbUpdates: Partial<ImageUpdateInput> = { ...updates };
+      await updateImageAction(imageId, dbUpdates);
     } catch (err) {
       console.error("Failed to update image:", err);
     }
@@ -407,12 +445,12 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       });
 
       // 3. Update Database
-      const updates = {
+      const updates: Partial<ProcessedImage> = {
         translatedKey: key,
         status: "completed" as ProcessedImage["status"],
-        bubbles: (meta?.bubbles as TextBubble[]) || [],
-        usage: (meta?.usage as UsageMetadata) || null,
-        cost: (meta?.cost as number) || 0,
+        bubbles: meta?.bubbles || [],
+        usage: meta?.usage || undefined,
+        cost: meta?.cost || 0,
       };
 
       await get().updateImageInSeries(seriesId, imageId, updates);
@@ -425,7 +463,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     }
   },
 
-  reorderSeries: async (orderedIds) => {
+  reorderSeries: async (_orderedIds) => {
     // Placeholder
   },
   reorderImages: async (seriesId, orderedIds) => {
@@ -436,7 +474,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     const currentImages = [...state.series[seriesIndex].images];
     const newImages = orderedIds
       .map((id) => currentImages.find((img) => img.id === id))
-      .filter(Boolean) as ProcessedImage[];
+      .filter((img): img is ProcessedImage => !!img);
 
     // Assign new sequence numbers based on order
     const updatedImages = newImages.map((img, idx) => ({
@@ -462,12 +500,12 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
   },
 
   setCategories: (categories) => set({ categories }),
-  addCategory: async (name, parentId) => {
-    const newCat = await createCategoryAction(name, parentId);
+  addCategory: async (name, parentId, color) => {
+    const newCat = await createCategoryAction(name, parentId, color);
     if (newCat) get().fetchCategories();
   },
-  updateCategory: async (id, name, parentId) => {
-    await updateCategoryAction(id, name, parentId);
+  updateCategory: async (id, name, parentId, color) => {
+    await updateCategoryAction(id, name, parentId, color);
     get().fetchCategories();
   },
   deleteCategory: async (id) => {

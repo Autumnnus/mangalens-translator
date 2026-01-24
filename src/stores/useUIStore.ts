@@ -1,12 +1,5 @@
 import { create } from "zustand";
-
-interface ConfirmConfig {
-  isOpen: boolean;
-  title: string;
-  message: string;
-  onConfirm: () => void;
-  type?: "danger" | "warning";
-}
+import { ConfirmConfig, ProcessedImage } from "../types";
 
 interface UIState {
   // Modal States
@@ -18,11 +11,11 @@ interface UIState {
   // Specific UI State
   editingSeriesId: string | null;
   currentImageIndex: number;
-  selectedImageId: string | null; // For modal view
+  selectedImage: ProcessedImage | null; // For modal view
   categoryInitialParentId: string | null;
 
   // Confirmation Modal
-  confirmConfig: ConfirmConfig;
+  confirmConfig: ConfirmConfig & { isOpen: boolean };
 
   // Actions
   toggleSidebar: (value?: boolean) => void;
@@ -35,9 +28,9 @@ interface UIState {
 
   setEditingSeriesId: (id: string | null) => void;
   setCurrentImageIndex: (index: number) => void;
-  setSelectedImageId: (id: string | null) => void;
+  setSelectedImage: (image: ProcessedImage | null) => void;
 
-  openConfirmModal: (config: Omit<ConfirmConfig, "isOpen">) => void;
+  openConfirmModal: (config: ConfirmConfig) => void;
   closeConfirmModal: () => void;
 }
 
@@ -49,7 +42,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   editingSeriesId: null,
   currentImageIndex: 0,
-  selectedImageId: null,
+  selectedImage: null,
   categoryInitialParentId: null,
 
   confirmConfig: {
@@ -77,7 +70,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   setEditingSeriesId: (id) => set({ editingSeriesId: id }),
   setCurrentImageIndex: (index) => set({ currentImageIndex: index }),
-  setSelectedImageId: (id) => set({ selectedImageId: id }),
+  setSelectedImage: (image) => set({ selectedImage: image }),
 
   openConfirmModal: (config) =>
     set({ confirmConfig: { ...config, isOpen: true } }),

@@ -126,7 +126,8 @@ const NewSeriesModal: React.FC<Props> = ({
       });
       return list;
     };
-    const roots = categories.filter((c) => !c.parentId);
+    const ids = new Set(categories.map((c) => c.id));
+    const roots = categories.filter((c) => !c.parentId || !ids.has(c.parentId));
     let result: { id: string; name: string; level: number }[] = [];
     roots.forEach((r) => {
       result.push({ id: r.id, name: r.name, level: 0 });

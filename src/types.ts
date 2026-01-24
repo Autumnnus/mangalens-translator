@@ -45,6 +45,7 @@ export interface Category {
   id: string;
   name: string;
   parentId: string | null;
+  color?: string;
 }
 
 export interface Series {
@@ -55,6 +56,9 @@ export interface Series {
   categoryId?: string; // Link to Category
   tags: string[];
   images: ProcessedImage[];
+  previewImages?: string[];
+  imageCount?: number;
+  completedCount?: number;
   sequenceNumber: number;
   createdAt: number;
   updatedAt: number;
@@ -63,4 +67,33 @@ export interface Series {
   originalTitle?: string;
 }
 
+export interface SeriesInput {
+  name: string;
+  description?: string;
+  categoryId?: string;
+  author?: string;
+  groupName?: string;
+  originalTitle?: string;
+  sequenceNumber?: number;
+  tags?: string[];
+}
+
+export interface ImageUpdateInput {
+  fileName?: string;
+  originalKey?: string;
+  translatedKey?: string;
+  status?: ProcessedImage["status"];
+  sequenceNumber?: number;
+  bubbles?: TextBubble[];
+  usage?: UsageMetadata | null;
+  cost?: number;
+}
+
 export type ViewMode = "slider" | "toggle" | "side-by-side" | "grid";
+
+export interface ConfirmConfig {
+  title: string;
+  message: string;
+  onConfirm: () => void;
+  type?: "danger" | "warning";
+}

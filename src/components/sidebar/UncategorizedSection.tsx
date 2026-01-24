@@ -100,13 +100,13 @@ const UncategorizedSection: React.FC<UncategorizedSectionProps> = ({
                   : "hover:bg-slate-800/50 border border-transparent"
               }`}
             >
-              <SeriesIcon images={s.images} />
+              <SeriesIcon images={s.images} previewImages={s.previewImages} />
               {!isSidebarCollapsed && (
                 <>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold truncate">{s.name}</p>
                     <p className="text-[10px] text-slate-500 font-bold">
-                      {s.images.length} pages
+                      {s.imageCount ?? s.images.length} pages
                     </p>
                   </div>
                   {!isViewOnly && (
