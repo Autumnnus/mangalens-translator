@@ -11,6 +11,7 @@ interface ThumbnailStripProps {
   onSelectIndex: (index: number) => void;
   onPagePrev: () => void;
   onPageNext: () => void;
+  isOverlay?: boolean;
 }
 
 const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
@@ -23,46 +24,40 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
   onSelectIndex,
   onPagePrev,
   onPageNext,
+  isOverlay = false,
 }) => {
-  const thumbnailsPerPage = 20;
-
   return (
     <div
-      className={`mt-4 sm:mt-10 p-5 bg-surface/30 backdrop-blur-2xl rounded-[3rem] border border-border-muted mx-2 sm:mx-6 mb-6 shrink-0 transition-all glass-card ${
+      className={`${isOverlay ? "p-3 sm:p-5 mx-0 sm:mx-6 mb-0 sm:mb-6 rounded-none sm:rounded-[3rem] border-x-0 sm:border-x" : "mt-4 sm:mt-10 p-5 mx-2 sm:mx-6 mb-6 rounded-[3rem] border"} bg-surface/30 backdrop-blur-2xl border-border-muted shrink-0 transition-all glass-card ${
         comparisonMode === "grid" ? "overflow-y-auto max-h-[60vh]" : ""
       }`}
     >
-      <div className="flex items-center justify-between mb-4 px-2">
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-black text-primary uppercase tracking-widest bg-primary/10 px-4 py-1.5 rounded-full border border-primary/20 shadow-glow">
-            Batch {currentThumbPage + 1} / {totalThumbPages}
+      <div className="flex items-center justify-between mb-2 sm:mb-4 px-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black text-primary uppercase tracking-widest bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
+            {currentThumbPage + 1}/{totalThumbPages}
           </span>
-          <span className="text-[10px] font-black text-text-dark uppercase tracking-widest hidden sm:inline ml-2">
-            Showing {currentThumbPage * thumbnailsPerPage + 1} -{" "}
-            {Math.min(
-              (currentThumbPage + 1) * thumbnailsPerPage,
-              images.length,
-            )}{" "}
-            of {images.length} items
-          </span>
+          {!isOverlay && (
+            <span className="text-[9px] font-black text-text-dark uppercase tracking-widest hidden sm:inline ml-2">
+              {images.length} Pages
+            </span>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={onPagePrev}
             disabled={currentThumbPage === 0}
-            className="p-3 bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main rounded-2xl disabled:opacity-30 transition-all border border-border-muted shadow-premium active:scale-95"
-            title="Previous 20"
+            className="w-8 h-8 sm:w-10 sm:h-10 bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main rounded-xl disabled:opacity-30 transition-all border border-border-muted flex items-center justify-center active:scale-95"
           >
-            <i className="fas fa-angles-left text-xs"></i>
+            <i className="fas fa-chevron-left text-[10px]"></i>
           </button>
           <button
             onClick={onPageNext}
             disabled={currentThumbPage >= totalThumbPages - 1}
-            className="p-3 bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main rounded-2xl disabled:opacity-30 transition-all border border-border-muted shadow-premium active:scale-95"
-            title="Next 20"
+            className="w-8 h-8 sm:w-10 sm:h-10 bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main rounded-xl disabled:opacity-30 transition-all border border-border-muted flex items-center justify-center active:scale-95"
           >
-            <i className="fas fa-angles-right text-xs"></i>
+            <i className="fas fa-chevron-right text-[10px]"></i>
           </button>
         </div>
       </div>

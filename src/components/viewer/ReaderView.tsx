@@ -29,6 +29,7 @@ const ReaderView: React.FC = () => {
 
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonMode, setComparisonMode] = useState<ViewMode>("slider");
+  const [isUIVisible, setIsUIVisible] = useState(true);
 
   const activeSeries = useMemo(
     () => seriesListData?.items.find((s) => s.id === activeSeriesId),
@@ -130,51 +131,64 @@ const ReaderView: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full animate-in fade-in duration-700 min-h-0">
-      <ReaderHeader
-        activeSeries={activeSeries}
-        currentImageIndex={currentImageIndex}
-        imageCount={images.length}
-        toggleViewOnly={toggleViewOnly}
-        setCurrentImageIndex={setCurrentImageIndex}
-        comparisonMode={comparisonMode}
-        setComparisonMode={setComparisonMode}
+    <div className="flex-1 flex flex-col h-full animate-in fade-in duration-700 min-h-0 relative bg-black">
+      <div
+        className={`absolute top-0 left-0 right-0 z-[100] transition-all duration-500 ease-in-out ${isUIVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"}`}
       >
+        <ReaderHeader
+          activeSeries={activeSeries}
+          currentImageIndex={currentImageIndex}
+          imageCount={images.length}
+          toggleViewOnly={toggleViewOnly}
+          setCurrentImageIndex={setCurrentImageIndex}
+          comparisonMode={comparisonMode}
+          setComparisonMode={setComparisonMode}
+        >
+          {comparisonMode !== "grid" && (
+            <ViewModeControls
+              showComparison={showComparison}
+              onToggleComparison={() => setShowComparison(!showComparison)}
+              comparisonMode={comparisonMode}
+              onChangeMode={setComparisonMode}
+              hasTranslation={!!currentImage?.translatedUrl}
+            />
+          )}
+        </ReaderHeader>
+      </div>
+
+      <div className="flex-1 flex flex-col min-h-0 relative">
         {comparisonMode !== "grid" && (
-          <ViewModeControls
+          <ReaderImageArea
+            currentImage={currentImage}
             showComparison={showComparison}
-            onToggleComparison={() => setShowComparison(!showComparison)}
             comparisonMode={comparisonMode}
-            onChangeMode={setComparisonMode}
-            hasTranslation={!!currentImage?.translatedUrl}
+            onNext={handleNext}
+            onPrev={handlePrev}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onToggleUI={() => setIsUIVisible(!isUIVisible)}
+            isUIVisible={isUIVisible}
           />
         )}
-      </ReaderHeader>
+      </div>
 
-      {comparisonMode !== "grid" && (
-        <ReaderImageArea
-          currentImage={currentImage}
-          showComparison={showComparison}
+      <div
+        className={`fixed md:relative bottom-0 left-0 right-0 z-[100] transition-all duration-500 ease-in-out ${isUIVisible ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none"}`}
+      >
+        <ThumbnailStrip
+          images={images}
+          currentThumbSet={currentThumbSet}
+          currentImageIndex={currentImageIndex}
+          currentThumbPage={currentThumbPage}
+          totalThumbPages={totalThumbPages}
           comparisonMode={comparisonMode}
-          onNext={handleNext}
-          onPrev={handlePrev}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
+          onSelectIndex={setCurrentImageIndex}
+          onPagePrev={handleThumbPagePrev}
+          onPageNext={handleThumbPageNext}
+          isOverlay={true}
         />
-      )}
-
-      <ThumbnailStrip
-        images={images}
-        currentThumbSet={currentThumbSet}
-        currentImageIndex={currentImageIndex}
-        currentThumbPage={currentThumbPage}
-        totalThumbPages={totalThumbPages}
-        comparisonMode={comparisonMode}
-        onSelectIndex={setCurrentImageIndex}
-        onPagePrev={handleThumbPagePrev}
-        onPageNext={handleThumbPageNext}
-      />
+      </div>
     </div>
   );
 };

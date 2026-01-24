@@ -5,16 +5,21 @@ import { ImagePair, ViewMode } from "../types";
 interface Props {
   pair: ImagePair;
   mode: ViewMode;
+  interactive?: boolean;
 }
 
-const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
+const ComparisonView: React.FC<Props> = ({
+  pair,
+  mode,
+  interactive = true,
+}) => {
   const [sliderPos, setSliderPos] = useState(50);
   const [isToggled, setIsToggled] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
   const handleMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!containerRef.current) return;
+    if (!containerRef.current || !interactive) return;
 
     const rect = containerRef.current.getBoundingClientRect();
     const x = "touches" in e ? e.touches[0].clientX : e.clientX;
@@ -24,6 +29,7 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
   };
 
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!interactive) return;
     isDragging.current = true;
     handleMove(e);
   };
@@ -34,7 +40,7 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
     };
 
     const handleGlobalMouseMove = (e: MouseEvent) => {
-      if (isDragging.current) {
+      if (isDragging.current && interactive) {
         if (!containerRef.current) return;
         const rect = containerRef.current.getBoundingClientRect();
         const position = ((e.clientX - rect.left) / rect.width) * 100;
@@ -48,13 +54,13 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
       window.removeEventListener("mouseup", handleGlobalMouseUp);
       window.removeEventListener("mousemove", handleGlobalMouseMove);
     };
-  }, []);
+  }, [interactive]);
 
   const hasTranslation = pair.sourceUrl !== pair.convertedUrl;
 
   if (!hasTranslation) {
     return (
-      <div className="relative h-[400px] md:h-[600px] overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
+      <div className="relative w-full h-full overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
         <img
           src={pair.sourceUrl}
           alt="Original"
@@ -69,7 +75,7 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
 
   if (mode === "side-by-side") {
     return (
-      <div className="grid grid-cols-2 gap-4 h-[400px] md:h-[600px]">
+      <div className="grid grid-cols-2 gap-4 w-full h-full">
         <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
           <img
             src={pair.sourceUrl}
@@ -97,7 +103,7 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
   if (mode === "toggle") {
     return (
       <div
-        className="relative h-[400px] md:h-[600px] cursor-pointer overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass group"
+        className="relative w-full h-full cursor-pointer overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass group"
         onClick={() => setIsToggled(!isToggled)}
       >
         <img
@@ -135,7 +141,7 @@ const ComparisonView: React.FC<Props> = ({ pair, mode }) => {
   return (
     <div
       ref={containerRef}
-      className="relative h-[400px] md:h-[600px] select-none overflow-hidden rounded-[2.5rem] border border-border-muted cursor-col-resize group bg-background/40 glass-card"
+      className="relative w-full h-full select-none overflow-hidden rounded-[2.5rem] border border-border-muted cursor-col-resize group bg-background/40 glass-card"
       onMouseDown={handleMouseDown}
       onTouchMove={handleMove}
     >
