@@ -1,11 +1,11 @@
 {
-  "name": "next-app",
-  "version": "0.1.0",
+  "name": "mangalens-translator",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start -p 3001",
+    "start": "next start",
     "lint": "eslint",
     "drizzle": "npx drizzle-kit generate",
     "drizzle-push": "npx drizzle-kit push"
