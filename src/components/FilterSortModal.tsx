@@ -5,6 +5,7 @@ export interface FilterSortOptions {
   search: string;
   categories: string[];
   sortBy:
+    | "sequence"
     | "name-asc"
     | "name-desc"
     | "newest"
@@ -41,7 +42,7 @@ const FilterSortModal: React.FC<Props> = ({
     const resetFilters: FilterSortOptions = {
       search: "",
       categories: [],
-      sortBy: "newest",
+      sortBy: "sequence",
       showCompleted: true,
       showInProgress: true,
     };
@@ -141,6 +142,7 @@ const FilterSortModal: React.FC<Props> = ({
               }
               className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-3 text-sm font-bold focus:ring-2 ring-primary outline-none transition-all appearance-none cursor-pointer"
             >
+              <option value="sequence">Sequence Order</option>
               <option value="name-asc">Name (A-Z)</option>
               <option value="name-desc">Name (Z-A)</option>
               <option value="newest">Newest First</option>

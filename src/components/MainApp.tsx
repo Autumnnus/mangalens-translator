@@ -9,6 +9,7 @@ import { useConfirm } from "../hooks/useConfirm";
 import {
   useDeleteSeriesMutation,
   useSeriesQuery,
+  useSwapSeriesSequenceMutation,
   useUpdateSeriesMutation,
 } from "../hooks/useSeriesQueries";
 import { useSeriesStore } from "../stores/useSeriesStore";
@@ -33,6 +34,7 @@ const MainApp: React.FC = () => {
   const { mutate: deleteSeries } = useDeleteSeriesMutation();
   const { mutate: updateSeries } = useUpdateSeriesMutation();
   const { mutate: updateCategory } = useUpdateCategoryMutation();
+  const { mutate: swapSeriesSequence } = useSwapSeriesSequenceMutation();
 
   const series = useMemo(() => seriesData?.items || [], [seriesData]);
   const categories = useMemo(() => categoriesData || [], [categoriesData]);
@@ -115,6 +117,38 @@ const MainApp: React.FC = () => {
     [toggleCategoryModal],
   );
 
+  const handleMoveSeriesUpDown = useCallback(
+    (id: string, direction: "up" | "down") => {
+      const targetSeries = series.find((s) => s.id === id);
+      if (!targetSeries) return;
+
+      const siblings = series
+        .filter((s) => s.categoryId === targetSeries.categoryId)
+        .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
+
+      const currentIndex = siblings.findIndex((s) => s.id === id);
+      if (currentIndex === -1) return;
+
+      let swapIndex = -1;
+      if (direction === "up" && currentIndex > 0) {
+        swapIndex = currentIndex - 1;
+      } else if (direction === "down" && currentIndex < siblings.length - 1) {
+        swapIndex = currentIndex + 1;
+      }
+
+      if (swapIndex !== -1) {
+        const otherSeries = siblings[swapIndex];
+
+        // Efficient swap in 1 request
+        swapSeriesSequence({
+          id1: targetSeries.id,
+          id2: otherSeries.id,
+        });
+      }
+    },
+    [series, swapSeriesSequence],
+  );
+
   // Prevent drag and drop on the entire window
   useEffect(() => {
     const handleDragOver = (e: DragEvent) => e.preventDefault();
@@ -144,6 +178,7 @@ const MainApp: React.FC = () => {
           onMoveSeries={handleMoveSeries}
           onMoveCategory={handleMoveCategory}
           onAddSubcategory={handleAddSubcategory}
+          onMoveSeriesUpDown={handleMoveSeriesUpDown}
           isLoading={isLoading}
         />
 

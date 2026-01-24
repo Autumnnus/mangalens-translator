@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { uploadObject } from "@/lib/storage";
-import { Column, getTableColumns, getTableName, sql, Table } from "drizzle-orm";
+import { Column, getTableColumns, sql, Table } from "drizzle-orm";
 import { PgColumn, PgTable } from "drizzle-orm/pg-core";
 import JSZip from "jszip";
 import { NextRequest, NextResponse } from "next/server";
@@ -16,8 +16,15 @@ interface BackupData {
   images: (typeof schema.images.$inferSelect)[];
 }
 
+import { auth } from "@/auth";
+
 export async function POST(req: NextRequest) {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const contentType = req.headers.get("content-type") || "";
 
     let arrayBuffer: ArrayBuffer;
@@ -85,7 +92,6 @@ export async function POST(req: NextRequest) {
         rows: unknown[],
         conflictTarget?: PgColumn | PgColumn[],
       ) => {
-        const tableName = getTableName(table);
         const processed = processRows(table, rows);
         if (processed.length === 0) return;
 

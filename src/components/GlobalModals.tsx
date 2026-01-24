@@ -59,16 +59,14 @@ const GlobalModals: React.FC = () => {
     (
       name: string,
       _categoryName: string,
-      sequenceNumber: number,
       categoryId?: string,
       metadata?: { author?: string; group?: string; originalTitle?: string },
-    ) => {
+    ): void => {
       const seriesInput: SeriesInput = {
         name,
         description: "",
         categoryId: categoryId,
         tags: [],
-        sequenceNumber,
         author: metadata?.author,
         groupName: metadata?.group,
         originalTitle: metadata?.originalTitle,
@@ -145,11 +143,6 @@ const GlobalModals: React.FC = () => {
           editingSeriesId
             ? seriesItems.find((s) => s.id === editingSeriesId)?.category
             : ""
-        }
-        initialSequenceNumber={
-          editingSeriesId
-            ? seriesItems.find((s) => s.id === editingSeriesId)?.sequenceNumber
-            : 0
         }
         initialAuthor={
           editingSeriesId

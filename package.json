@@ -1,6 +1,6 @@
 {
   "name": "mangalens-translator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "drizzle": "npx drizzle-kit generate",
-    "drizzle-push": "npx drizzle-kit push"
+    "drizzle-push": "npx drizzle-kit push",
+    "patch": "npm version patch --no-git-tag-version"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",

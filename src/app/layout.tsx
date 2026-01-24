@@ -6,6 +6,8 @@ export const metadata: Metadata = {
   description: "AI-Powered Manga Translation Tool",
 };
 
+import SessionGuard from "@/components/SessionGuard";
+import VersionChecker from "@/components/VersionChecker";
 import QueryProvider from "@/providers/QueryProvider";
 
 export default function RootLayout({
@@ -22,7 +24,11 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <QueryProvider>{children}</QueryProvider>
+        <QueryProvider>
+          <SessionGuard />
+          <VersionChecker />
+          {children}
+        </QueryProvider>
       </body>
     </html>
   );

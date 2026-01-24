@@ -11,7 +11,11 @@ import { users } from "./db/schema";
 export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   adapter: DrizzleAdapter(db),
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    maxAge: 60 * 60,
+  },
+  secret: process.env.AUTH_SECRET,
   providers: [
     Credentials({
       async authorize(credentials) {
@@ -35,16 +39,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
 
           if (passwordsMatch) return user;
-
-          // Fallback: Check plain text (legacy)
-          if (password === user.password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            await db
-              .update(users)
-              .set({ password: hashedPassword })
-              .where(eq(users.id, user.id));
-            return user;
-          }
         }
 
         console.error("Invalid credentials");

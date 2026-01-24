@@ -1,3 +1,4 @@
+import { auth } from "@/auth";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { getObjectBuffer, listObjects } from "@/lib/storage";
@@ -8,6 +9,11 @@ export const maxDuration = 300;
 
 export async function GET() {
   try {
+    const session = await auth();
+    if (!session || !session.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const zip = new JSZip();
 
     const data = {

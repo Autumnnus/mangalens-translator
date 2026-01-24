@@ -85,3 +85,14 @@ export const useDeleteSeriesMutation = () => {
     },
   });
 };
+
+export const useSwapSeriesSequenceMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id1, id2 }: { id1: string; id2: string }) =>
+      seriesService.swapSeriesSequence(id1, id2),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+    },
+  });
+};

@@ -24,6 +24,7 @@ interface Props {
     targetParentId: string | undefined,
   ) => void;
   onAddSubcategory?: (parentId: string) => void;
+  onMoveSeriesUpDown?: (id: string, direction: "up" | "down") => void;
   isLoading?: boolean;
 }
 
@@ -39,6 +40,7 @@ const SeriesSidebar: React.FC<Props> = ({
   onMoveSeries,
   onMoveCategory,
   onAddSubcategory,
+  onMoveSeriesUpDown,
   isLoading = false,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -50,7 +52,7 @@ const SeriesSidebar: React.FC<Props> = ({
   const [filters, setFilters] = useState<FilterSortOptions>({
     search: "",
     categories: [],
-    sortBy: "newest",
+    sortBy: "sequence",
     showCompleted: true,
     showInProgress: true,
   });
@@ -93,6 +95,11 @@ const SeriesSidebar: React.FC<Props> = ({
     });
 
     switch (filters.sortBy) {
+      case "sequence":
+        result.sort(
+          (a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0),
+        );
+        break;
       case "name-asc":
         result.sort((a, b) => a.name.localeCompare(b.name));
         break;
@@ -148,6 +155,7 @@ const SeriesSidebar: React.FC<Props> = ({
       <SidebarActions
         onAdd={onAdd}
         onOpenFilter={() => setIsFilterModalOpen(true)}
+        isViewOnly={isViewOnly}
       />
 
       <SystemActions isViewOnly={isViewOnly} />
@@ -184,6 +192,7 @@ const SeriesSidebar: React.FC<Props> = ({
               onDelete={onDelete}
               onMoveSeries={onMoveSeries}
               onMoveCategory={onMoveCategory}
+              onMoveSeriesUpDown={onMoveSeriesUpDown}
             />
 
             {rootCategories.map((cat) => (
@@ -205,6 +214,7 @@ const SeriesSidebar: React.FC<Props> = ({
                 onMoveSeries={onMoveSeries}
                 onMoveCategory={onMoveCategory}
                 onAddSubcategory={handleAddSubcategory}
+                onMoveSeriesUpDown={onMoveSeriesUpDown}
               />
             ))}
           </>

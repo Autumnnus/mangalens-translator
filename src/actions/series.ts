@@ -119,9 +119,27 @@ export async function createSeriesAction(data: SeriesInput) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
+  // Get max sequence number for this category/user
+  const maxSeqResult = await db
+    .select({
+      maxSeq: sql<number>`COALESCE(MAX(${schema.series.sequenceNumber}), 0)`,
+    })
+    .from(schema.series)
+    .where(
+      and(
+        eq(schema.series.userId, session.user.id),
+        data.categoryId
+          ? eq(schema.series.categoryId, data.categoryId)
+          : sql`${schema.series.categoryId} IS NULL`,
+      ),
+    );
+
+  const nextSeq = (maxSeqResult[0]?.maxSeq || 0) + 1;
+
   await db.insert(schema.series).values({
     ...data,
     userId: session.user.id,
+    sequenceNumber: nextSeq,
   });
 }
 
@@ -165,4 +183,40 @@ export async function deleteSeriesAction(id: string) {
   await db.delete(schema.series).where(eq(schema.series.id, id));
 
   return keys;
+}
+
+export async function swapSeriesSequenceAction(id1: string, id2: string) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+
+  const [s1, s2] = await Promise.all([
+    db.query.series.findFirst({
+      where: and(
+        eq(schema.series.id, id1),
+        eq(schema.series.userId, session.user.id),
+      ),
+    }),
+    db.query.series.findFirst({
+      where: and(
+        eq(schema.series.id, id2),
+        eq(schema.series.userId, session.user.id),
+      ),
+    }),
+  ]);
+
+  if (!s1 || !s2) throw new Error("Series not found");
+
+  const seq1 = s1.sequenceNumber || 0;
+  const seq2 = s2.sequenceNumber || 0;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(schema.series)
+      .set({ sequenceNumber: seq2 })
+      .where(eq(schema.series.id, id1));
+    await tx
+      .update(schema.series)
+      .set({ sequenceNumber: seq1 })
+      .where(eq(schema.series.id, id2));
+  });
 }

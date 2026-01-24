@@ -27,6 +27,7 @@ import {
   TextBubble,
   UsageMetadata,
 } from "../types";
+import { useSettingsStore } from "./useSettingsStore";
 
 interface SeriesState {
   series: Series[];
@@ -77,6 +78,7 @@ interface SeriesState {
 
   // Ordering Actions
   reorderSeries: (orderedSeriesIds: string[]) => Promise<void>;
+  moveSeries: (id: string, direction: "up" | "down") => Promise<void>;
   reorderImages: (seriesId: string, orderedImageIds: string[]) => Promise<void>;
 
   // Category Actions
@@ -165,6 +167,10 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
         isLoading: false,
         total,
       });
+
+      if (total === 0 && useSettingsStore.getState().isViewOnly) {
+        useSettingsStore.getState().setViewOnly(false);
+      }
 
       if (transformedSeries.length > 0 && !get().activeSeriesId) {
         get().setActiveSeriesId(transformedSeries[0].id);
@@ -465,6 +471,59 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
 
   reorderSeries: async (_orderedIds) => {
     // Placeholder
+  },
+  moveSeries: async (id, direction) => {
+    const state = get();
+    const targetSeries = state.series.find((s) => s.id === id);
+    if (!targetSeries) return;
+
+    // Get sibling series (same category)
+    const siblings = state.series
+      .filter((s) => s.categoryId === targetSeries.categoryId)
+      .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
+
+    const currentIndex = siblings.findIndex((s) => s.id === id);
+    if (currentIndex === -1) return;
+
+    let swapIndex = -1;
+    if (direction === "up" && currentIndex > 0) {
+      swapIndex = currentIndex - 1;
+    } else if (direction === "down" && currentIndex < siblings.length - 1) {
+      swapIndex = currentIndex + 1;
+    }
+
+    if (swapIndex !== -1) {
+      const otherSeries = siblings[swapIndex];
+      const newSequenceNumber = otherSeries.sequenceNumber;
+      const oldSequenceNumber = targetSeries.sequenceNumber;
+
+      // Swap sequence numbers
+      set((state) => ({
+        series: state.series.map((s) => {
+          if (s.id === targetSeries.id)
+            return { ...s, sequenceNumber: newSequenceNumber };
+          if (s.id === otherSeries.id)
+            return { ...s, sequenceNumber: oldSequenceNumber };
+          return s;
+        }),
+      }));
+
+      // Sync with DB
+      try {
+        await Promise.all([
+          updateSeriesAction(targetSeries.id, {
+            sequenceNumber: newSequenceNumber,
+          }),
+          updateSeriesAction(otherSeries.id, {
+            sequenceNumber: oldSequenceNumber,
+          }),
+        ]);
+        // No need to fetchSeries() as we updated local state, but could for consistency
+      } catch (err) {
+        console.error("Move series failed", err);
+        // Rollback?
+      }
+    }
   },
   reorderImages: async (seriesId, orderedIds) => {
     const state = get();

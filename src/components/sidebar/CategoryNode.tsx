@@ -23,6 +23,7 @@ interface CategoryNodeProps {
     targetParentId: string | undefined,
   ) => void;
   onAddSubcategory: (parentId: string) => void;
+  onMoveSeriesUpDown?: (id: string, direction: "up" | "down") => void;
 }
 
 const CategoryNode: React.FC<CategoryNodeProps> = ({
@@ -42,6 +43,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
   onMoveSeries,
   onMoveCategory,
   onAddSubcategory,
+  onMoveSeriesUpDown,
 }) => {
   const isCollapsed = collapsedCategories.has(category.id);
 
@@ -183,71 +185,105 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
               onMoveSeries={onMoveSeries}
               onMoveCategory={onMoveCategory}
               onAddSubcategory={onAddSubcategory}
+              onMoveSeriesUpDown={onMoveSeriesUpDown}
             />
           ))}
 
           <div
             className={`space-y-1 pb-1 ${!isSidebarCollapsed ? "pr-2" : ""}`}
           >
-            {directSeries.map((s) => (
-              <div
-                key={s.id}
-                draggable={!isViewOnly}
-                onDragStart={(e) => handleDragStart(e, "series", s.id)}
-                onClick={() => {
-                  onSelect(s.id);
-                  closeMobileSidebar();
-                }}
-                style={{
-                  paddingLeft: !isSidebarCollapsed
-                    ? `${(depth + 1) * 16 + 16}px`
-                    : undefined,
-                }}
-                className={`group flex items-center gap-3 px-2 py-2 rounded-xl transition-all cursor-pointer border ${
-                  activeId === s.id
-                    ? "bg-primary/10 border-primary/40 shadow-glow"
-                    : "hover:bg-surface-raised/50 border-transparent hover:border-border-muted"
-                }`}
-              >
-                <SeriesIcon images={s.images} previewImages={s.previewImages} />
-                {!isSidebarCollapsed && (
-                  <>
-                    <div className="flex-1 min-w-0">
-                      <p
-                        className={`text-sm font-bold truncate transition-colors ${activeId === s.id ? "text-primary" : "text-text-main group-hover:text-primary/90"}`}
-                      >
-                        {s.name}
-                      </p>
-                      <p className="text-[10px] text-text-dark font-bold">
-                        {s.imageCount ?? s.images.length} pages
-                      </p>
-                    </div>
-                    {!isViewOnly && (
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEdit(s.id);
-                          }}
-                          className="w-7 h-7 bg-surface-elevated hover:bg-primary rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-                        >
-                          <i className="fas fa-edit text-[10px]"></i>
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDelete(s.id);
-                          }}
-                          className="w-7 h-7 bg-surface-elevated hover:bg-red-600/80 rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
+            {directSeries
+              .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
+              .map((s, index) => (
+                <div
+                  key={s.id}
+                  draggable={!isViewOnly}
+                  onDragStart={(e) => handleDragStart(e, "series", s.id)}
+                  onClick={() => {
+                    onSelect(s.id);
+                    closeMobileSidebar();
+                  }}
+                  style={{
+                    paddingLeft: !isSidebarCollapsed
+                      ? `${(depth + 1) * 16 + 16}px`
+                      : undefined,
+                  }}
+                  className={`group flex items-center gap-2 px-2 py-2 rounded-xl transition-all cursor-pointer border ${
+                    activeId === s.id
+                      ? "bg-primary/10 border-primary/40 shadow-glow"
+                      : "hover:bg-surface-raised/50 border-transparent hover:border-border-muted"
+                  }`}
+                >
+                  {!isViewOnly &&
+                    !isSidebarCollapsed &&
+                    directSeries.length > 1 && (
+                      <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                        {index > 0 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onMoveSeriesUpDown?.(s.id, "up");
+                            }}
+                            className="p-0.5 hover:text-primary transition-colors"
+                          >
+                            <i className="fas fa-chevron-up text-[10px]"></i>
+                          </button>
+                        )}
+                        {index < directSeries.length - 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onMoveSeriesUpDown?.(s.id, "down");
+                            }}
+                            className="p-0.5 hover:text-primary transition-colors"
+                          >
+                            <i className="fas fa-chevron-down text-[10px]"></i>
+                          </button>
+                        )}
                       </div>
                     )}
-                  </>
-                )}
-              </div>
-            ))}
+                  <SeriesIcon
+                    images={s.images}
+                    previewImages={s.previewImages}
+                  />
+                  {!isSidebarCollapsed && (
+                    <>
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={`text-sm font-bold truncate transition-colors ${activeId === s.id ? "text-primary" : "text-text-main group-hover:text-primary/90"}`}
+                        >
+                          {s.name}
+                        </p>
+                        <p className="text-[10px] text-text-dark font-bold">
+                          {s.imageCount ?? s.images.length} pages
+                        </p>
+                      </div>
+                      {!isViewOnly && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEdit(s.id);
+                            }}
+                            className="w-7 h-7 bg-surface-elevated hover:bg-primary rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                          >
+                            <i className="fas fa-edit text-[10px]"></i>
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDelete(s.id);
+                            }}
+                            className="w-7 h-7 bg-surface-elevated hover:bg-red-600/80 rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
           </div>
         </>
       )}

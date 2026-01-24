@@ -8,7 +8,6 @@ interface Props {
   onConfirm: (
     name: string,
     category: string,
-    sequenceNumber: number,
     categoryId?: string,
     metadata?: { author?: string; group?: string; originalTitle?: string },
   ) => void;
@@ -17,7 +16,6 @@ interface Props {
   onAddCategory: (name: string) => void;
   initialName?: string;
   initialCategory?: string;
-  initialSequenceNumber?: number;
   initialAuthor?: string;
   initialGroup?: string;
   initialOriginalTitle?: string;
@@ -32,7 +30,6 @@ const NewSeriesModal: React.FC<Props> = ({
   onAddCategory,
   initialName = "",
   initialCategory = "",
-  initialSequenceNumber = 0,
   initialAuthor = "",
   initialGroup = "",
   initialOriginalTitle = "",
@@ -42,7 +39,6 @@ const NewSeriesModal: React.FC<Props> = ({
     initialCategory ||
       (categories.length > 0 ? categories[0].name : "Uncategorized"),
   );
-  const [sequenceNumber, setSequenceNumber] = useState(initialSequenceNumber);
   const [author, setAuthor] = useState(initialAuthor);
   const [group, setGroup] = useState(initialGroup);
   const [originalTitle, setOriginalTitle] = useState(initialOriginalTitle);
@@ -58,7 +54,6 @@ const NewSeriesModal: React.FC<Props> = ({
         initialCategory ||
           (categories.length > 0 ? categories[0].name : "Uncategorized"),
       );
-      setSequenceNumber(initialSequenceNumber);
       setAuthor(initialAuthor);
       setGroup(initialGroup);
       setOriginalTitle(initialOriginalTitle);
@@ -67,7 +62,6 @@ const NewSeriesModal: React.FC<Props> = ({
     isOpen,
     initialName,
     initialCategory,
-    initialSequenceNumber,
     initialAuthor,
     initialGroup,
     initialOriginalTitle,
@@ -90,7 +84,7 @@ const NewSeriesModal: React.FC<Props> = ({
 
     const selectedCategory = categories.find((c) => c.name === categoryName);
 
-    onConfirm(name.trim(), categoryName, sequenceNumber, selectedCategory?.id, {
+    onConfirm(name.trim(), categoryName, selectedCategory?.id, {
       author,
       group,
       originalTitle,
@@ -175,18 +169,6 @@ const NewSeriesModal: React.FC<Props> = ({
             {error && (
               <p className="text-xs font-bold text-rose-500 mt-1">{error}</p>
             )}
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
-              Sequence Number
-            </label>
-            <input
-              type="number"
-              value={sequenceNumber}
-              onChange={(e) => setSequenceNumber(parseInt(e.target.value) || 0)}
-              className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main"
-            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

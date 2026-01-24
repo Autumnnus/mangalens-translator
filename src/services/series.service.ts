@@ -3,6 +3,7 @@ import {
   deleteSeriesAction,
   fetchSeriesAction,
   fetchSeriesImagesAction,
+  swapSeriesSequenceAction,
   updateSeriesAction,
 } from "@/actions/series";
 import { ProcessedImage, Series, SeriesInput } from "@/types";
@@ -60,5 +61,9 @@ export const seriesService = {
 
   deleteSeries: async (id: string) => {
     return await deleteSeriesAction(id);
+  },
+
+  swapSeriesSequence: async (id1: string, id2: string) => {
+    return await swapSeriesSequenceAction(id1, id2);
   },
 };
