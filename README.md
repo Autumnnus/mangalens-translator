@@ -47,23 +47,22 @@ MangaLens Translator is an advanced, AI-powered web application designed to tran
    Create a `.env.local` file in the root directory and configure the following variables:
 
    ```env
-   # Database
-   DATABASE_URL="postgres://user:password@localhost:5432/mangalens"
+    # PostgreSQL
+    POSTGRES_USER=postgres
+    POSTGRES_PASSWORD=postgres
+    POSTGRES_DB=mangalens
 
-   # NextAuth
-   AUTH_SECRET="your-super-secret-key-at-least-32-chars"
-   AUTH_URL="http://localhost:3000"
+    # MinIO
+    MINIO_ROOT_USER=minioadmin
+    MINIO_ROOT_PASSWORD=minioadmin
+    MINIO_BUCKET_NAME=mangalens
 
-   # Object Storage (MinIO)
-   S3_ENDPOINT="http://localhost:9000"
-   S3_REGION="us-east-1"
-   S3_ACCESS_KEY="minioadmin"
-   S3_SECRET_KEY="minioadmin"
-   S3_BUCKET="mangalens-images"
-   S3_PUBLIC_URL="http://localhost:9000/mangalens-images"
+    # Next.js (backend usage)
+    DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mangalens
+    MINIO_ENDPOINT=http://localhost:9000
 
-   # Gemini AI
-   NEXT_PUBLIC_GEMINI_API_KEY="your-gemini-api-key"
+    NEXT_PUBLIC_GEMINI_API_KEY=
+    AUTH_SECRET="your-secret-key"
    ```
 
 4. **Start Infrastructure (DB & MinIO)**
