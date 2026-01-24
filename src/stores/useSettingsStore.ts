@@ -26,6 +26,7 @@ export const useSettingsStore = create<SettingsState>()(
         backgroundColor: "#ffffff",
         strokeColor: "#ffffff",
         customInstructions: "",
+        model: "gemini-1.5-flash",
       },
       isViewOnly: process.env.NODE_ENV === "production",
 

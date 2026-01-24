@@ -23,6 +23,7 @@ export class GeminiService {
     base64Image: string,
     targetLanguage: string,
     customInstructions?: string,
+    modelName: string = "gemini-1.5-flash",
   ): Promise<{ bubbles: TextBubble[]; usage: UsageMetadata }> {
     let prompt = `
       role: Professional manga and comic translator.
@@ -59,7 +60,7 @@ export class GeminiService {
 
     try {
       const result = await this.ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: modelName,
         contents: {
           parts: [
             { text: prompt },

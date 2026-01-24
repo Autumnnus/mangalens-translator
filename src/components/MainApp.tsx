@@ -109,7 +109,24 @@ const MainApp: React.FC = () => {
 
   const handleMoveCategory = useCallback(
     (categoryId: string, targetParentId: string | undefined) => {
+      // Helper for recursive check
+      const checkIsDescendant = (pId: string, cId: string): boolean => {
+        const child = categories.find((c) => c.id === cId);
+        if (!child || !child.parentId) return false;
+        if (child.parentId === pId) return true;
+        return checkIsDescendant(pId, child.parentId);
+      };
+
       if (categoryId === targetParentId) return;
+
+      // Prevent moving a category into its own descendant (Infinite loop protection)
+      if (targetParentId && checkIsDescendant(categoryId, targetParentId)) {
+        console.error(
+          "Circular dependency detected: Cannot move parent into child",
+        );
+        return;
+      }
+
       updateCategory({
         id: categoryId,
         name: categories.find((c) => c.id === categoryId)?.name || "Unknown",

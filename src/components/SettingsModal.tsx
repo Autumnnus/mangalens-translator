@@ -1,5 +1,7 @@
 import {
   Baseline,
+  Cpu,
+  DollarSign,
   Languages,
   Lock,
   Palette,
@@ -10,7 +12,7 @@ import {
   X,
 } from "lucide-react";
 import React, { useState } from "react";
-import { TranslationSettings } from "../types";
+import { GEMINI_MODELS, TranslationSettings } from "../types";
 
 const PasswordChangeForm = () => {
   const [password, setPassword] = useState("");
@@ -173,6 +175,50 @@ const SettingsModal: React.FC<Props> = ({
               <option value="French">French</option>
               <option value="German">German</option>
             </select>
+          </div>
+
+          <div className="h-px bg-white/5"></div>
+
+          {/* Model Selection */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 text-primary">
+              <Cpu className="w-4 h-4" />
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                AI Intelligence Model
+              </label>
+            </div>
+            <div className="grid grid-cols-1 gap-3">
+              {GEMINI_MODELS.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => handleChange("model", m.id)}
+                  className={`flex flex-col p-4 rounded-2xl border transition-all text-left group ${
+                    settings.model === m.id
+                      ? "bg-primary/10 border-primary shadow-glow ring-1 ring-primary"
+                      : "bg-surface-raised/50 border-border-muted hover:border-primary/30"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span
+                      className={`text-xs font-black uppercase tracking-wider ${settings.model === m.id ? "text-primary text-glow" : "text-text-main"}`}
+                    >
+                      {m.name}
+                    </span>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-black/20 border border-white/5">
+                      <DollarSign className="w-3 h-3 text-emerald-500" />
+                      <span className="text-[9px] font-black text-emerald-500">
+                        {m.inputCostPer1k === 0
+                          ? "FREE"
+                          : `$${m.inputCostPer1k}/1k`}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] font-bold text-text-dark/60 leading-relaxed">
+                    {m.description}
+                  </p>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="h-px bg-white/5"></div>

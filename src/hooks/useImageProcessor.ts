@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { GeminiService } from "../services/gemini";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
-import { ProcessedImage, UsageMetadata } from "../types";
+import { GEMINI_MODELS, ProcessedImage, UsageMetadata } from "../types";
 import { createTranslatedImageBlob } from "../utils/image";
 import { resolveImageUrl } from "../utils/url";
 
@@ -11,9 +11,6 @@ import {
   useUpdateImageMutation,
 } from "./useImageMutations";
 import { useSeriesImagesQuery } from "./useSeriesQueries";
-
-const INPUT_COST_PER_1K = 0.0005;
-const OUTPUT_COST_PER_1K = 0.003;
 
 export const useImageProcessor = () => {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
@@ -28,9 +25,12 @@ export const useImageProcessor = () => {
 
   const { settings } = useSettingsStore();
 
-  const calculateCost = (usage: UsageMetadata) => {
-    const inputCost = (usage.promptTokenCount / 1000) * INPUT_COST_PER_1K;
-    const outputCost = (usage.candidatesTokenCount / 1000) * OUTPUT_COST_PER_1K;
+  const calculateCost = (usage: UsageMetadata, modelId: string) => {
+    const model =
+      GEMINI_MODELS.find((m) => m.id === modelId) || GEMINI_MODELS[0];
+    const inputCost = (usage.promptTokenCount / 1000) * model.inputCostPer1k;
+    const outputCost =
+      (usage.candidatesTokenCount / 1000) * model.outputCostPer1k;
     return inputCost + outputCost;
   };
 
@@ -67,6 +67,7 @@ export const useImageProcessor = () => {
         base64,
         settings.targetLanguage,
         settings.customInstructions,
+        settings.model,
       );
 
       const tBlob = await createTranslatedImageBlob(
@@ -75,7 +76,7 @@ export const useImageProcessor = () => {
         settings,
       );
 
-      const cost = calculateCost(usage);
+      const cost = calculateCost(usage, settings.model);
 
       // Persistence via Supabase/R2
       try {
