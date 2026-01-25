@@ -4,26 +4,47 @@ import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useRef } from "react";
 
 const INACTIVITY_LIMIT_MS = 60 * 60 * 1000;
+const CHECK_INTERVAL_MS = 30 * 1000; // Check every 30 seconds
+const STORAGE_KEY = "mangalens_last_activity";
 
 export default function SessionGuard() {
-  const { data: session } = useSession();
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const { status } = useSession();
+  const lastActivityRef = useRef<number>(0);
 
-  const resetTimer = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-    }
+  const handleLogout = useCallback(() => {
+    console.log("Auto-logging out due to inactivity...");
+    signOut({ callbackUrl: "/auth/login", redirect: true });
+  }, []);
 
-    if (session) {
-      timerRef.current = setTimeout(() => {
-        console.log("Auto-logging out due to inactivity...");
-        signOut();
-      }, INACTIVITY_LIMIT_MS);
+  const checkInactivity = useCallback(() => {
+    if (status !== "authenticated") return;
+
+    const storedLastActivity = localStorage.getItem(STORAGE_KEY);
+    const lastActivity = storedLastActivity
+      ? parseInt(storedLastActivity, 10)
+      : lastActivityRef.current;
+
+    const now = Date.now();
+    if (now - lastActivity >= INACTIVITY_LIMIT_MS) {
+      handleLogout();
     }
-  }, [session]);
+  }, [status, handleLogout]);
+
+  const updateActivity = useCallback(() => {
+    const now = Date.now();
+    // Throttle updates to localStorage to once every 10 seconds
+    if (now - lastActivityRef.current > 10000) {
+      lastActivityRef.current = now;
+      localStorage.setItem(STORAGE_KEY, now.toString());
+    }
+  }, []);
 
   useEffect(() => {
-    if (!session) return;
+    if (status !== "authenticated") return;
+
+    // Initial sync
+    localStorage.setItem(STORAGE_KEY, Date.now().toString());
+    lastActivityRef.current = Date.now();
 
     const events = [
       "mousedown",
@@ -33,23 +54,23 @@ export default function SessionGuard() {
       "touchstart",
     ];
 
-    resetTimer();
-
-    const handleActivity = () => {
-      resetTimer();
+    const handleUserActivity = () => {
+      updateActivity();
     };
 
     events.forEach((event) => {
-      window.addEventListener(event, handleActivity);
+      window.addEventListener(event, handleUserActivity);
     });
 
+    const interval = setInterval(checkInactivity, CHECK_INTERVAL_MS);
+
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
       events.forEach((event) => {
-        window.removeEventListener(event, handleActivity);
+        window.removeEventListener(event, handleUserActivity);
       });
+      clearInterval(interval);
     };
-  }, [session, resetTimer]);
+  }, [status, checkInactivity, updateActivity]);
 
   return null;
 }
