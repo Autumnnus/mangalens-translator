@@ -6,11 +6,12 @@ import { GEMINI_MODELS, ProcessedImage, UsageMetadata } from "../types";
 import { createTranslatedImageBlob } from "../utils/image";
 import { resolveImageUrl } from "../utils/url";
 
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useSaveTranslatedImageMutation,
   useUpdateImageMutation,
 } from "./useImageMutations";
-import { useSeriesImagesQuery } from "./useSeriesQueries";
+import { seriesKeys, useSeriesImagesQuery } from "./useSeriesQueries";
 
 export const useImageProcessor = () => {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
@@ -19,6 +20,7 @@ export const useImageProcessor = () => {
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
   const { data: images } = useSeriesImagesQuery(activeSeriesId);
 
+  const queryClient = useQueryClient();
   const { mutateAsync: updateImageStatus } = useUpdateImageMutation();
   const { mutateAsync: saveTranslatedImageMutation } =
     useSaveTranslatedImageMutation();
@@ -54,6 +56,15 @@ export const useImageProcessor = () => {
     retryCount = 0,
   ): Promise<boolean> => {
     if (!activeSeriesId) return false;
+
+    // Optimistic update to UI
+    queryClient.setQueryData<ProcessedImage[]>(
+      seriesKeys.images(activeSeriesId),
+      (old) =>
+        old?.map((img) =>
+          img.id === image.id ? { ...img, status: "processing" } : img,
+        ) || [],
+    );
 
     await updateImageStatus({
       seriesId: activeSeriesId,
@@ -130,6 +141,14 @@ export const useImageProcessor = () => {
       const chunk = imagesToProcess.slice(i, i + CHUNK_SIZE);
       await Promise.all(chunk.map((image) => processImage(image)));
     }
+
+    // Invalidate everything at once at the end
+    if (activeSeriesId) {
+      queryClient.invalidateQueries({
+        queryKey: seriesKeys.images(activeSeriesId),
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
 
     setIsProcessingAll(false);
   };
