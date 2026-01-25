@@ -19,6 +19,29 @@ export async function addImageAction(seriesId: string, data: ImageUpdateInput) {
   });
 }
 
+export async function addImagesAction(
+  seriesId: string,
+  items: ImageUpdateInput[],
+) {
+  const session = await auth();
+  if (!session?.user?.id) throw new Error("Unauthorized");
+
+  if (items.length === 0) return;
+
+  await db.insert(schema.images).values(
+    items.map((item) => ({
+      seriesId,
+      fileName: item.fileName || "unknown",
+      originalKey: item.originalKey || "",
+      status: item.status || "idle",
+      sequenceNumber: item.sequenceNumber || 0,
+      bubbles: item.bubbles || [],
+      usage: item.usage || null,
+      cost: item.cost || 0,
+    })),
+  );
+}
+
 export async function deleteImageAction(imageId: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");

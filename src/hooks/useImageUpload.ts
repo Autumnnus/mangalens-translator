@@ -3,22 +3,26 @@ import { useSeriesStore } from "../stores/useSeriesStore";
 import { ProcessedImage } from "../types";
 import { extractImagesFromPdf } from "../utils/pdf";
 
-import { useAddImageMutation } from "./useImageMutations";
+import { useBatchAddImagesMutation } from "./useImageMutations";
 import { useSeriesImagesQuery } from "./useSeriesQueries";
 
 export const useImageUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
   const { data: images } = useSeriesImagesQuery(activeSeriesId);
-  const { mutateAsync: addImageMutation } = useAddImageMutation();
+  const { mutateAsync: batchAddImagesMutation } = useBatchAddImagesMutation();
 
   const handleFileUpload = async (files: FileList | null) => {
     if (!files || !activeSeriesId) return;
 
-    let nextSequenceNumber = images?.length || 0;
-
     setIsUploading(true);
     try {
+      const uploadItems: {
+        image: Partial<ProcessedImage>;
+        file?: File | Blob;
+      }[] = [];
+      let nextSequenceNumber = images?.length || 0;
+
       for (const file of Array.from(files)) {
         if (file.type === "application/pdf") {
           try {
@@ -26,17 +30,13 @@ export const useImageUpload = () => {
             for (const img of extracted) {
               const res = await fetch(img.url);
               const blob = await res.blob();
-
-              const newImage: Partial<ProcessedImage> = {
-                fileName: img.name,
-                status: "idle",
-                bubbles: [],
-                sequenceNumber: nextSequenceNumber++,
-              };
-
-              await addImageMutation({
-                seriesId: activeSeriesId,
-                image: newImage,
+              uploadItems.push({
+                image: {
+                  fileName: img.name,
+                  status: "idle",
+                  bubbles: [],
+                  sequenceNumber: nextSequenceNumber++,
+                },
                 file: blob,
               });
             }
@@ -44,19 +44,23 @@ export const useImageUpload = () => {
             console.error("PDF extraction failed", err);
           }
         } else {
-          const newImage: Partial<ProcessedImage> = {
-            fileName: file.name,
-            status: "idle",
-            bubbles: [],
-            sequenceNumber: nextSequenceNumber++,
-          };
-
-          await addImageMutation({
-            seriesId: activeSeriesId,
-            image: newImage,
+          uploadItems.push({
+            image: {
+              fileName: file.name,
+              status: "idle",
+              bubbles: [],
+              sequenceNumber: nextSequenceNumber++,
+            },
             file: file,
           });
         }
+      }
+
+      if (uploadItems.length > 0) {
+        await batchAddImagesMutation({
+          seriesId: activeSeriesId,
+          items: uploadItems,
+        });
       }
     } catch (error) {
       console.error("Upload failed", error);

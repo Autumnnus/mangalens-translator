@@ -1,14 +1,19 @@
 import {
   addImageAction,
+  addImagesAction,
   deleteImageAction,
   reorderImagesAction,
   updateImageAction,
 } from "@/actions/images";
-import { ProcessedImage } from "@/types";
+import { ImageUpdateInput, ProcessedImage } from "@/types";
 
 export const imageService = {
   addImage: async (seriesId: string, image: Partial<ProcessedImage>) => {
     return await addImageAction(seriesId, image);
+  },
+
+  addImages: async (seriesId: string, items: ImageUpdateInput[]) => {
+    return await addImagesAction(seriesId, items);
   },
 
   updateImage: async (imageId: string, updates: Partial<ProcessedImage>) => {

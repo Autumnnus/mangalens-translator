@@ -57,6 +57,100 @@ export const useAddImageMutation = () => {
   });
 };
 
+export const useBatchAddImagesMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      seriesId,
+      items,
+    }: {
+      seriesId: string;
+      items: { image: Partial<ProcessedImage>; file?: File | Blob }[];
+    }) => {
+      if (items.length === 0) return;
+
+      // 1. Get presigned URLs in batch
+      const uploadReqItems = items.map((item) => ({
+        fileName:
+          item.image.fileName ||
+          (item.file instanceof File ? item.file.name : "unknown"),
+        contentType: item.file?.type || "image/jpeg",
+        seriesId,
+      }));
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: uploadReqItems }),
+      });
+
+      if (!res.ok) throw new Error("Failed to get upload URLs in batch");
+      const { items: uploadUrls } = await res.json();
+
+      // 2. Upload to storage in parallel
+      await Promise.all(
+        items.map((item, idx) => {
+          if (!item.file) return Promise.resolve();
+          return fetch(uploadUrls[idx].uploadUrl, {
+            method: "PUT",
+            body: item.file,
+            headers: { "Content-Type": item.file.type || "image/jpeg" },
+          });
+        }),
+      );
+
+      // 3. Batch DB insert
+      const dbItems = items.map((item, idx) => ({
+        ...item.image,
+        originalKey: uploadUrls[idx].key,
+      }));
+
+      return imageService.addImages(seriesId, dbItems);
+    },
+    onMutate: async ({ seriesId, items }) => {
+      await queryClient.cancelQueries({
+        queryKey: seriesKeys.images(seriesId),
+      });
+      const previousImages = queryClient.getQueryData<ProcessedImage[]>(
+        seriesKeys.images(seriesId),
+      );
+
+      const optimisticItems: ProcessedImage[] = items.map((item, idx) => ({
+        id: `optimistic-${Date.now()}-${idx}`,
+        fileName:
+          item.image.fileName ||
+          (item.file instanceof File ? item.file.name : "unknown"),
+        originalUrl: "", // Temporary
+        translatedUrl: null,
+        status: "processing",
+        bubbles: [],
+        sequenceNumber: item.image.sequenceNumber || 0,
+      }));
+
+      queryClient.setQueryData<ProcessedImage[]>(
+        seriesKeys.images(seriesId),
+        (old) => [...(old || []), ...optimisticItems],
+      );
+
+      return { previousImages };
+    },
+    onError: (err, { seriesId }, context) => {
+      if (context?.previousImages) {
+        queryClient.setQueryData(
+          seriesKeys.images(seriesId),
+          context.previousImages,
+        );
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: seriesKeys.images(variables.seriesId),
+      });
+      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+    },
+  });
+};
+
 export const useUpdateImageMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
