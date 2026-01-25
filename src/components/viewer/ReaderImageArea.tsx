@@ -1,54 +1,50 @@
-import React, { useState } from "react";
-import {
-  ReactZoomPanPinchRef,
-  TransformComponent,
-  TransformWrapper,
-  useTransformContext,
-} from "react-zoom-pan-pinch";
+import React, { useEffect, useRef, useState } from "react";
+// Swiper imports
+import type { Swiper as SwiperType } from "swiper";
+import { FreeMode, Navigation, Thumbs, Virtual, Zoom } from "swiper/modules";
+import { Swiper, SwiperRef, SwiperSlide } from "swiper/react";
+
+// Swiper styles
+import "swiper/css";
+import "swiper/css/free-mode";
+import "swiper/css/navigation";
+import "swiper/css/thumbs";
+import "swiper/css/virtual";
+import "swiper/css/zoom";
+
 import { ProcessedImage, ViewMode } from "../../types";
 import ComparisonView from "../ComparisonView";
 
 interface ReaderImageAreaProps {
-  currentImage: ProcessedImage;
+  images: ProcessedImage[];
+  currentIndex: number;
+  onIndexChange: (index: number) => void;
   showComparison: boolean;
   comparisonMode: ViewMode;
-  onNext: () => void;
-  onPrev: () => void;
-  onTouchStart: (e: React.TouchEvent) => void;
-  onTouchMove: (e: React.TouchEvent) => void;
-  onTouchEnd: () => void;
   onToggleUI: () => void;
   isUIVisible: boolean;
 }
 
-const ZoomStateIndicator = () => {
-  const { transformState } = useTransformContext();
-  const scale = transformState.scale;
-
-  if (scale <= 1.05) return null;
-
-  return (
-    <div className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full text-white text-[10px] font-black uppercase tracking-widest border border-white/20 z-[100] pointer-events-none">
-      Zoom: {Math.round(scale * 100)}%
-    </div>
-  );
-};
-
 const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
-  currentImage,
+  images,
+  currentIndex,
+  onIndexChange,
   showComparison,
   comparisonMode,
-  onNext,
-  onPrev,
-  onTouchStart,
-  onTouchMove,
-  onTouchEnd,
   onToggleUI,
   isUIVisible,
 }) => {
-  const [isLoaded, setIsLoaded] = useState(false);
-  const [error, setError] = useState(false);
-  const [isZoomed, setIsZoomed] = useState(false);
+  const swiperRef = useRef<SwiperRef>(null);
+  const [thumbsSwiper, setThumbsSwiper] = useState<SwiperType | null>(null);
+
+  // Sync external index change to Swiper
+  useEffect(() => {
+    if (swiperRef.current && swiperRef.current.swiper) {
+      if (swiperRef.current.swiper.activeIndex !== currentIndex) {
+        swiperRef.current.swiper.slideTo(currentIndex);
+      }
+    }
+  }, [currentIndex]);
 
   const getPair = (img: ProcessedImage) => ({
     id: img.id,
@@ -58,130 +54,164 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
     createdAt: 0,
   });
 
-  const displayUrl = currentImage?.translatedUrl || currentImage?.originalUrl;
-
-  const handleTransform = (ref: ReactZoomPanPinchRef) => {
-    setIsZoomed(ref.state.scale > 1.05);
-  };
-
   return (
     <div
-      className={`flex-1 min-h-0 flex items-center justify-center relative overflow-hidden transition-colors duration-500 ${isUIVisible ? "bg-background/20" : "bg-black"}`}
+      className={`flex-1 w-full h-full min-h-0 flex flex-col relative bg-black transition-colors duration-500 ${
+        isUIVisible ? "bg-background/20" : "bg-black"
+      }`}
     >
-      {/* Navigation Areas - Only when not zoomed */}
-      {!isZoomed && (
-        <>
-          <div
-            className="absolute inset-y-0 left-0 w-1/6 z-40 cursor-pointer group/nav"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPrev();
-            }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent opacity-0 group-hover/nav:opacity-100 transition-opacity flex items-center justify-start pl-8">
-              <div className="w-12 h-12 rounded-2xl bg-surface/60 backdrop-blur-xl flex items-center justify-center border border-border-muted text-text-main hover:scale-110 transition-all shadow-premium">
-                <i className="fas fa-chevron-left text-sm"></i>
-              </div>
-            </div>
-          </div>
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            .swiper {
+              width: 100%;
+              height: 100%;
+            }
+            .swiper-slide {
+              overflow: hidden;
+            }
+            .swiper-zoom-container {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .swiper-button-next, .swiper-button-prev {
+                color: rgba(255, 255, 255, 0.5);
+                transition: color 0.2s;
+            }
+            .swiper-button-next:hover, .swiper-button-prev:hover {
+                color: rgba(255, 255, 255, 1);
+            }
+            
+            /* Main Swiper - takes available space */
+            .main-swiper {
+                flex: 1;
+                min-height: 0;
+            }
+            
+            /* Thumbs Swiper - fixed height at bottom */
+            .thumbs-swiper {
+                height: 100px;
+                flex-shrink: 0;
+                background: rgba(0,0,0,0.5);
+                padding: 10px 0;
+                transition: height 0.3s, opacity 0.3s, padding 0.3s;
+                border-top: 1px solid rgba(255,255,255,0.1);
+            }
+            
+            .thumbs-swiper.hidden-thumbs {
+                height: 0;
+                padding: 0;
+                opacity: 0;
+                pointer-events: none;
+                border: none;
+            }
 
-          <div
-            className="absolute inset-y-0 right-0 w-1/6 z-40 cursor-pointer group/nav"
-            onClick={(e) => {
-              e.stopPropagation();
-              onNext();
-            }}
-          >
-            <div className="absolute inset-0 bg-gradient-to-l from-black/40 to-transparent opacity-0 group-hover/nav:opacity-100 transition-opacity flex items-center justify-end pr-8">
-              <div className="w-12 h-12 rounded-2xl bg-surface/60 backdrop-blur-xl flex items-center justify-center border border-border-muted text-text-main hover:scale-110 transition-all shadow-premium">
-                <i className="fas fa-chevron-right text-sm"></i>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
+            .thumbs-swiper .swiper-slide {
+                width: 25%;
+                height: 100%;
+                opacity: 0.4;
+                transition: opacity 0.3s;
+                cursor: pointer;
+                border-radius: 8px;
+                overflow: hidden;
+                box-sizing: border-box;
+            }
+            
+            .thumbs-swiper .swiper-slide-thumb-active {
+                opacity: 1;
+                border: 2px solid var(--primary, #3b82f6);
+            }
+            
+            .thumbs-swiper .swiper-slide img {
+                width: 100%;
+                height: 100%;
+                object-fit: cover;
+                display: block;
+            }
+        `,
+        }}
+      />
 
-      {/* Main Content Area (Zoomable) */}
-      <div
-        className="w-full h-full flex items-center justify-center relative z-10"
-        onTouchStart={(e) => !isZoomed && onTouchStart(e)}
-        onTouchMove={(e) => !isZoomed && onTouchMove(e)}
-        onTouchEnd={() => !isZoomed && onTouchEnd()}
-      >
-        <TransformWrapper
-          initialScale={1}
-          minScale={1}
-          maxScale={8}
-          centerOnInit={true}
-          onTransformed={handleTransform}
-          doubleClick={{ disabled: false, step: 0.5 }}
-          wheel={{ disabled: false }}
-          panning={{ disabled: !isZoomed, velocityDisabled: false }}
+      <div className="flex-1 min-h-0 w-full relative">
+        <Swiper
+          ref={swiperRef}
+          modules={[Zoom, Virtual, Navigation, Thumbs]}
+          spaceBetween={20}
+          slidesPerView={1}
+          zoom={{
+            maxRatio: 3,
+            minRatio: 1,
+            toggle: true,
+          }}
+          navigation={!isUIVisible ? false : true}
+          virtual={true}
+          thumbs={{
+            swiper:
+              thumbsSwiper && !thumbsSwiper.destroyed ? thumbsSwiper : null,
+          }}
+          onSlideChange={(swiper) => onIndexChange(swiper.activeIndex)}
+          onClick={() => {
+            onToggleUI();
+          }}
+          className="mySwiper main-swiper"
+          initialSlide={currentIndex}
         >
-          <TransformComponent
-            wrapperClass="!w-full !h-full"
-            contentClass="!w-full !h-full flex items-center justify-center"
-          >
-            <div
-              key={`${currentImage?.id}-${showComparison}-${comparisonMode}`}
-              className={`relative w-full h-full flex items-center justify-center ${isZoomed ? "cursor-grab active:cursor-grabbing" : "cursor-zoom-in"}`}
-              onClick={(e) => {
-                if (e.detail === 1) {
-                  const timer = setTimeout(() => {
-                    if (!isZoomed) onToggleUI();
-                  }, 250);
-                  return () => clearTimeout(timer);
-                }
-              }}
-            >
-              {!isLoaded && !showComparison && (
-                <div className="absolute inset-0 flex items-center justify-center z-20">
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-                  </div>
+          {images.map((img, index) => {
+            const displayUrl = img.translatedUrl || img.originalUrl;
+            return (
+              <SwiperSlide key={img.id} virtualIndex={index}>
+                <div className="swiper-zoom-container w-full h-full flex items-center justify-center">
+                  {showComparison && img.translatedUrl ? (
+                    <div className="w-full h-full max-w-5xl mx-auto p-4 md:p-8 flex items-center justify-center pointer-events-auto swiper-no-swiping">
+                      <ComparisonView
+                        pair={getPair(img)}
+                        mode={comparisonMode}
+                        interactive={true}
+                      />
+                    </div>
+                  ) : (
+                    <img
+                      src={displayUrl}
+                      alt={img.fileName}
+                      className="max-w-full max-h-full object-contain select-none"
+                      loading="lazy"
+                    />
+                  )}
                 </div>
-              )}
-
-              {error && (
-                <div className="absolute inset-0 flex items-center justify-center z-20">
-                  <div className="p-8 rounded-2xl bg-surface/80 backdrop-blur-xl border border-red-500/30 text-center">
-                    <i className="fas fa-exclamation-circle text-red-500 text-3xl mb-4" />
-                    <p className="text-text-main font-medium">
-                      Failed to load page
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {showComparison && currentImage.translatedUrl ? (
-                <div className="w-full h-full max-w-5xl mx-auto p-4 md:p-8">
-                  <ComparisonView
-                    pair={getPair(currentImage)}
-                    mode={comparisonMode}
-                    interactive={!isZoomed}
-                  />
-                </div>
-              ) : (
-                <img
-                  key={displayUrl}
-                  src={displayUrl}
-                  onLoad={() => setIsLoaded(true)}
-                  onError={() => {
-                    setIsLoaded(true);
-                    setError(true);
-                  }}
-                  className={`max-w-full max-h-full md:max-h-[85vh] object-contain shadow-2xl select-none transition-opacity duration-500 ${isLoaded ? "opacity-100" : "opacity-0"}`}
-                  alt="Page"
-                  draggable={false}
-                />
-              )}
-            </div>
-          </TransformComponent>
-          <ZoomStateIndicator />
-        </TransformWrapper>
+              </SwiperSlide>
+            );
+          })}
+        </Swiper>
       </div>
+
+      <Swiper
+        onSwiper={setThumbsSwiper}
+        spaceBetween={10}
+        slidesPerView={5}
+        freeMode={true}
+        watchSlidesProgress={true}
+        modules={[FreeMode, Navigation, Thumbs, Virtual]}
+        virtual={true}
+        className={`mySwiper thumbs-swiper ${!isUIVisible ? "hidden-thumbs" : ""}`}
+        breakpoints={{
+          320: { slidesPerView: 4, spaceBetween: 5 },
+          640: { slidesPerView: 6, spaceBetween: 10 },
+          1024: { slidesPerView: 8, spaceBetween: 10 },
+        }}
+      >
+        {images.map((img, index) => (
+          <SwiperSlide key={`thumb-${img.id}`} virtualIndex={index}>
+            <img
+              src={img.originalUrl}
+              alt={`Thumb ${index + 1}`}
+              loading="lazy"
+              className="w-full h-full object-cover"
+            />
+          </SwiperSlide>
+        ))}
+      </Swiper>
     </div>
   );
 };
-
 export default React.memo(ReaderImageArea);

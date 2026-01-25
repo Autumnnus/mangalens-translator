@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import "react-image-gallery/styles/css/image-gallery.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

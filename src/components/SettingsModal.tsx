@@ -115,13 +115,21 @@ const SettingsModal: React.FC<Props> = ({
   settings,
   onSettingsChange,
 }) => {
+  const [localSettings, setLocalSettings] =
+    useState<TranslationSettings>(settings);
+
   if (!isOpen) return null;
 
   const handleChange = (
     key: keyof TranslationSettings,
     value: string | number | boolean,
   ) => {
-    onSettingsChange({ ...settings, [key]: value });
+    setLocalSettings((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = () => {
+    onSettingsChange(localSettings);
+    onClose();
   };
 
   return (
@@ -164,7 +172,7 @@ const SettingsModal: React.FC<Props> = ({
               </label>
             </div>
             <select
-              value={settings.targetLanguage}
+              value={localSettings.targetLanguage}
               onChange={(e) => handleChange("targetLanguage", e.target.value)}
               className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 ring-primary outline-none text-text-main transition-all hover:border-border-accent"
             >
@@ -193,14 +201,14 @@ const SettingsModal: React.FC<Props> = ({
                   key={m.id}
                   onClick={() => handleChange("model", m.id)}
                   className={`flex flex-col p-4 rounded-2xl border transition-all text-left group ${
-                    settings.model === m.id
+                    localSettings.model === m.id
                       ? "bg-primary/10 border-primary shadow-glow ring-1 ring-primary"
                       : "bg-surface-raised/50 border-border-muted hover:border-primary/30"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
                     <span
-                      className={`text-xs font-black uppercase tracking-wider ${settings.model === m.id ? "text-primary text-glow" : "text-text-main"}`}
+                      className={`text-xs font-black uppercase tracking-wider ${localSettings.model === m.id ? "text-primary text-glow" : "text-text-main"}`}
                     >
                       {m.name}
                     </span>
@@ -223,6 +231,43 @@ const SettingsModal: React.FC<Props> = ({
 
           <div className="h-px bg-white/5"></div>
 
+          {/* Batch Size */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-primary">
+                <Sliders className="w-4 h-4" />
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                  Processing Batch Size
+                </label>
+              </div>
+              <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
+                {localSettings.batchSize || 10} items
+              </span>
+            </div>
+            <div className="px-2">
+              <input
+                type="range"
+                min="1"
+                max="10"
+                value={localSettings.batchSize || 10}
+                onChange={(e) =>
+                  handleChange("batchSize", parseInt(e.target.value))
+                }
+                className="w-full h-2 bg-surface-raised rounded-lg appearance-none cursor-pointer accent-primary"
+              />
+              <div className="flex justify-between mt-2 text-[10px] font-bold text-text-dark uppercase tracking-widest">
+                <span>Slow & Stable (1)</span>
+                <span>Stable Batch (10)</span>
+              </div>
+            </div>
+            <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+              Determines how many images are processed in parallel. High values
+              are faster but may hit API rate limits.
+            </p>
+          </div>
+
+          <div className="h-px bg-white/5"></div>
+
           {/* AI Custom Instructions */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -238,7 +283,7 @@ const SettingsModal: React.FC<Props> = ({
             </div>
             <div className="relative group">
               <textarea
-                value={settings.customInstructions || ""}
+                value={localSettings.customInstructions || ""}
                 onChange={(e) =>
                   handleChange("customInstructions", e.target.value)
                 }
@@ -267,7 +312,7 @@ const SettingsModal: React.FC<Props> = ({
                 </label>
               </div>
               <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
-                {settings.fontSize}px
+                {localSettings.fontSize}px
               </span>
             </div>
             <div className="px-2">
@@ -275,7 +320,7 @@ const SettingsModal: React.FC<Props> = ({
                 type="range"
                 min="10"
                 max="60"
-                value={settings.fontSize}
+                value={localSettings.fontSize}
                 onChange={(e) =>
                   handleChange("fontSize", parseInt(e.target.value))
                 }
@@ -310,12 +355,12 @@ const SettingsModal: React.FC<Props> = ({
                 <div className="flex items-center gap-3">
                   <input
                     type="color"
-                    value={settings.fontColor}
+                    value={localSettings.fontColor}
                     onChange={(e) => handleChange("fontColor", e.target.value)}
                     className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
                   />
                   <span className="text-xs font-mono text-text-dark uppercase">
-                    {settings.fontColor}
+                    {localSettings.fontColor}
                   </span>
                 </div>
               </div>
@@ -332,9 +377,9 @@ const SettingsModal: React.FC<Props> = ({
                   <input
                     type="color"
                     value={
-                      settings.strokeColor === "transparent"
+                      localSettings.strokeColor === "transparent"
                         ? "#000000"
-                        : settings.strokeColor
+                        : localSettings.strokeColor
                     }
                     onChange={(e) =>
                       handleChange("strokeColor", e.target.value)
@@ -342,7 +387,7 @@ const SettingsModal: React.FC<Props> = ({
                     className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
                   />
                   <span className="text-xs font-mono text-text-dark uppercase">
-                    {settings.strokeColor}
+                    {localSettings.strokeColor}
                   </span>
                 </div>
               </div>
@@ -359,9 +404,9 @@ const SettingsModal: React.FC<Props> = ({
                   <input
                     type="color"
                     value={
-                      settings.backgroundColor === "transparent"
+                      localSettings.backgroundColor === "transparent"
                         ? "#000000"
-                        : settings.backgroundColor
+                        : localSettings.backgroundColor
                     }
                     onChange={(e) =>
                       handleChange("backgroundColor", e.target.value)
@@ -369,7 +414,7 @@ const SettingsModal: React.FC<Props> = ({
                     className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
                   />
                   <span className="text-xs font-mono text-text-dark uppercase">
-                    {settings.backgroundColor}
+                    {localSettings.backgroundColor}
                   </span>
                 </div>
               </div>
@@ -394,7 +439,7 @@ const SettingsModal: React.FC<Props> = ({
         {/* Footer */}
         <div className="p-8 bg-surface-raised/30 border-t border-border-subtle">
           <button
-            onClick={onClose}
+            onClick={handleSave}
             className="w-full py-4 bg-primary hover:bg-primary-hover text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-primary/20 active:scale-[0.98] border border-white/10"
           >
             Save Changes

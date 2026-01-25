@@ -1,4 +1,5 @@
 import React from "react";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { Series } from "../../types";
 
 interface EditorHeaderProps {
@@ -26,6 +27,9 @@ const EditorHeader: React.FC<EditorHeaderProps> = ({
   onUpload,
   onWipe,
 }) => {
+  const settings = useSettingsStore((state) => state.settings);
+  const updateSettings = useSettingsStore((state) => state.updateSettings);
+
   return (
     <div className="flex flex-col xl:flex-row justify-between xl:items-end gap-6 mb-8 px-2">
       <div className="space-y-4">
@@ -103,18 +107,48 @@ const EditorHeader: React.FC<EditorHeaderProps> = ({
 
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            onClick={onProcessAll}
-            disabled={isProcessingAll || imageCount === 0}
-            className="bg-primary hover:bg-primary-hover disabled:bg-surface-raised disabled:text-text-dark transition-all px-4 py-2 rounded-xl font-black flex items-center gap-2 shadow-lg shadow-primary/20 text-[10px] uppercase tracking-wider border border-primary/20"
-          >
-            {isProcessingAll ? (
-              <i className="fas fa-circle-notch fa-spin"></i>
-            ) : (
-              <i className="fas fa-bolt"></i>
-            )}
-            {isProcessingAll ? "Translating..." : "Translate All"}
-          </button>
+          <div className="flex items-center">
+            <button
+              onClick={onProcessAll}
+              disabled={isProcessingAll || imageCount === 0}
+              className="bg-primary hover:bg-primary-hover disabled:bg-surface-raised disabled:text-text-dark transition-all px-4 py-2 rounded-l-xl font-black flex items-center gap-2 shadow-lg shadow-primary/20 text-[10px] uppercase tracking-wider border border-primary/20 border-r-0"
+            >
+              {isProcessingAll ? (
+                <i className="fas fa-circle-notch fa-spin"></i>
+              ) : (
+                <i className="fas fa-bolt"></i>
+              )}
+              {isProcessingAll ? "Translating..." : "Translate All"}
+            </button>
+            <div className="flex items-center gap-2 bg-surface-raised/50 px-3 py-2 border border-border-muted border-l-0 rounded-r-xl h-[34px] group hover:border-primary/50 transition-colors cursor-pointer relative pr-8">
+              <span className="text-[9px] font-bold text-text-dark uppercase tracking-widest leading-none select-none">
+                Batch
+              </span>
+              <select
+                value={settings.batchSize ?? 10}
+                onChange={(e) =>
+                  updateSettings({ batchSize: parseInt(e.target.value) })
+                }
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+              >
+                {[...Array(10)].map((_, i) => (
+                  <option
+                    key={i + 1}
+                    value={i + 1}
+                    className="bg-slate-900 text-white"
+                  >
+                    {i + 1}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[10px] font-black text-primary min-w-[0.8rem] text-center pointer-events-none">
+                {settings.batchSize ?? 10}
+              </span>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-primary/30 group-hover:text-primary/60 transition-colors">
+                <i className="fas fa-chevron-down text-[8px]"></i>
+              </div>
+            </div>
+          </div>
           <div className="flex bg-surface-raised/50 rounded-xl p-1 border border-border-subtle">
             <button
               onClick={() => setViewMode("grid")}

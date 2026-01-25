@@ -16,6 +16,7 @@ export const useSeriesQuery = (page = 1, pageSize = 20) => {
   return useQuery({
     queryKey: seriesKeys.list(page, pageSize),
     queryFn: () => seriesService.getSeries(page, pageSize),
+    staleTime: 1000 * 60 * 5, // 5 minutes
   });
 };
 
@@ -24,6 +25,11 @@ export const useSeriesImagesQuery = (seriesId: string | null) => {
     queryKey: seriesKeys.images(seriesId || ""),
     queryFn: () => seriesService.getSeriesImages(seriesId!),
     enabled: !!seriesId,
+    // Cache data for 30 minutes to keep signed URLs stable
+    staleTime: 1000 * 60 * 30,
+    gcTime: 1000 * 60 * 45,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
   });
 };
 

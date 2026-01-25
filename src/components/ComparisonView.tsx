@@ -64,7 +64,7 @@ const ComparisonView: React.FC<Props> = ({
         <img
           src={pair.sourceUrl}
           alt="Original"
-          className="w-full h-full object-contain"
+          className="max-w-full max-h-full object-contain"
         />
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-surface-raised/80 backdrop-blur-xl border border-border-muted rounded-2xl text-xs font-black text-text-muted uppercase tracking-widest shadow-premium">
           NO TRANSLATION AVAILABLE
@@ -80,7 +80,7 @@ const ComparisonView: React.FC<Props> = ({
           <img
             src={pair.sourceUrl}
             alt="Source"
-            className="w-full h-full object-contain"
+            className="max-w-full max-h-full object-contain"
           />
           <div className="absolute top-4 left-4 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium">
             Source
@@ -90,7 +90,7 @@ const ComparisonView: React.FC<Props> = ({
           <img
             src={pair.convertedUrl}
             alt="Converted"
-            className="w-full h-full object-contain"
+            className="max-w-full max-h-full object-contain"
           />
           <div className="absolute top-4 left-4 bg-primary/80 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-white border border-primary/20 uppercase tracking-widest shadow-glow">
             Converted
@@ -109,7 +109,7 @@ const ComparisonView: React.FC<Props> = ({
         <img
           src={isToggled ? pair.convertedUrl : pair.sourceUrl}
           alt="Comparison"
-          className="w-full h-full object-contain transition-opacity duration-300"
+          className="max-w-full max-h-full object-contain transition-opacity duration-300"
         />
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
           <div
@@ -152,16 +152,16 @@ const ComparisonView: React.FC<Props> = ({
         className="absolute inset-0 w-full h-full object-contain"
       />
 
-      {/* Foreground Image (Source) */}
+      {/* Foreground Container (Source) - Clipped via clip-path for perfect alignment */}
       <div
-        className="absolute inset-0 w-full h-full overflow-hidden"
-        style={{ width: `${sliderPos}%` }}
+        className="absolute inset-0 w-full h-full z-10"
+        style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
       >
         <img
           src={pair.sourceUrl}
           alt="Source"
           className="absolute inset-0 w-full h-full object-contain"
-          style={{ width: `${100 / (sliderPos / 100)}%`, maxWidth: "none" }} // Ensure image scales correctly relative to parent
+          draggable={false}
         />
         <div className="absolute top-4 left-4 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium z-20">
           Source

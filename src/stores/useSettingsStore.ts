@@ -6,7 +6,6 @@ interface SettingsState {
   settings: TranslationSettings;
   isViewOnly: boolean;
 
-  // Actions
   updateSettings: (
     settings: Partial<TranslationSettings>,
     syncWithDb?: boolean,
@@ -27,6 +26,7 @@ export const useSettingsStore = create<SettingsState>()(
         strokeColor: "#ffffff",
         customInstructions: "",
         model: "gemini-1.5-flash",
+        batchSize: 10,
       },
       isViewOnly: process.env.NODE_ENV === "production",
 
@@ -36,7 +36,6 @@ export const useSettingsStore = create<SettingsState>()(
         }));
 
         if (syncWithDb) {
-          // Import dynamic to avoid circular dependencies if any or keep it simple
           import("../actions/settings").then((mod) => {
             mod.updateUserSettingsAction(newSettings);
           });

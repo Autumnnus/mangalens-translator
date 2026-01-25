@@ -78,7 +78,6 @@ export const useImageProcessor = () => {
 
       const cost = calculateCost(usage, settings.model);
 
-      // Persistence via Supabase/R2
       try {
         await saveTranslatedImageMutation({
           seriesId: activeSeriesId,
@@ -89,7 +88,6 @@ export const useImageProcessor = () => {
         });
       } catch (e) {
         console.error("Failed to save translated image", e);
-        // Fallback or error state?
       }
 
       return true;
@@ -123,15 +121,13 @@ export const useImageProcessor = () => {
 
     setIsProcessingAll(true);
 
-    // Use a copy to avoid mutating the original array and sort by sequenceNumber to maintain order
     const imagesToProcess = [...images]
       .filter((img) => img.status === "idle" || img.status === "error")
       .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
 
-    const CHUNK_SIZE = 10;
+    const CHUNK_SIZE = Math.min(settings.batchSize || 10, 10);
     for (let i = 0; i < imagesToProcess.length; i += CHUNK_SIZE) {
       const chunk = imagesToProcess.slice(i, i + CHUNK_SIZE);
-      // Process 10 images at once
       await Promise.all(chunk.map((image) => processImage(image)));
     }
 
@@ -142,7 +138,6 @@ export const useImageProcessor = () => {
     processImage,
     processAll,
     isProcessingAll,
-    // Helping function if needed externally
     urlToBase64,
   };
 };

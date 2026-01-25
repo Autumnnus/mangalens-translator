@@ -1,13 +1,14 @@
 import React, { useCallback } from "react";
 import { useConfirm } from "../hooks/useConfirm";
+import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
 import { SeriesInput, ViewMode } from "../types";
 import CategoryManagerModal from "./CategoryManagerModal";
-import ComparisonView from "./ComparisonView";
 import ConfirmModal from "./ConfirmModal";
 import NewSeriesModal from "./NewSeriesModal";
 import SettingsModal from "./SettingsModal";
+import ReaderImageArea from "./viewer/ReaderImageArea";
 
 import {
   useCategoriesQuery,
@@ -17,6 +18,7 @@ import {
 } from "../hooks/useCategoryQueries";
 import {
   useCreateSeriesMutation,
+  useSeriesImagesQuery,
   useSeriesQuery,
   useUpdateSeriesMutation,
 } from "../hooks/useSeriesQueries";
@@ -36,6 +38,32 @@ const GlobalModals: React.FC = () => {
     selectedImage,
     setSelectedImage,
   } = useUIStore();
+
+  const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
+  const { data: imagesData } = useSeriesImagesQuery(activeSeriesId);
+  const images = React.useMemo(() => imagesData || [], [imagesData]);
+
+  const [modalUIVisible, setModalUIVisible] = React.useState(true);
+
+  const selectedIndex = React.useMemo(() => {
+    if (!selectedImage || images.length === 0) return 0;
+    const index = images.findIndex(
+      (img: import("../types").ProcessedImage) => img.id === selectedImage.id,
+    );
+    return index === -1 ? 0 : index;
+  }, [selectedImage, images]);
+
+  const handleIndexChange = React.useCallback(
+    (index: number) => {
+      if (
+        images[index] &&
+        (!selectedImage || images[index].id !== selectedImage.id)
+      ) {
+        setSelectedImage(images[index]);
+      }
+    },
+    [images, selectedImage, setSelectedImage],
+  );
 
   const { data: seriesListData } = useSeriesQuery();
   const { data: categoriesData } = useCategoriesQuery();
@@ -177,42 +205,42 @@ const GlobalModals: React.FC = () => {
             className="w-full max-w-5xl h-full flex flex-col items-center justify-center gap-6 animate-in zoom-in-95 duration-300"
             onClick={(e) => e.stopPropagation()}
           >
-            {selectedImage.translatedUrl && (
-              <div className="bg-slate-800/50 p-2 rounded-full flex gap-2 border border-slate-700">
-                {(["slider", "side-by-side", "toggle"] as ViewMode[]).map(
-                  (mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => setModalCompareMode(mode)}
-                      className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${
-                        modalCompareMode === mode
-                          ? "bg-indigo-600 text-white shadow-lg"
-                          : "text-slate-400 hover:text-white hover:bg-slate-700"
-                      }`}
-                    >
-                      {mode.replace(/-/g, " ")}
-                    </button>
-                  ),
-                )}
+            <div className="w-full h-full flex flex-col relative min-h-0">
+              <div className="flex-1 min-h-0 relative">
+                <ReaderImageArea
+                  images={images}
+                  currentIndex={selectedIndex}
+                  onIndexChange={handleIndexChange}
+                  showComparison={!!selectedImage.translatedUrl}
+                  comparisonMode={modalCompareMode}
+                  onToggleUI={() => setModalUIVisible(!modalUIVisible)}
+                  isUIVisible={modalUIVisible}
+                />
               </div>
-            )}
 
-            <div className="w-full relative">
-              <ComparisonView
-                pair={{
-                  id: selectedImage.id,
-                  title: selectedImage.fileName,
-                  sourceUrl: selectedImage.originalUrl,
-                  convertedUrl:
-                    selectedImage.translatedUrl || selectedImage.originalUrl,
-                  createdAt: 0,
-                }}
-                mode={modalCompareMode}
-              />
+              {selectedImage.translatedUrl && modalUIVisible && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[110] bg-slate-900/80 backdrop-blur-md p-1.5 rounded-2xl flex gap-1.5 border border-white/10 shadow-2xl">
+                  {(["slider", "side-by-side", "toggle"] as ViewMode[]).map(
+                    (mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setModalCompareMode(mode)}
+                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                          modalCompareMode === mode
+                            ? "bg-primary text-white shadow-glow"
+                            : "text-slate-400 hover:text-white hover:bg-white/5"
+                        }`}
+                      >
+                        {mode.replace(/-/g, " ")}
+                      </button>
+                    ),
+                  )}
+                </div>
+              )}
             </div>
 
             <button
-              className="absolute top-8 right-8 text-white/50 hover:text-white text-3xl transition-colors"
+              className={`absolute top-8 right-8 text-white/50 hover:text-white text-3xl transition-all z-[120] ${!modalUIVisible ? "opacity-0 pointer-events-none" : "opacity-100"}`}
               onClick={() => setSelectedImage(null)}
             >
               <i className="fas fa-times"></i>

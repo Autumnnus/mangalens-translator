@@ -79,6 +79,7 @@ export interface TranslationSettings {
   strokeColor: string;
   customInstructions?: string;
   model: string;
+  batchSize: number;
 }
 
 export interface ImagePair {
