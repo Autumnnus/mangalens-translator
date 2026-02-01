@@ -136,11 +136,16 @@ export async function createSeriesAction(data: SeriesInput) {
 
   const nextSeq = (maxSeqResult[0]?.maxSeq || 0) + 1;
 
-  await db.insert(schema.series).values({
-    ...data,
-    userId: session.user.id,
-    sequenceNumber: nextSeq,
-  });
+  const result = await db
+    .insert(schema.series)
+    .values({
+      ...data,
+      userId: session.user.id,
+      sequenceNumber: nextSeq,
+    })
+    .returning({ id: schema.series.id });
+
+  return result[0].id;
 }
 
 export async function updateSeriesAction(
@@ -165,24 +170,21 @@ export async function deleteSeriesAction(id: string) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
 
+  // Check ownership
   const s = await db.query.series.findFirst({
     where: and(
       eq(schema.series.id, id),
       eq(schema.series.userId, session.user.id),
     ),
-    with: { images: true },
   });
 
-  if (!s) return [];
+  if (!s) return;
 
-  const keys = s.images.flatMap(
-    (img) => [img.originalKey, img.translatedKey].filter(Boolean) as string[],
-  );
-
-  await db.delete(schema.images).where(eq(schema.images.seriesId, id));
-  await db.delete(schema.series).where(eq(schema.series.id, id));
-
-  return keys;
+  await db.transaction(async (tx) => {
+    // Cascade deletion is handled at the DB level usually, but let's be explicit
+    await tx.delete(schema.images).where(eq(schema.images.seriesId, id));
+    await tx.delete(schema.series).where(eq(schema.series.id, id));
+  });
 }
 
 export async function swapSeriesSequenceAction(id1: string, id2: string) {

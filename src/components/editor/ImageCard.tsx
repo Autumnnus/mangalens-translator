@@ -1,5 +1,6 @@
 import React from "react";
 import { useConfirm } from "../../hooks/useConfirm";
+import { useDeleteImageMutation } from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useUIStore } from "../../stores/useUIStore";
@@ -17,10 +18,10 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   const {
     activeSeriesId,
 
-    removeImageFromSeries,
     updateImageInSeries,
     series,
   } = useSeriesStore();
+  const { mutate: deleteImage } = useDeleteImageMutation();
   const { setSelectedImage } = useUIStore();
   const { confirm } = useConfirm();
   const { processImage } = useImageProcessor();
@@ -68,7 +69,7 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
         if (image.originalUrl.startsWith("blob:"))
           URL.revokeObjectURL(image.originalUrl);
         if (activeSeriesId) {
-          removeImageFromSeries(activeSeriesId, image.id);
+          deleteImage({ seriesId: activeSeriesId, imageId: image.id });
         }
       },
       type: "danger",

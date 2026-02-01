@@ -73,11 +73,13 @@ const GlobalModals: React.FC = () => {
   const seriesItems = seriesListData?.items || [];
   const categories = categoriesData || [];
 
-  const { mutate: createSeries } = useCreateSeriesMutation();
+  const { mutateAsync: createSeries } = useCreateSeriesMutation();
   const { mutate: updateSeries } = useUpdateSeriesMutation();
   const { mutate: addCategory } = useCreateCategoryMutation();
   const { mutate: updateCategory } = useUpdateCategoryMutation();
   const { mutate: deleteCategory } = useDeleteCategoryMutation();
+
+  const setActiveSeriesId = useSeriesStore((state) => state.setActiveSeriesId);
 
   const { settings, updateSettings } = useSettingsStore();
   const { close: closeConfirmModal } = useConfirm();
@@ -86,12 +88,12 @@ const GlobalModals: React.FC = () => {
     React.useState<ViewMode>("slider");
 
   const handleConfirmSeries = useCallback(
-    (
+    async (
       name: string,
       _categoryName: string,
       categoryId?: string,
       metadata?: { author?: string; group?: string; originalTitle?: string },
-    ): void => {
+    ): Promise<void> => {
       const seriesInput: SeriesInput = {
         name,
         description: "",
@@ -109,7 +111,10 @@ const GlobalModals: React.FC = () => {
         });
         setEditingSeriesId(null);
       } else {
-        createSeries(seriesInput);
+        const newSeriesId = await createSeries(seriesInput);
+        if (newSeriesId) {
+          setActiveSeriesId(newSeriesId);
+        }
       }
       toggleNewSeriesModal(false);
     },
@@ -119,6 +124,7 @@ const GlobalModals: React.FC = () => {
       createSeries,
       toggleNewSeriesModal,
       setEditingSeriesId,
+      setActiveSeriesId,
     ],
   );
 

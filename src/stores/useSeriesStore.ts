@@ -288,14 +288,15 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
     });
 
     try {
-      const keysToDelete = await deleteSeriesAction(id);
-      if (keysToDelete && keysToDelete.length > 0) {
-        await fetch("/api/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keys: keysToDelete }),
-        });
-      }
+      // 1. Delete from MinIO first
+      await fetch("/api/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seriesId: id }),
+      });
+
+      // 2. Delete from DB
+      await deleteSeriesAction(id);
     } catch (err) {
       console.error("Delete Series error:", err);
     }
@@ -460,16 +461,13 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       };
 
       await get().updateImageInSeries(seriesId, imageId, updates);
-
-      // 4. Refresh to get signed URLs
-      await get().fetchSeries();
     } catch (err) {
       console.error("Save Translation Error:", err);
       get().updateImageInSeries(seriesId, imageId, { status: "error" });
     }
   },
 
-  reorderSeries: async (_orderedIds) => {
+  reorderSeries: async () => {
     // Placeholder
   },
   moveSeries: async (id, direction) => {

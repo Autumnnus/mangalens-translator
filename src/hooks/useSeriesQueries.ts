@@ -12,7 +12,7 @@ export const seriesKeys = {
   images: (id: string) => [...seriesKeys.detail(id), "images"] as const,
 };
 
-export const useSeriesQuery = (page = 1, pageSize = 20) => {
+export const useSeriesQuery = (page = 1, pageSize = 1000) => {
   return useQuery({
     queryKey: seriesKeys.list(page, pageSize),
     queryFn: () => seriesService.getSeries(page, pageSize),
@@ -37,8 +37,9 @@ export const useCreateSeriesMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: SeriesInput) => seriesService.createSeries(data),
-    onSuccess: () => {
+    onSuccess: (newSeriesId) => {
       queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+      return newSeriesId;
     },
   });
 };
@@ -66,25 +67,22 @@ export const useDeleteSeriesMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // 1. Delete from DB (returns keys for storage)
-      const keysToDelete = await seriesService.deleteSeries(id);
-
-      // 2. Delete from Storage (MinIO)
-      if (keysToDelete && keysToDelete.length > 0) {
-        try {
-          const res = await fetch("/api/delete", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ keys: keysToDelete }),
-          });
-          if (!res.ok) {
-            console.error("Failed to delete files from MinIO");
-          }
-        } catch (e) {
-          console.error("Storage deletion error:", e);
+      // 1. Delete from MinIO first (by seriesId prefix)
+      try {
+        const res = await fetch("/api/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ seriesId: id }),
+        });
+        if (!res.ok) {
+          console.error("Failed to delete files from MinIO");
         }
+      } catch (e) {
+        console.error("Storage deletion error:", e);
       }
-      return keysToDelete;
+
+      // 2. Delete from DB
+      await seriesService.deleteSeries(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });

@@ -327,7 +327,6 @@ export const useSaveTranslatedImageMutation = () => {
       queryClient.invalidateQueries({
         queryKey: seriesKeys.images(variables.seriesId),
       });
-      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
     },
   });
 };

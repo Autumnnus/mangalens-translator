@@ -1,6 +1,7 @@
 import {
   _Object,
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
@@ -102,4 +103,36 @@ export const uploadObject = async (
     ContentType: contentType,
   });
   await s3Client.send(command);
+};
+
+export const deleteByPrefix = async (prefix: string) => {
+  // List all objects with the prefix
+  const objects = await listObjects(prefix);
+
+  if (objects.length === 0) {
+    return { deleted: 0 };
+  }
+
+  // Delete all objects using bulk delete command
+  const keys = objects
+    .map((obj) => obj.Key)
+    .filter((key): key is string => !!key);
+
+  if (keys.length === 0) return { deleted: 0 };
+
+  // S3 DeleteObjects supports up to 1000 keys per request
+  const CHUNK_SIZE = 1000;
+  for (let i = 0; i < keys.length; i += CHUNK_SIZE) {
+    const chunk = keys.slice(i, i + CHUNK_SIZE);
+    const command = new DeleteObjectsCommand({
+      Bucket: S3_BUCKET,
+      Delete: {
+        Objects: chunk.map((key) => ({ Key: key })),
+        Quiet: true,
+      },
+    });
+    await s3Client.send(command);
+  }
+
+  return { deleted: keys.length };
 };

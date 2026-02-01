@@ -1,5 +1,5 @@
 import { auth } from "@/auth";
-import { deleteObject } from "@/lib/storage";
+import { deleteByPrefix, deleteObject } from "@/lib/storage";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
@@ -9,8 +9,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { keys } = await req.json();
+    const body = await req.json();
+    const { keys, seriesId } = body;
 
+    // If seriesId is provided, delete by prefix
+    if (seriesId && typeof seriesId === "string") {
+      const prefix = `${seriesId}/`;
+      const result = await deleteByPrefix(prefix);
+      return NextResponse.json({
+        message: "Deletion processed by prefix",
+        deleted: result.deleted,
+      });
+    }
+
+    // Otherwise, use the old key-based deletion
     if (!keys || !Array.isArray(keys)) {
       return NextResponse.json({ error: "Invalid keys" }, { status: 400 });
     }
