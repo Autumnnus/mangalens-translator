@@ -27,6 +27,10 @@ export async function updateUserSettingsAction(
     backgroundColor: "#ffffff",
     strokeColor: "#ffffff",
     customInstructions: "",
+    model: "gemini-1.5-flash",
+    batchSize: 10,
+    useCustomApiKey: false,
+    customApiKey: "",
   };
 
   const updatedSettings = {

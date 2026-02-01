@@ -79,6 +79,7 @@ export const useImageProcessor = () => {
         settings.targetLanguage,
         settings.customInstructions,
         settings.model,
+        settings.useCustomApiKey ? settings.customApiKey : undefined,
       );
 
       const tBlob = await createTranslatedImageBlob(
@@ -137,9 +138,16 @@ export const useImageProcessor = () => {
       .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
 
     const CHUNK_SIZE = Math.min(settings.batchSize || 10, 10);
+    const DELAY = settings.batchDelay || 0;
+
     for (let i = 0; i < imagesToProcess.length; i += CHUNK_SIZE) {
       const chunk = imagesToProcess.slice(i, i + CHUNK_SIZE);
       await Promise.all(chunk.map((image) => processImage(image)));
+
+      // Delay between batches to respect rate limits if configured
+      if (DELAY > 0 && i + CHUNK_SIZE < imagesToProcess.length) {
+        await new Promise((r) => setTimeout(r, DELAY));
+      }
     }
 
     // Invalidate everything at once at the end

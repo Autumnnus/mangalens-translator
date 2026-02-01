@@ -9,7 +9,8 @@
     "lint": "eslint",
     "drizzle": "npx drizzle-kit generate",
     "drizzle-push": "npx drizzle-kit push",
-    "patch": "npm version patch --no-git-tag-version"
+    "patch": "npm version patch --no-git-tag-version",
+    "seed": "npx tsx scripts/seed.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",

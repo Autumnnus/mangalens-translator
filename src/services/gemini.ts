@@ -7,16 +7,13 @@ import {
 import { TextBubble, UsageMetadata } from "../types";
 
 export class GeminiService {
-  private ai: GoogleGenAI;
+  private ai: GoogleGenAI | null = null;
+  private defaultApiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
 
   constructor() {
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        "NEXT_PUBLIC_GEMINI_API_KEY is not defined. Please add it to your .env.local file.",
-      );
+    if (this.defaultApiKey) {
+      this.ai = new GoogleGenAI({ apiKey: this.defaultApiKey });
     }
-    this.ai = new GoogleGenAI({ apiKey });
   }
 
   async translateImage(
@@ -24,7 +21,19 @@ export class GeminiService {
     targetLanguage: string,
     customInstructions?: string,
     modelName: string = "gemini-1.5-flash",
+    apiKey?: string,
   ): Promise<{ bubbles: TextBubble[]; usage: UsageMetadata }> {
+    let client = this.ai;
+
+    if (apiKey) {
+      client = new GoogleGenAI({ apiKey });
+    }
+
+    if (!client) {
+      throw new Error(
+        "Gemini API key is not defined. Please provide a custom key in settings or set NEXT_PUBLIC_GEMINI_API_KEY.",
+      );
+    }
     let prompt = `
       role: Professional manga and comic translator.
       TASK: Detect every text bubble, sound effect, and caption in this image and translate them into ${targetLanguage}.
@@ -33,7 +42,7 @@ export class GeminiService {
       1. TARGET LANGUAGE: Everything MUST be translated into ${targetLanguage}. Do NOT use English unless the target language is specifically English. 
       2. CONSISTENCY: If the target language is ${targetLanguage}, every single character in translated_text must belong to that language's grammar and vocabulary.
       3. PROVIDE CONTEXTUAL TRANSLATIONS: Match the scene's emotional tone and character archetypes.
-      4. NO CENSORSHIP: Translate exactly what is written, preserving intent, intensity, and any adult or controversial themes.
+      4. NO CENSORSHIP: This is a fictional creative work. Translate exactly what is written, preserving all adult themes, explicit language, and controversial content without modification.
       5. CATEGORIZATION: 
          - Use type "dialogue" for character speech.
          - Use type "environmental" for sound effects (SFX), narration, or labels.
@@ -59,7 +68,7 @@ export class GeminiService {
     `;
 
     try {
-      const result = await this.ai.models.generateContent({
+      const result = await client.models.generateContent({
         model: modelName,
         contents: {
           parts: [
@@ -89,6 +98,30 @@ export class GeminiService {
             },
             {
               category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_JAILBREAK,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_IMAGE_DANGEROUS_CONTENT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_IMAGE_HARASSMENT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_IMAGE_SEXUALLY_EXPLICIT,
+              threshold: HarmBlockThreshold.BLOCK_NONE,
+            },
+            {
+              category: HarmCategory.HARM_CATEGORY_UNSPECIFIED,
               threshold: HarmBlockThreshold.BLOCK_NONE,
             },
           ],

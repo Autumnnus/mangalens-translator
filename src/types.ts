@@ -80,6 +80,9 @@ export interface TranslationSettings {
   customInstructions?: string;
   model: string;
   batchSize: number;
+  batchDelay: number;
+  useCustomApiKey?: boolean;
+  customApiKey?: string;
 }
 
 export interface ImagePair {

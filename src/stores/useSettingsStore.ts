@@ -27,6 +27,9 @@ export const useSettingsStore = create<SettingsState>()(
         customInstructions: "",
         model: "gemini-1.5-flash",
         batchSize: 10,
+        batchDelay: 0,
+        useCustomApiKey: false,
+        customApiKey: "",
       },
       isViewOnly: process.env.NODE_ENV === "production",
 
@@ -42,7 +45,9 @@ export const useSettingsStore = create<SettingsState>()(
         }
       },
       initializeSettings: (dbSettings) => {
-        set({ settings: dbSettings });
+        set((state) => ({
+          settings: { ...state.settings, ...dbSettings },
+        }));
       },
       toggleViewOnly: () => set((state) => ({ isViewOnly: !state.isViewOnly })),
       setViewOnly: (value) => set({ isViewOnly: value }),

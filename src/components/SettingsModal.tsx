@@ -118,6 +118,13 @@ const SettingsModal: React.FC<Props> = ({
   const [localSettings, setLocalSettings] =
     useState<TranslationSettings>(settings);
 
+  // Sync with store/props when modal opens or settings change in store
+  React.useEffect(() => {
+    if (isOpen) {
+      setLocalSettings(settings);
+    }
+  }, [isOpen, settings]);
+
   if (!isOpen) return null;
 
   const handleChange = (
@@ -231,39 +238,186 @@ const SettingsModal: React.FC<Props> = ({
 
           <div className="h-px bg-white/5"></div>
 
-          {/* Batch Size */}
+          {/* Gemini API Key */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 text-primary">
-                <Sliders className="w-4 h-4" />
+                <Lock className="w-4 h-4" />
                 <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                  Processing Batch Size
+                  Gemini API Access
                 </label>
               </div>
-              <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
-                {localSettings.batchSize || 10} items
-              </span>
-            </div>
-            <div className="px-2">
-              <input
-                type="range"
-                min="1"
-                max="10"
-                value={localSettings.batchSize || 10}
-                onChange={(e) =>
-                  handleChange("batchSize", parseInt(e.target.value))
-                }
-                className="w-full h-2 bg-surface-raised rounded-lg appearance-none cursor-pointer accent-primary"
-              />
-              <div className="flex justify-between mt-2 text-[10px] font-bold text-text-dark uppercase tracking-widest">
-                <span>Slow & Stable (1)</span>
-                <span>Stable Batch (10)</span>
+              <div className="flex items-center gap-3">
+                <span
+                  className={`text-[10px] font-black uppercase tracking-widest transition-colors ${localSettings.useCustomApiKey ? "text-primary" : "text-text-dark"}`}
+                >
+                  {localSettings.useCustomApiKey
+                    ? "Custom Key"
+                    : "System Default"}
+                </span>
+                <button
+                  onClick={() =>
+                    handleChange(
+                      "useCustomApiKey",
+                      !localSettings.useCustomApiKey,
+                    )
+                  }
+                  className={`w-10 h-6 rounded-full p-1 transition-all duration-300 flex items-center ${
+                    localSettings.useCustomApiKey
+                      ? "bg-primary shadow-glow shadow-primary/40"
+                      : "bg-surface-raised border border-border-muted"
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full transition-all duration-300 ${
+                      localSettings.useCustomApiKey
+                        ? "translate-x-4 bg-white shadow-lg"
+                        : "translate-x-0 bg-text-dark"
+                    }`}
+                  />
+                </button>
               </div>
             </div>
-            <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-              Determines how many images are processed in parallel. High values
-              are faster but may hit API rate limits.
-            </p>
+
+            <div
+              className={`transition-all duration-500 overflow-hidden ${
+                localSettings.useCustomApiKey
+                  ? "max-h-32 opacity-100"
+                  : "max-h-0 opacity-0 pointer-events-none"
+              }`}
+            >
+              <div className="space-y-3">
+                <div className="relative group">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="password"
+                    value={localSettings.customApiKey || ""}
+                    onChange={(e) =>
+                      handleChange("customApiKey", e.target.value)
+                    }
+                    placeholder="Enter your Gemini API Key..."
+                    className="w-full bg-surface-raised border border-border-muted rounded-2xl pl-12 pr-5 py-4 text-xs font-bold focus:ring-2 ring-primary outline-none text-text-main transition-all placeholder:text-text-muted/30"
+                  />
+                </div>
+                <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+                  Your custom key is saved locally. Get your key from{" "}
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    Google AI Studio
+                  </a>
+                  .
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="h-px bg-white/5"></div>
+
+          {/* Batch Processing Controls */}
+          <div className="space-y-6 bg-surface-raised/30 p-5 rounded-[2rem] border border-border-muted">
+            {/* Batch Size */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-primary">
+                  <Sliders className="w-4 h-4" />
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                    Parallel Processing (Batch Size)
+                  </label>
+                </div>
+                <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
+                  {localSettings.batchSize || 10} items
+                </span>
+              </div>
+              <div className="px-2">
+                <input
+                  type="range"
+                  min="1"
+                  max="10"
+                  step="1"
+                  value={localSettings.batchSize || 10}
+                  onChange={(e) =>
+                    handleChange("batchSize", parseInt(e.target.value))
+                  }
+                  className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+                <div className="flex justify-between mt-2 text-[8px] font-black text-text-dark uppercase tracking-widest">
+                  <span
+                    className={
+                      localSettings.batchSize === 1 ? "text-primary" : ""
+                    }
+                  >
+                    Safety First (1)
+                  </span>
+                  <span
+                    className={
+                      localSettings.batchSize === 10 ? "text-primary" : ""
+                    }
+                  >
+                    Maximum Performance (10)
+                  </span>
+                </div>
+              </div>
+              <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+                Free Gemini tier supports ~15 RPM. Recommended for safety:{" "}
+                <span className="text-primary italic">1-3 items</span>.
+              </p>
+            </div>
+
+            <div className="h-px bg-white/5"></div>
+
+            {/* Batch Delay */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-primary">
+                  <Cpu className="w-4 h-4" />
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                    Inter-batch Delay
+                  </label>
+                </div>
+                <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
+                  {localSettings.batchDelay || 0} ms
+                </span>
+              </div>
+              <div className="px-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="5000"
+                  step="500"
+                  value={localSettings.batchDelay || 0}
+                  onChange={(e) =>
+                    handleChange("batchDelay", parseInt(e.target.value))
+                  }
+                  className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+                <div className="flex justify-between mt-2 text-[8px] font-black text-text-dark uppercase tracking-widest">
+                  <span
+                    className={
+                      localSettings.batchDelay === 0 ? "text-primary" : ""
+                    }
+                  >
+                    No Delay
+                  </span>
+                  <span
+                    className={
+                      localSettings.batchDelay === 5000 ? "text-primary" : ""
+                    }
+                  >
+                    5 Seconds (Safe)
+                  </span>
+                </div>
+              </div>
+              <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+                Adding delay helps prevent &quot;429 Too Many Requests&quot;
+                errors on free accounts.
+              </p>
+            </div>
           </div>
 
           <div className="h-px bg-white/5"></div>
