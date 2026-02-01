@@ -53,6 +53,19 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
 
   const directSeries = series.filter((s) => s.categoryId === category.id);
 
+  // Recursive olarak bu kategori ve altındaki tüm serileri say
+  const getTotalSeriesCount = (catId: string): number => {
+    const direct = series.filter((s) => s.categoryId === catId).length;
+    const children = allCategories.filter((c) => c.parentId === catId);
+    const childCounts = children.reduce(
+      (sum, child) => sum + getTotalSeriesCount(child.id),
+      0,
+    );
+    return direct + childCounts;
+  };
+
+  const totalSeriesCount = getTotalSeriesCount(category.id);
+
   const handleDragStart = (
     e: React.DragEvent,
     type: "series" | "category",
@@ -141,7 +154,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                 <span className="text-[9px] font-bold text-text-dark bg-surface-raised/80 px-1.5 py-0.5 rounded-md shrink-0 border border-border-muted/30">
                   {category.id === "uncategorized"
                     ? series.filter((s) => !s.categoryId).length
-                    : directSeries.length}
+                    : totalSeriesCount}
                 </span>
               </div>
             )}
@@ -152,10 +165,10 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onAddSubcategory(category.id);
+                  onEdit(`new:${category.id}`);
                 }}
                 className="w-6 h-6 bg-surface-raised hover:bg-primary/20 text-text-dark hover:text-primary rounded-lg flex items-center justify-center transition-all border border-border-muted/50"
-                title="Add Subcategory"
+                title="Add Series to Category"
               >
                 <Plus className="w-3 h-3" />
               </button>

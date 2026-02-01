@@ -50,6 +50,10 @@ const MainApp: React.FC = () => {
   );
   const setEditingSeriesId = useUIStore((state) => state.setEditingSeriesId);
 
+  const setDefaultCategoryId = useUIStore(
+    (state) => state.setDefaultCategoryId,
+  );
+
   const { confirm } = useConfirm();
 
   const initializeSettings = useSettingsStore(
@@ -76,10 +80,18 @@ const MainApp: React.FC = () => {
 
   const handleEditSeries = useCallback(
     (id: string) => {
-      setEditingSeriesId(id);
+      // Check if id is in 'new:categoryId' format
+      if (id.startsWith("new:")) {
+        const categoryId = id.substring(4);
+        setDefaultCategoryId(categoryId);
+        setEditingSeriesId(null);
+      } else {
+        setEditingSeriesId(id);
+        setDefaultCategoryId(null);
+      }
       toggleNewSeriesModal(true);
     },
-    [setEditingSeriesId, toggleNewSeriesModal],
+    [setEditingSeriesId, setDefaultCategoryId, toggleNewSeriesModal],
   );
 
   const handleDeleteSeries = useCallback(

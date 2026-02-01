@@ -69,43 +69,92 @@ export const useBatchAddImagesMutation = () => {
     }) => {
       if (items.length === 0) return;
 
-      // 1. Get presigned URLs in batch
-      const uploadReqItems = items.map((item) => ({
-        fileName:
-          item.image.fileName ||
-          (item.file instanceof File ? item.file.name : "unknown"),
-        contentType: item.file?.type || "image/jpeg",
-        seriesId,
-      }));
+      const CHUNK_SIZE = 50;
+      const CONCURRENT_UPLOADS = 10;
 
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: uploadReqItems }),
-      });
+      const chunks = [];
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        chunks.push(items.slice(i, i + CHUNK_SIZE));
+      }
 
-      if (!res.ok) throw new Error("Failed to get upload URLs in batch");
-      const { items: uploadUrls } = await res.json();
+      for (const chunk of chunks) {
+        // 1. Get presigned URLs in batch per chunk
+        const uploadReqItems = chunk.map((item) => ({
+          fileName:
+            item.image.fileName ||
+            (item.file instanceof File ? item.file.name : "unknown"),
+          contentType: item.file?.type || "image/jpeg",
+          seriesId,
+        }));
 
-      // 2. Upload to storage in parallel
-      await Promise.all(
-        items.map((item, idx) => {
-          if (!item.file) return Promise.resolve();
-          return fetch(uploadUrls[idx].uploadUrl, {
-            method: "PUT",
-            body: item.file,
-            headers: { "Content-Type": item.file.type || "image/jpeg" },
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: uploadReqItems }),
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Failed to get upload URLs: ${errorText}`);
+        }
+        const { items: uploadUrls } = await res.json();
+
+        // 2. Upload to storage with concurrency limit and validation
+        const uploadPromises = [];
+        for (let i = 0; i < chunk.length; i += CONCURRENT_UPLOADS) {
+          const batch = chunk.slice(i, i + CONCURRENT_UPLOADS);
+          const batchPromises = batch.map(async (item, localIdx) => {
+            const globalIdx = i + localIdx;
+            if (!item.file) return { success: true, idx: globalIdx };
+
+            try {
+              const uploadRes = await fetch(uploadUrls[globalIdx].uploadUrl, {
+                method: "PUT",
+                body: item.file,
+                headers: { "Content-Type": item.file.type || "image/jpeg" },
+              });
+
+              if (!uploadRes.ok) {
+                console.error(
+                  `Failed to upload ${item.image.fileName}: ${uploadRes.status}`,
+                );
+                return {
+                  success: false,
+                  idx: globalIdx,
+                  error: uploadRes.statusText,
+                };
+              }
+              return { success: true, idx: globalIdx };
+            } catch (error) {
+              console.error(`Upload error for ${item.image.fileName}:`, error);
+              return { success: false, idx: globalIdx, error: String(error) };
+            }
           });
-        }),
-      );
+          const results = await Promise.all(batchPromises);
+          uploadPromises.push(...results);
+        }
 
-      // 3. Batch DB insert
-      const dbItems = items.map((item, idx) => ({
-        ...item.image,
-        originalKey: uploadUrls[idx].key,
-      }));
+        const failedUploads = uploadPromises.filter((r) => !r.success);
+        if (failedUploads.length > 0) {
+          console.error(`${failedUploads.length} uploads failed`);
+          throw new Error(
+            `${failedUploads.length} out of ${chunk.length} uploads failed`,
+          );
+        }
 
-      return imageService.addImages(seriesId, dbItems);
+        // 3. Batch DB insert only for successful uploads
+        const dbItems = chunk.map((item, idx) => ({
+          ...item.image,
+          originalKey: uploadUrls[idx].key,
+        }));
+
+        try {
+          await imageService.addImages(seriesId, dbItems);
+        } catch (error) {
+          console.error("DB insert failed:", error);
+          throw new Error(`Database insert failed: ${String(error)}`);
+        }
+      }
     },
     onMutate: async ({ seriesId, items }) => {
       await queryClient.cancelQueries({
@@ -155,7 +204,6 @@ export const useUpdateImageMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
-      seriesId,
       imageId,
       updates,
     }: {
@@ -174,13 +222,32 @@ export const useUpdateImageMutation = () => {
 export const useDeleteImageMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      seriesId,
-      imageId,
-    }: {
-      seriesId: string;
-      imageId: string;
-    }) => imageService.deleteImage(imageId),
+    mutationFn: ({ imageId }: { seriesId: string; imageId: string }) =>
+      imageService.deleteImage(imageId),
+    onMutate: async ({ seriesId, imageId }) => {
+      await queryClient.cancelQueries({
+        queryKey: seriesKeys.images(seriesId),
+      });
+
+      const previousImages = queryClient.getQueryData<ProcessedImage[]>(
+        seriesKeys.images(seriesId),
+      );
+
+      queryClient.setQueryData<ProcessedImage[]>(
+        seriesKeys.images(seriesId),
+        (old) => (old || []).filter((img) => img.id !== imageId),
+      );
+
+      return { previousImages };
+    },
+    onError: (err, { seriesId }, context) => {
+      if (context?.previousImages) {
+        queryClient.setQueryData(
+          seriesKeys.images(seriesId),
+          context.previousImages,
+        );
+      }
+    },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: seriesKeys.images(variables.seriesId),
@@ -193,13 +260,8 @@ export const useDeleteImageMutation = () => {
 export const useReorderImagesMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({
-      seriesId,
-      imageIds,
-    }: {
-      seriesId: string;
-      imageIds: string[];
-    }) => imageService.reorderImages(imageIds),
+    mutationFn: ({ imageIds }: { seriesId: string; imageIds: string[] }) =>
+      imageService.reorderImages(imageIds),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: seriesKeys.images(variables.seriesId),

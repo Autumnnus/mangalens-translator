@@ -28,18 +28,27 @@ export async function addImagesAction(
 
   if (items.length === 0) return;
 
-  await db.insert(schema.images).values(
-    items.map((item) => ({
-      seriesId,
-      fileName: item.fileName || "unknown",
-      originalKey: item.originalKey || "",
-      status: item.status || "idle",
-      sequenceNumber: item.sequenceNumber || 0,
-      bubbles: item.bubbles || [],
-      usage: item.usage || null,
-      cost: item.cost || 0,
-    })),
-  );
+  try {
+    await db.transaction(async (tx) => {
+      const values = items.map((item) => ({
+        seriesId,
+        fileName: item.fileName || "unknown",
+        originalKey: item.originalKey || "",
+        status: item.status || "idle",
+        sequenceNumber: item.sequenceNumber || 0,
+        bubbles: item.bubbles || [],
+        usage: item.usage || null,
+        cost: item.cost || 0,
+      }));
+
+      await tx.insert(schema.images).values(values);
+    });
+  } catch (error) {
+    console.error(`Failed to insert ${items.length} images:`, error);
+    throw new Error(
+      `Database insert failed for ${items.length} images: ${String(error)}`,
+    );
+  }
 }
 
 export async function deleteImageAction(imageId: string) {

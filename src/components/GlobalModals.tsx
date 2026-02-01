@@ -35,6 +35,8 @@ const GlobalModals: React.FC = () => {
     categoryInitialParentId,
     editingSeriesId,
     setEditingSeriesId,
+    defaultCategoryId,
+    setDefaultCategoryId,
     selectedImage,
     setSelectedImage,
   } = useUIStore();
@@ -157,11 +159,13 @@ const GlobalModals: React.FC = () => {
         onClose={() => {
           toggleNewSeriesModal(false);
           setEditingSeriesId(null);
+          setDefaultCategoryId(null);
         }}
         onConfirm={handleConfirmSeries}
         existingTitles={seriesItems.map((s) => s.name)}
         categories={categories}
         onAddCategory={(name) => addCategory({ name })}
+        initialCategoryId={defaultCategoryId || undefined}
         initialName={
           editingSeriesId
             ? seriesItems.find((s) => s.id === editingSeriesId)?.name

@@ -16,6 +16,7 @@ interface Props {
   onAddCategory: (name: string) => void;
   initialName?: string;
   initialCategory?: string;
+  initialCategoryId?: string;
   initialAuthor?: string;
   initialGroup?: string;
   initialOriginalTitle?: string;
@@ -30,6 +31,7 @@ const NewSeriesModal: React.FC<Props> = ({
   onAddCategory,
   initialName = "",
   initialCategory = "",
+  initialCategoryId,
   initialAuthor = "",
   initialGroup = "",
   initialOriginalTitle = "",
@@ -50,10 +52,20 @@ const NewSeriesModal: React.FC<Props> = ({
   React.useEffect(() => {
     if (isOpen) {
       setName(initialName);
-      setCategoryName(
-        initialCategory ||
-          (categories.length > 0 ? categories[0].name : "Uncategorized"),
-      );
+
+      // Eğer initialCategoryId varsa o kategoriyi seç
+      if (initialCategoryId) {
+        const cat = categories.find((c) => c.id === initialCategoryId);
+        if (cat) {
+          setCategoryName(cat.name);
+        }
+      } else {
+        setCategoryName(
+          initialCategory ||
+            (categories.length > 0 ? categories[0].name : "Uncategorized"),
+        );
+      }
+
       setAuthor(initialAuthor);
       setGroup(initialGroup);
       setOriginalTitle(initialOriginalTitle);
@@ -62,6 +74,7 @@ const NewSeriesModal: React.FC<Props> = ({
     isOpen,
     initialName,
     initialCategory,
+    initialCategoryId,
     initialAuthor,
     initialGroup,
     initialOriginalTitle,

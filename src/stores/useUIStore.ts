@@ -10,6 +10,7 @@ interface UIState {
 
   // Specific UI State
   editingSeriesId: string | null;
+  defaultCategoryId: string | null;
   currentImageIndex: number;
   selectedImage: ProcessedImage | null; // For modal view
   categoryInitialParentId: string | null;
@@ -27,6 +28,7 @@ interface UIState {
   toggleNewSeriesModal: (value?: boolean) => void;
 
   setEditingSeriesId: (id: string | null) => void;
+  setDefaultCategoryId: (id: string | null) => void;
   setCurrentImageIndex: (index: number) => void;
   setSelectedImage: (image: ProcessedImage | null) => void;
 
@@ -41,6 +43,7 @@ export const useUIStore = create<UIState>((set) => ({
   isNewSeriesModalOpen: false,
 
   editingSeriesId: null,
+  defaultCategoryId: null,
   currentImageIndex: 0,
   selectedImage: null,
   categoryInitialParentId: null,
@@ -69,6 +72,7 @@ export const useUIStore = create<UIState>((set) => ({
     })),
 
   setEditingSeriesId: (id) => set({ editingSeriesId: id }),
+  setDefaultCategoryId: (id) => set({ defaultCategoryId: id }),
   setCurrentImageIndex: (index) => set({ currentImageIndex: index }),
   setSelectedImage: (image) => set({ selectedImage: image }),
 
