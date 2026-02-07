@@ -46,6 +46,23 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
     }
   }, [currentIndex]);
 
+  // Preloading Logic: Preload next 5 images to browser cache
+  useEffect(() => {
+    if (!images || images.length === 0) return;
+
+    const PRELOAD_NEXT = 5;
+    const startIndex = currentIndex + 1;
+    const endIndex = Math.min(currentIndex + PRELOAD_NEXT, images.length - 1);
+
+    for (let i = startIndex; i <= endIndex; i++) {
+      const img = images[i];
+      const url = img.translatedUrl || img.originalUrl;
+      // Use browser preloading
+      const preloader = new Image();
+      preloader.src = url;
+    }
+  }, [currentIndex, images]);
+
   const getPair = (img: ProcessedImage) => ({
     id: img.id,
     title: img.fileName,
@@ -145,7 +162,10 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
             toggle: true,
           }}
           navigation={!isUIVisible ? false : true}
-          virtual={true}
+          virtual={{
+            addSlidesAfter: 3,
+            addSlidesBefore: 1,
+          }}
           thumbs={{
             swiper:
               thumbsSwiper && !thumbsSwiper.destroyed ? thumbsSwiper : null,
@@ -175,7 +195,10 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
                       src={displayUrl}
                       alt={img.fileName}
                       className="max-w-full max-h-full object-contain select-none"
-                      loading="lazy"
+                      loading={index === currentIndex ? "eager" : "lazy"}
+                      decoding="async"
+                      /* @ts-expect-error - fetchpriority is a valid web standard but may not be in all TS versions */
+                      fetchpriority={index === currentIndex ? "high" : "low"}
                     />
                   )}
                 </div>
