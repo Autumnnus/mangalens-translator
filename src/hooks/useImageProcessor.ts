@@ -16,6 +16,7 @@ import { seriesKeys, useSeriesImagesQuery } from "./useSeriesQueries";
 export const useImageProcessor = () => {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
   const geminiService = useRef(new GeminiService());
+  const abortControllers = useRef<Map<string, AbortController>>(new Map());
 
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
   const { data: images } = useSeriesImagesQuery(activeSeriesId);
@@ -54,8 +55,27 @@ export const useImageProcessor = () => {
   const processImage = async (
     image: ProcessedImage,
     retryCount = 0,
+    isManual = false,
   ): Promise<boolean> => {
     if (!activeSeriesId) return false;
+
+    // If already processing, check if we should allow a manual restart
+    if (
+      !isManual &&
+      image.status === "processing" &&
+      abortControllers.current.has(image.id)
+    ) {
+      return false;
+    }
+
+    // Cancel existing processing if any
+    const existingController = abortControllers.current.get(image.id);
+    if (existingController) {
+      existingController.abort();
+    }
+
+    const controller = new AbortController();
+    abortControllers.current.set(image.id, controller);
 
     // Optimistic update to UI
     queryClient.setQueryData<ProcessedImage[]>(
@@ -73,7 +93,12 @@ export const useImageProcessor = () => {
     });
 
     try {
+      if (controller.signal.aborted) return false;
+
       const base64 = await urlToBase64(image.originalUrl);
+
+      if (controller.signal.aborted) return false;
+
       const { bubbles, usage } = await geminiService.current.translateImage(
         base64,
         settings.targetLanguage,
@@ -82,11 +107,15 @@ export const useImageProcessor = () => {
         settings.useCustomApiKey ? settings.customApiKey : undefined,
       );
 
+      if (controller.signal.aborted) return false;
+
       const tBlob = await createTranslatedImageBlob(
         image.originalUrl,
         bubbles,
         settings,
       );
+
+      if (controller.signal.aborted) return false;
 
       const cost = calculateCost(usage, settings.model);
 
@@ -99,11 +128,19 @@ export const useImageProcessor = () => {
           meta: { bubbles, usage, cost },
         });
       } catch (e) {
+        if (controller.signal.aborted) return false;
         console.error("Failed to save translated image", e);
+        throw e;
       }
 
+      abortControllers.current.delete(image.id);
       return true;
     } catch (error) {
+      if (controller.signal.aborted) {
+        console.log("Processing aborted for", image.id);
+        return false;
+      }
+
       const errorStr = (
         error instanceof Error ? error.message : String(error)
       ).toLowerCase();
@@ -115,16 +152,34 @@ export const useImageProcessor = () => {
       if (isRateLimit && retryCount < 8) {
         const backoff = Math.pow(2, retryCount) * 2000;
         await new Promise((r) => setTimeout(r, backoff));
-        return processImage(image, retryCount + 1);
+        if (controller.signal.aborted) return false;
+        return processImage(image, retryCount + 1, isManual);
       }
 
       console.error("Processing failed for", image.fileName, error);
+      abortControllers.current.delete(image.id);
       await updateImageStatus({
         seriesId: activeSeriesId,
         imageId: image.id,
         updates: { status: "error" },
       });
       return false;
+    }
+  };
+
+  const cancelProcessing = (imageId: string) => {
+    const controller = abortControllers.current.get(imageId);
+    if (controller) {
+      controller.abort();
+      abortControllers.current.delete(imageId);
+
+      if (activeSeriesId) {
+        updateImageStatus({
+          seriesId: activeSeriesId,
+          imageId: imageId,
+          updates: { status: "error" },
+        });
+      }
     }
   };
 
@@ -164,6 +219,7 @@ export const useImageProcessor = () => {
   return {
     processImage,
     processAll,
+    cancelProcessing,
     isProcessingAll,
     urlToBase64,
   };

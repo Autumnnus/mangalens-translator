@@ -15,16 +15,11 @@ interface Props {
 }
 
 const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
-  const {
-    activeSeriesId,
-
-    updateImageInSeries,
-    series,
-  } = useSeriesStore();
+  const { activeSeriesId } = useSeriesStore();
   const { mutate: deleteImage } = useDeleteImageMutation();
   const { setSelectedImage } = useUIStore();
   const { confirm } = useConfirm();
-  const { processImage } = useImageProcessor();
+  const { processImage, cancelProcessing } = useImageProcessor();
 
   const [isLoaded, setIsLoaded] = React.useState(false);
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
@@ -161,11 +156,11 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
                   title: "Re-translate Image",
                   message:
                     "This will overwrite the existing translation and usage data. Are you sure?",
-                  onConfirm: () => processImage(image),
+                  onConfirm: () => processImage(image, 0, true),
                   type: "warning",
                 });
               } else {
-                processImage(image);
+                processImage(image, 0, true);
               }
             }}
             disabled={image.status === "processing"}
@@ -182,6 +177,16 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
               <i className="fas fa-bolt"></i> Run
             </span>
           </button>
+
+          {image.status === "processing" && (
+            <button
+              onClick={() => cancelProcessing(image.id)}
+              className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white p-2.5 rounded-xl text-xs transition-all border border-red-500/20"
+              title="Cancel Processing"
+            >
+              <i className="fas fa-times"></i>
+            </button>
+          )}
 
           {/* Premium Order Control */}
           <div className="flex bg-background/50 rounded-2xl border border-border-muted p-1 items-center shadow-inner group/order">
