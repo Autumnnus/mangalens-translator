@@ -76,23 +76,23 @@ const ComparisonView: React.FC<Props> = ({
   if (mode === "side-by-side") {
     return (
       <div className="grid grid-cols-2 gap-4 w-full h-full">
-        <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
+        <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass flex items-center justify-center">
           <img
             src={pair.sourceUrl}
             alt="Source"
-            className="max-w-full max-h-full object-contain"
+            className="w-full h-full object-contain select-none"
           />
-          <div className="absolute top-4 left-4 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium">
+          <div className="absolute top-4 left-4 z-20 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium">
             Source
           </div>
         </div>
-        <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
+        <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass flex items-center justify-center">
           <img
             src={pair.convertedUrl}
             alt="Converted"
-            className="max-w-full max-h-full object-contain"
+            className="w-full h-full object-contain select-none"
           />
-          <div className="absolute top-4 left-4 bg-primary/80 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-white border border-primary/20 uppercase tracking-widest shadow-glow">
+          <div className="absolute top-4 left-4 z-20 bg-primary/80 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-white border border-primary/20 uppercase tracking-widest shadow-glow">
             Converted
           </div>
         </div>
@@ -103,13 +103,13 @@ const ComparisonView: React.FC<Props> = ({
   if (mode === "toggle") {
     return (
       <div
-        className="relative w-full h-full cursor-pointer overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass group"
+        className="relative w-full h-full cursor-pointer overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass group flex items-center justify-center"
         onClick={() => setIsToggled(!isToggled)}
       >
         <img
           src={isToggled ? pair.convertedUrl : pair.sourceUrl}
           alt="Comparison"
-          className="max-w-full max-h-full object-contain transition-opacity duration-300"
+          className="w-full h-full object-contain transition-opacity duration-300 select-none"
         />
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
           <div

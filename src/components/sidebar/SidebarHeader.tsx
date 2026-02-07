@@ -20,9 +20,6 @@ const SidebarHeader: React.FC<SidebarHeaderProps> = ({
     >
       {!isSidebarCollapsed && (
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-gradient-to-tr from-primary to-secondary rounded-xl flex items-center justify-center shadow-glow shadow-primary/20">
-            <i className="fas fa-eye-low-vision text-white text-sm"></i>
-          </div>
           <h5 className="text-xl font-black tracking-tighter uppercase leading-none italic select-none">
             Manga<span className="text-primary text-glow">Lens</span>
           </h5>
