@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo } from "react";
+import React, { Suspense, useCallback, useEffect, useMemo } from "react";
 import { getUserSettingsAction } from "../actions/settings";
 import {
   useCategoriesQuery,
@@ -13,6 +13,7 @@ import {
   useSwapSeriesSequenceMutation,
   useUpdateSeriesMutation,
 } from "../hooks/useSeriesQueries";
+import { useUrlSync } from "../hooks/useUrlSync";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
@@ -22,7 +23,9 @@ import SeriesSidebar from "./SeriesSidebar";
 const ReaderView = React.lazy(() => import("./viewer/ReaderView"));
 const EditorWorkspace = React.lazy(() => import("./editor/EditorWorkspace"));
 
-const MainApp: React.FC = () => {
+const MainAppContent: React.FC = () => {
+  useUrlSync();
+
   // Selective store access for performance
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
   const setActiveSeriesId = useSeriesStore((state) => state.setActiveSeriesId);
@@ -238,6 +241,14 @@ const MainApp: React.FC = () => {
         </div>
       </div>
     </>
+  );
+};
+
+const MainApp: React.FC = () => {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <MainAppContent />
+    </Suspense>
   );
 };
 

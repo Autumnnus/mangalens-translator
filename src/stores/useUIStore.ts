@@ -12,6 +12,7 @@ interface UIState {
   editingSeriesId: string | null;
   defaultCategoryId: string | null;
   currentImageIndex: number;
+  editorPage: number;
   selectedImage: ProcessedImage | null; // For modal view
   categoryInitialParentId: string | null;
 
@@ -30,6 +31,7 @@ interface UIState {
   setEditingSeriesId: (id: string | null) => void;
   setDefaultCategoryId: (id: string | null) => void;
   setCurrentImageIndex: (index: number) => void;
+  setEditorPage: (page: number) => void;
   setSelectedImage: (image: ProcessedImage | null) => void;
 
   openConfirmModal: (config: ConfirmConfig) => void;
@@ -45,6 +47,7 @@ export const useUIStore = create<UIState>((set) => ({
   editingSeriesId: null,
   defaultCategoryId: null,
   currentImageIndex: 0,
+  editorPage: 1,
   selectedImage: null,
   categoryInitialParentId: null,
 
@@ -74,6 +77,7 @@ export const useUIStore = create<UIState>((set) => ({
   setEditingSeriesId: (id) => set({ editingSeriesId: id }),
   setDefaultCategoryId: (id) => set({ defaultCategoryId: id }),
   setCurrentImageIndex: (index) => set({ currentImageIndex: index }),
+  setEditorPage: (page) => set({ editorPage: page }),
   setSelectedImage: (image) => set({ selectedImage: image }),
 
   openConfirmModal: (config) =>

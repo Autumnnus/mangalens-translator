@@ -28,6 +28,13 @@ const ReaderView: React.FC = () => {
   );
   const toggleViewOnly = useSettingsStore((state) => state.toggleViewOnly);
 
+  const [prevSeriesId, setPrevSeriesId] = useState(activeSeriesId);
+
+  if (activeSeriesId !== prevSeriesId) {
+    setPrevSeriesId(activeSeriesId);
+    setCurrentImageIndex(0);
+  }
+
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonMode, setComparisonMode] = useState<ViewMode>("toggle");
   const [isUIVisible, setIsUIVisible] = useState(true);

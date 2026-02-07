@@ -23,6 +23,9 @@ const EditorWorkspace: React.FC = () => {
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
   const setImages = useSeriesStore((state) => state.setImages);
 
+  const editorPage = useUIStore((state) => state.editorPage);
+  const setEditorPage = useUIStore((state) => state.setEditorPage);
+
   const { data: seriesListData } = useSeriesQuery();
   const { data: imagesData, isLoading: isImagesLoading } =
     useSeriesImagesQuery(activeSeriesId);
@@ -68,7 +71,6 @@ const EditorWorkspace: React.FC = () => {
     );
   }, [images]);
 
-  const [editorPage, setEditorPage] = useState(1);
   const [prevSeriesId, setPrevSeriesId] = useState(activeSeriesId);
 
   // If the active series changed, reset the page to 1 immediately during render

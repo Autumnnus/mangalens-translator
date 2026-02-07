@@ -5,6 +5,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "MangaLens Translator",
   description: "AI-Powered Manga Translation Tool",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 import SessionGuard from "@/components/SessionGuard";
@@ -19,6 +22,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <link rel="icon" href="/favicon.png" />
         <link
           rel="stylesheet"
           href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
