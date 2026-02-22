@@ -167,18 +167,31 @@ export const useImageProcessor = () => {
     }
   };
 
-  const cancelProcessing = (imageId: string) => {
+  const cancelProcessing = async (imageId: string) => {
     const controller = abortControllers.current.get(imageId);
     if (controller) {
       controller.abort();
       abortControllers.current.delete(imageId);
+    }
 
-      if (activeSeriesId) {
-        updateImageStatus({
+    if (activeSeriesId) {
+      // Optimistic update
+      queryClient.setQueryData<ProcessedImage[]>(
+        seriesKeys.images(activeSeriesId),
+        (old) =>
+          old?.map((img) =>
+            img.id === imageId ? { ...img, status: "error" } : img,
+          ) || [],
+      );
+
+      try {
+        await updateImageStatus({
           seriesId: activeSeriesId,
           imageId: imageId,
           updates: { status: "error" },
         });
+      } catch (error) {
+        console.error("Failed to cancel processing", error);
       }
     }
   };
