@@ -15,9 +15,17 @@ const S3_ACCESS_KEY = process.env.MINIO_ROOT_USER || "minioadmin";
 const S3_SECRET_KEY = process.env.MINIO_ROOT_PASSWORD || "minioadmin";
 const PUBLIC_URL =
   process.env.NEXT_PUBLIC_MINIO_URL || "http://localhost:9000/mangalens";
+const VIEW_URL_TTL_SECONDS = 3600;
+const VIEW_URL_CACHE_BUFFER_MS = 60_000;
 
 // Ensure global client to avoid multiple instances in dev
-const globalForS3 = globalThis as unknown as { s3: S3Client };
+const globalForS3 = globalThis as unknown as {
+  s3: S3Client;
+  viewUrlCache: Map<string, { url: string; expiresAt: number }>;
+};
+
+const viewUrlCache = globalForS3.viewUrlCache || new Map();
+if (process.env.NODE_ENV !== "production") globalForS3.viewUrlCache = viewUrlCache;
 
 export const s3Client =
   globalForS3.s3 ||
@@ -47,12 +55,23 @@ export const getPresignedUploadUrl = async (
 };
 
 export const getPresignedViewUrl = async (key: string) => {
+  const cached = viewUrlCache.get(key);
+  if (cached && cached.expiresAt - Date.now() > VIEW_URL_CACHE_BUFFER_MS) {
+    return cached.url;
+  }
+
   const command = new GetObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
   });
-  // 1 hour expiry
-  return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+  const url = await getSignedUrl(s3Client, command, {
+    expiresIn: VIEW_URL_TTL_SECONDS,
+  });
+  viewUrlCache.set(key, {
+    url,
+    expiresAt: Date.now() + VIEW_URL_TTL_SECONDS * 1000,
+  });
+  return url;
 };
 
 export const deleteObject = async (key: string) => {

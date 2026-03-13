@@ -45,7 +45,7 @@ export const extractImagesFromPdf = async (
 
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2.0 });
+    const viewport = page.getViewport({ scale: 1.5 });
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
     canvas.height = viewport.height;
@@ -53,7 +53,7 @@ export const extractImagesFromPdf = async (
 
     await page.render({ canvasContext: context, viewport }).promise;
     images.push({
-      url: canvas.toDataURL("image/jpeg", 0.9),
+      url: canvas.toDataURL("image/jpeg", 0.82),
       name: `${file.name.replace(".pdf", "")}_page_${i}.jpg`,
     });
   }

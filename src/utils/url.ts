@@ -28,3 +28,20 @@ export const resolveImageUrl = (url: string | null): string => {
 
   return url; // Final fallback
 };
+
+export const getThumbnailUrl = (
+  key: string | undefined | null,
+  fallbackUrl: string | null,
+  width: number = 240,
+  quality: number = 70,
+): string => {
+  if (!key) return resolveImageUrl(fallbackUrl);
+
+  const params = new URLSearchParams({
+    key,
+    w: String(width),
+    q: String(quality),
+  });
+
+  return `/api/images/thumbnail?${params.toString()}`;
+};

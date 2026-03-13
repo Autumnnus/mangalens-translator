@@ -13,6 +13,7 @@ import "swiper/css/virtual";
 import "swiper/css/zoom";
 
 import { ProcessedImage, ViewMode } from "../../types";
+import { getThumbnailUrl } from "../../utils/url";
 import ComparisonView from "../ComparisonView";
 
 interface ReaderImageAreaProps {
@@ -36,6 +37,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
 }) => {
   const swiperRef = useRef<SwiperRef>(null);
   const [thumbsSwiper, setThumbsSwiper] = useState<SwiperType | null>(null);
+  const preloadedRef = useRef<Set<string>>(new Set());
 
   // Sync external index change to Swiper
   useEffect(() => {
@@ -46,19 +48,37 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
     }
   }, [currentIndex]);
 
-  // Preloading Logic: Preload next 5 images to browser cache
+  // Preload only a small number of upcoming pages and skip on slow/data-save connections.
   useEffect(() => {
     if (!images || images.length === 0) return;
+    if (typeof navigator !== "undefined") {
+      type NetworkInformation = {
+        saveData?: boolean;
+        effectiveType?: string;
+      };
+      const connection = (
+        navigator as Navigator & { connection?: NetworkInformation }
+      ).connection;
+      if (
+        connection?.saveData ||
+        connection?.effectiveType === "2g" ||
+        connection?.effectiveType === "slow-2g"
+      ) {
+        return;
+      }
+    }
 
-    const PRELOAD_NEXT = 5;
+    const PRELOAD_NEXT = 2;
     const startIndex = currentIndex + 1;
     const endIndex = Math.min(currentIndex + PRELOAD_NEXT, images.length - 1);
 
     for (let i = startIndex; i <= endIndex; i++) {
       const img = images[i];
       const url = img.translatedUrl || img.originalUrl;
-      // Use browser preloading
+      if (!url || preloadedRef.current.has(url)) continue;
+      preloadedRef.current.add(url);
       const preloader = new Image();
+      preloader.decoding = "async";
       preloader.src = url;
     }
   }, [currentIndex, images]);
@@ -172,7 +192,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
           }}
           navigation={!isUIVisible ? false : true}
           virtual={{
-            addSlidesAfter: 3,
+            addSlidesAfter: 1,
             addSlidesBefore: 1,
           }}
           thumbs={{
@@ -235,9 +255,10 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
         {images.map((img, index) => (
           <SwiperSlide key={`thumb-${img.id}`} virtualIndex={index}>
             <img
-              src={img.originalUrl}
+              src={getThumbnailUrl(img.originalKey, img.originalUrl, 220, 68)}
               alt={`Thumb ${index + 1}`}
               loading="lazy"
+              decoding="async"
               className="w-full h-full object-contain bg-black/80 p-0.5"
             />
           </SwiperSlide>

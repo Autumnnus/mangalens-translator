@@ -103,13 +103,20 @@ export async function fetchSeriesImagesAction(seriesId: string) {
   });
 
   const signedImages = await Promise.all(
-    images.map(async (img) => ({
-      ...img,
-      originalUrl: await getPresignedViewUrl(img.originalKey),
-      translatedUrl: img.translatedKey
-        ? await getPresignedViewUrl(img.translatedKey)
-        : null,
-    })),
+    images.map(async (img) => {
+      const [originalUrl, translatedUrl] = await Promise.all([
+        getPresignedViewUrl(img.originalKey),
+        img.translatedKey
+          ? getPresignedViewUrl(img.translatedKey)
+          : Promise.resolve(null),
+      ]);
+
+      return {
+        ...img,
+        originalUrl,
+        translatedUrl,
+      };
+    }),
   );
 
   return signedImages;

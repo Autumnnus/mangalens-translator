@@ -1,5 +1,6 @@
 import React from "react";
 import { ProcessedImage } from "../../types";
+import { getThumbnailUrl } from "../../utils/url";
 
 interface ThumbnailStripProps {
   images: ProcessedImage[];
@@ -79,7 +80,7 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
                 }`}
               >
                 <img
-                  src={img.originalUrl}
+                  src={getThumbnailUrl(img.originalKey, img.originalUrl, 180, 66)}
                   alt={`Page ${idx + 1}`}
                   loading="lazy"
                   className="w-full h-full object-contain transition-opacity duration-300 p-1"
@@ -110,7 +111,7 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
                 }`}
               >
                 <img
-                  src={img.originalUrl}
+                  src={getThumbnailUrl(img.originalKey, img.originalUrl, 220, 68)}
                   alt={`Page ${idx + 1}`}
                   loading="lazy"
                   className="w-full h-full object-contain transition-opacity duration-300 p-1"

@@ -65,6 +65,8 @@ const ComparisonView: React.FC<Props> = ({
           src={pair.sourceUrl}
           alt="Original"
           className="max-w-full max-h-full object-contain"
+          loading="lazy"
+          decoding="async"
         />
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-surface-raised/80 backdrop-blur-xl border border-border-muted rounded-2xl text-xs font-black text-text-muted uppercase tracking-widest shadow-premium">
           NO TRANSLATION AVAILABLE
@@ -81,6 +83,8 @@ const ComparisonView: React.FC<Props> = ({
             src={pair.sourceUrl}
             alt="Source"
             className="w-full h-full object-contain select-none"
+            loading="lazy"
+            decoding="async"
           />
           <div className="absolute top-4 left-4 z-20 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium">
             Source
@@ -91,6 +95,8 @@ const ComparisonView: React.FC<Props> = ({
             src={pair.convertedUrl}
             alt="Converted"
             className="w-full h-full object-contain select-none"
+            loading="lazy"
+            decoding="async"
           />
           <div className="absolute top-4 left-4 z-20 bg-primary/80 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-white border border-primary/20 uppercase tracking-widest shadow-glow">
             Converted
@@ -110,6 +116,8 @@ const ComparisonView: React.FC<Props> = ({
           src={isToggled ? pair.convertedUrl : pair.sourceUrl}
           alt="Comparison"
           className="w-full h-full object-contain transition-opacity duration-300 select-none"
+          loading="lazy"
+          decoding="async"
         />
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
           <div
@@ -150,6 +158,8 @@ const ComparisonView: React.FC<Props> = ({
         src={pair.convertedUrl}
         alt="Converted"
         className="absolute inset-0 w-full h-full object-contain"
+        loading="lazy"
+        decoding="async"
       />
 
       {/* Foreground Container (Source) - Clipped via clip-path for perfect alignment */}
@@ -162,6 +172,8 @@ const ComparisonView: React.FC<Props> = ({
           alt="Source"
           className="absolute inset-0 w-full h-full object-contain"
           draggable={false}
+          loading="lazy"
+          decoding="async"
         />
         <div className="absolute top-4 left-4 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium z-20">
           Source
