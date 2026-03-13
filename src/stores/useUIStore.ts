@@ -15,6 +15,7 @@ interface UIState {
   editorPage: number;
   selectedImage: ProcessedImage | null; // For modal view
   categoryInitialParentId: string | null;
+  toasts: ToastMessage[];
 
   // Confirmation Modal
   confirmConfig: ConfirmConfig & { isOpen: boolean };
@@ -36,6 +37,18 @@ interface UIState {
 
   openConfirmModal: (config: ConfirmConfig) => void;
   closeConfirmModal: () => void;
+  showToast: (
+    message: string,
+    type?: "success" | "error" | "info",
+    durationMs?: number,
+  ) => void;
+  dismissToast: (id: string) => void;
+}
+
+export interface ToastMessage {
+  id: string;
+  message: string;
+  type: "success" | "error" | "info";
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -50,6 +63,7 @@ export const useUIStore = create<UIState>((set) => ({
   editorPage: 1,
   selectedImage: null,
   categoryInitialParentId: null,
+  toasts: [],
 
   confirmConfig: {
     isOpen: false,
@@ -85,5 +99,27 @@ export const useUIStore = create<UIState>((set) => ({
   closeConfirmModal: () =>
     set((state) => ({
       confirmConfig: { ...state.confirmConfig, isOpen: false },
+    })),
+
+  showToast: (message, type = "info", durationMs = 5000) => {
+    const id =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    set((state) => ({
+      toasts: [...state.toasts, { id, message, type }],
+    }));
+
+    setTimeout(() => {
+      set((state) => ({
+        toasts: state.toasts.filter((toast) => toast.id !== id),
+      }));
+    }, durationMs);
+  },
+
+  dismissToast: (id) =>
+    set((state) => ({
+      toasts: state.toasts.filter((toast) => toast.id !== id),
     })),
 }));

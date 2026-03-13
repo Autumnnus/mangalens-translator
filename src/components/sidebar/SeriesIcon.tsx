@@ -42,7 +42,11 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({ images, previewImages }) => {
                 key={idx}
                 className="aspect-3/4 overflow-hidden rounded-lg border border-slate-700"
               >
-                <img src={url} className="w-full h-full object-cover" alt="" />
+                <img
+                  src={url}
+                  className="w-full h-full object-contain bg-black/80 p-0.5"
+                  alt=""
+                />
               </div>
             ))}
           </div>
@@ -70,7 +74,11 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({ images, previewImages }) => {
             transform: `rotate(${i * 4 - 4}deg)`,
           }}
         >
-          <img src={url} className="w-full h-full object-cover" alt="" />
+          <img
+            src={url}
+            className="w-full h-full object-contain bg-black/80 p-0.5"
+            alt=""
+          />
         </div>
       ))}
     </div>

@@ -108,12 +108,19 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
             
             /* Thumbs Swiper - fixed height at bottom */
             .thumbs-swiper {
-                height: 100px;
+                height: 86px;
                 flex-shrink: 0;
                 background: rgba(0,0,0,0.5);
-                padding: 10px 0;
+                padding: 8px 0;
                 transition: height 0.3s, opacity 0.3s, padding 0.3s;
                 border-top: 1px solid rgba(255,255,255,0.1);
+            }
+
+            @media (min-width: 640px) {
+                .thumbs-swiper {
+                    height: 100px;
+                    padding: 10px 0;
+                }
             }
             
             .thumbs-swiper.hidden-thumbs {
@@ -143,8 +150,10 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
             .thumbs-swiper .swiper-slide img {
                 width: 100%;
                 height: 100%;
-                object-fit: cover;
+                object-fit: contain;
                 display: block;
+                background: rgba(0,0,0,0.8);
+                padding: 2px;
             }
         `,
         }}
@@ -229,7 +238,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
               src={img.originalUrl}
               alt={`Thumb ${index + 1}`}
               loading="lazy"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain bg-black/80 p-0.5"
             />
           </SwiperSlide>
         ))}

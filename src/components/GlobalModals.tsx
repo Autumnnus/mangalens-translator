@@ -8,6 +8,7 @@ import CategoryManagerModal from "./CategoryManagerModal";
 import ConfirmModal from "./ConfirmModal";
 import NewSeriesModal from "./NewSeriesModal";
 import SettingsModal from "./SettingsModal";
+import ToastViewport from "./ToastViewport";
 import ReaderImageArea from "./viewer/ReaderImageArea";
 
 import {
@@ -137,6 +138,8 @@ const GlobalModals: React.FC = () => {
 
   return (
     <>
+      <ToastViewport />
+
       <ConfirmModal
         isOpen={confirmConfig.isOpen}
         title={confirmConfig.title}

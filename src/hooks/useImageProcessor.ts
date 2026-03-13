@@ -12,6 +12,10 @@ import {
   useUpdateImageMutation,
 } from "./useImageMutations";
 import { seriesKeys, useSeriesImagesQuery } from "./useSeriesQueries";
+import { useUIStore } from "../stores/useUIStore";
+
+const MAX_RETRY_ATTEMPTS = 6;
+const RETRY_INTERVAL_MS = 5000;
 
 export const useImageProcessor = () => {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
@@ -25,6 +29,7 @@ export const useImageProcessor = () => {
   const { mutateAsync: updateImageStatus } = useUpdateImageMutation();
   const { mutateAsync: saveTranslatedImageMutation } =
     useSaveTranslatedImageMutation();
+  const showToast = useUIStore((state) => state.showToast);
 
   const { settings } = useSettingsStore();
 
@@ -50,6 +55,47 @@ export const useImageProcessor = () => {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+  };
+
+  const parseStatusCode = (error: unknown): number | null => {
+    if (!error || typeof error !== "object") return null;
+    const candidate = error as Record<string, unknown>;
+
+    const direct = candidate.status ?? candidate.code;
+    if (typeof direct === "number") return direct;
+    if (typeof direct === "string") {
+      const parsed = Number.parseInt(direct, 10);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+
+    const nested = candidate.error;
+    if (nested && typeof nested === "object") {
+      const nestedCode = (nested as Record<string, unknown>).code;
+      if (typeof nestedCode === "number") return nestedCode;
+      if (typeof nestedCode === "string") {
+        const parsed = Number.parseInt(nestedCode, 10);
+        if (!Number.isNaN(parsed)) return parsed;
+      }
+    }
+
+    return null;
+  };
+
+  const isRetryableGeminiError = (error: unknown): boolean => {
+    const statusCode = parseStatusCode(error);
+    if (statusCode === 429 || statusCode === 503) return true;
+
+    const message = (
+      error instanceof Error ? error.message : String(error)
+    ).toLowerCase();
+    return (
+      message.includes("429") ||
+      message.includes("503") ||
+      message.includes("too many requests") ||
+      message.includes("service unavailable") ||
+      message.includes("quota") ||
+      message.includes("rate limit")
+    );
   };
 
   const processImage = async (
@@ -141,17 +187,10 @@ export const useImageProcessor = () => {
         return false;
       }
 
-      const errorStr = (
-        error instanceof Error ? error.message : String(error)
-      ).toLowerCase();
-      const isRateLimit =
-        errorStr.includes("429") ||
-        errorStr.includes("limit") ||
-        errorStr.includes("quota");
+      const isRetryable = isRetryableGeminiError(error);
 
-      if (isRateLimit && retryCount < 8) {
-        const backoff = Math.pow(2, retryCount) * 2000;
-        await new Promise((r) => setTimeout(r, backoff));
+      if (isRetryable && retryCount < MAX_RETRY_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, RETRY_INTERVAL_MS));
         if (controller.signal.aborted) return false;
         return processImage(image, retryCount + 1, isManual);
       }
@@ -163,6 +202,20 @@ export const useImageProcessor = () => {
         imageId: image.id,
         updates: { status: "error" },
       });
+
+      const finalErrorMessage =
+        error instanceof Error ? error.message : "Unknown translation error";
+
+      if (isRetryable) {
+        showToast(
+          `${image.fileName}: Gemini yoğunluğu nedeniyle çeviri başarısız oldu. ${MAX_RETRY_ATTEMPTS + 1} deneme tamamlandı.`,
+          "error",
+          6500,
+        );
+      } else {
+        showToast(`${image.fileName}: ${finalErrorMessage}`, "error", 6500);
+      }
+
       return false;
     }
   };

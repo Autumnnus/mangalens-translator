@@ -28,8 +28,10 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
 }) => {
   return (
     <div
-      className={`${isOverlay ? "p-3 sm:p-5 mx-0 sm:mx-6 mb-0 sm:mb-6 rounded-none sm:rounded-[3rem] border-x-0 sm:border-x" : "mt-4 sm:mt-10 p-5 mx-2 sm:mx-6 mb-6 rounded-[3rem] border"} bg-surface/30 backdrop-blur-2xl border-border-muted shrink-0 transition-all glass-card ${
-        comparisonMode === "grid" ? "overflow-y-auto max-h-[60vh]" : ""
+      className={`${isOverlay ? "p-2 sm:p-5 mx-0 sm:mx-6 mb-0 sm:mb-6 rounded-none sm:rounded-[3rem] border-x-0 sm:border-x" : "mt-3 sm:mt-10 p-3 sm:p-5 mx-2 sm:mx-6 mb-4 sm:mb-6 rounded-3xl border"} bg-surface/30 backdrop-blur-2xl border-border-muted shrink-0 transition-all glass-card ${
+        comparisonMode === "grid"
+          ? "overflow-y-auto max-h-[72vh] sm:max-h-[60vh] custom-scrollbar"
+          : ""
       }`}
     >
       <div className="flex items-center justify-between mb-2 sm:mb-4 px-2">
@@ -63,14 +65,14 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
       </div>
 
       {comparisonMode === "grid" ? (
-        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-10 gap-4">
+        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-10 gap-2 sm:gap-4">
           {currentThumbSet.map((img) => {
             const idx = images.findIndex((i) => i.id === img.id);
             return (
               <button
                 key={img.id}
                 onClick={() => onSelectIndex(idx)}
-                className={`relative aspect-[2/3] group rounded-2xl overflow-hidden border-2 transition-all shadow-premium bg-surface-muted/30 ${
+                className={`relative aspect-[3/4] sm:aspect-[2/3] group rounded-xl sm:rounded-2xl overflow-hidden border-2 transition-all shadow-premium bg-black/80 ${
                   idx === currentImageIndex
                     ? "border-primary shadow-glow scale-105 z-10"
                     : "border-border-muted hover:border-primary/50 opacity-70 hover:opacity-100"
@@ -80,7 +82,7 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
                   src={img.originalUrl}
                   alt={`Page ${idx + 1}`}
                   loading="lazy"
-                  className="w-full h-full object-cover transition-opacity duration-300"
+                  className="w-full h-full object-contain transition-opacity duration-300 p-1"
                   onLoad={(e) => (e.currentTarget.style.opacity = "1")}
                   style={{ opacity: 0 }}
                 />
@@ -101,7 +103,7 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
               <button
                 key={img.id}
                 onClick={() => onSelectIndex(idx)}
-                className={`relative w-14 h-20 sm:w-24 sm:h-36 shrink-0 rounded-2xl overflow-hidden border-2 transition-all shadow-premium bg-surface-muted/30 ${
+                className={`relative w-16 h-24 sm:w-24 sm:h-36 shrink-0 rounded-xl sm:rounded-2xl overflow-hidden border-2 transition-all shadow-premium bg-black/80 ${
                   idx === currentImageIndex
                     ? "border-primary shadow-glow scale-110 z-10"
                     : "border-border-muted opacity-40 hover:opacity-100 hover:scale-105"
@@ -111,7 +113,7 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
                   src={img.originalUrl}
                   alt={`Page ${idx + 1}`}
                   loading="lazy"
-                  className="w-full h-full object-cover transition-opacity duration-300"
+                  className="w-full h-full object-contain transition-opacity duration-300 p-1"
                   onLoad={(e) => (e.currentTarget.style.opacity = "1")}
                   style={{ opacity: 0 }}
                 />

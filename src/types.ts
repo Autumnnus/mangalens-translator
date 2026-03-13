@@ -35,39 +35,18 @@ export interface GeminiModel {
 
 export const GEMINI_MODELS: GeminiModel[] = [
   {
-    id: "gemini-1.5-flash",
-    name: "Gemini 1.5 Flash",
-    inputCostPer1k: 0.000075,
-    outputCostPer1k: 0.0003,
-    description: "Fast and cost-effective for most manga tasks.",
-  },
-  {
-    id: "gemini-1.5-pro",
-    name: "Gemini 1.5 Pro",
-    inputCostPer1k: 0.0035,
-    outputCostPer1k: 0.0105,
-    description: "Superior reasoning and complex text detection.",
-  },
-  {
-    id: "gemini-2.0-flash-exp",
-    name: "Gemini 2.0 Flash (Exp)",
-    inputCostPer1k: 0.0,
-    outputCostPer1k: 0.0,
-    description: "Latest experimental model. Extremely fast.",
-  },
-  {
     id: "gemini-2.5-flash",
     name: "Gemini 2.5 Flash",
-    inputCostPer1k: 0.3,
-    outputCostPer1k: 2.5,
-    description: "Latest model. Extremely fast.",
+    inputCostPer1k: 0.0003,
+    outputCostPer1k: 0.0025,
+    description: "Fast model for daily translation workflows.",
   },
   {
     id: "gemini-3-flash-preview",
     name: "Gemini 3 Flash (Preview)",
-    inputCostPer1k: 0.5,
-    outputCostPer1k: 3,
-    description: "Latest preview model. Extremely fast.",
+    inputCostPer1k: 0.0005,
+    outputCostPer1k: 0.003,
+    description: "Preview model with stronger output quality.",
   },
 ];
 

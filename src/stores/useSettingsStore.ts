@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { TranslationSettings } from "../types";
+import { GEMINI_MODELS, TranslationSettings } from "../types";
 
 interface SettingsState {
   settings: TranslationSettings;
@@ -25,7 +25,7 @@ export const useSettingsStore = create<SettingsState>()(
         backgroundColor: "#ffffff",
         strokeColor: "#ffffff",
         customInstructions: "",
-        model: "gemini-1.5-flash",
+        model: GEMINI_MODELS[0]?.id || "gemini-2.5-flash",
         batchSize: 10,
         batchDelay: 0,
         useCustomApiKey: false,
@@ -34,8 +34,16 @@ export const useSettingsStore = create<SettingsState>()(
       isViewOnly: process.env.NODE_ENV === "production",
 
       updateSettings: (newSettings, syncWithDb = true) => {
+        const validModelIds = new Set(GEMINI_MODELS.map((m) => m.id));
+
         set((state) => ({
-          settings: { ...state.settings, ...newSettings },
+          settings: {
+            ...state.settings,
+            ...newSettings,
+            model: validModelIds.has(String(newSettings.model))
+              ? String(newSettings.model)
+              : state.settings.model,
+          },
         }));
 
         if (syncWithDb) {
@@ -45,8 +53,15 @@ export const useSettingsStore = create<SettingsState>()(
         }
       },
       initializeSettings: (dbSettings) => {
+        const validModelIds = new Set(GEMINI_MODELS.map((m) => m.id));
         set((state) => ({
-          settings: { ...state.settings, ...dbSettings },
+          settings: {
+            ...state.settings,
+            ...dbSettings,
+            model: validModelIds.has(dbSettings.model)
+              ? dbSettings.model
+              : state.settings.model,
+          },
         }));
       },
       toggleViewOnly: () => set((state) => ({ isViewOnly: !state.isViewOnly })),
