@@ -252,6 +252,18 @@ export const useImageProcessor = () => {
     if (!activeSeriesId || !images || !images.length) return;
 
     setIsProcessingAll(true);
+    showToast(
+      "Translate All started in the background. You can keep using the app.",
+      "info",
+      6000,
+    );
+
+    const refreshTimer = window.setInterval(() => {
+      queryClient.invalidateQueries({
+        queryKey: seriesKeys.images(activeSeriesId),
+      });
+      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+    }, 5000);
 
     try {
       const response = await fetch("/api/gemini/translate-all", {
@@ -277,6 +289,7 @@ export const useImageProcessor = () => {
       });
       queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
     } finally {
+      window.clearInterval(refreshTimer);
       setIsProcessingAll(false);
     }
   };
