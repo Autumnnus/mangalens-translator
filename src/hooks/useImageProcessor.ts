@@ -249,36 +249,36 @@ export const useImageProcessor = () => {
   };
 
   const processAll = async () => {
-    if (!images || !images.length) return;
+    if (!activeSeriesId || !images || !images.length) return;
 
     setIsProcessingAll(true);
 
-    const imagesToProcess = [...images]
-      .filter((img) => img.status === "idle" || img.status === "error")
-      .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0));
+    try {
+      const response = await fetch("/api/gemini/translate-all", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          seriesId: activeSeriesId,
+        }),
+      });
 
-    const CHUNK_SIZE = Math.min(settings.batchSize || 10, 10);
-    const DELAY = settings.batchDelay || 0;
-
-    for (let i = 0; i < imagesToProcess.length; i += CHUNK_SIZE) {
-      const chunk = imagesToProcess.slice(i, i + CHUNK_SIZE);
-      await Promise.all(chunk.map((image) => processImage(image)));
-
-      // Delay between batches to respect rate limits if configured
-      if (DELAY > 0 && i + CHUNK_SIZE < imagesToProcess.length) {
-        await new Promise((r) => setTimeout(r, DELAY));
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(
+          (data as { error?: string }).error || "Failed to start background translation",
+        );
       }
-    }
 
-    // Invalidate everything at once at the end
-    if (activeSeriesId) {
+      // Refresh once so the UI picks up queued/processing state.
       queryClient.invalidateQueries({
         queryKey: seriesKeys.images(activeSeriesId),
       });
+      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+    } finally {
+      setIsProcessingAll(false);
     }
-    queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
-
-    setIsProcessingAll(false);
   };
 
   return {

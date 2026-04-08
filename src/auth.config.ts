@@ -5,8 +5,10 @@ export const authConfig = {
     signIn: "/auth/login",
   },
   callbacks: {
-    authorized({ auth }) {
-      return !!auth?.user;
+    authorized() {
+      // UI access is intentionally open for now; API routes still enforce auth
+      // where needed via explicit `auth()` checks.
+      return true;
     },
   },
   providers: [],
