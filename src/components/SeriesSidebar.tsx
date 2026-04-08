@@ -232,7 +232,7 @@ const SeriesSidebar: React.FC<Props> = ({
     <>
       <button
         onClick={() => setIsMobileOpen(true)}
-        className="fixed top-4 left-4 z-[60] w-12 h-12 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center md:hidden shadow-2xl"
+        className="fixed top-4 left-4 z-[150] w-12 h-12 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center md:hidden shadow-2xl"
       >
         <Menu className="w-5 h-5" />
       </button>
