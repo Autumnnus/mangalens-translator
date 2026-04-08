@@ -29,8 +29,10 @@ export async function updateUserSettingsAction(
     customInstructions: "",
     model: "gemini-1.5-flash",
     batchSize: 10,
+    batchDelay: 0,
     useCustomApiKey: false,
-    customApiKey: "",
+    customApiKeyPool: "",
+    namedApiKeys: [],
   };
 
   const updatedSettings = {

@@ -29,7 +29,8 @@ export const useSettingsStore = create<SettingsState>()(
         batchSize: 10,
         batchDelay: 0,
         useCustomApiKey: false,
-        customApiKey: "",
+        customApiKeyPool: "",
+        namedApiKeys: [],
       },
       isViewOnly: process.env.NODE_ENV === "production",
 

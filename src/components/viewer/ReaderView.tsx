@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
@@ -28,12 +28,14 @@ const ReaderView: React.FC = () => {
   );
   const toggleViewOnly = useSettingsStore((state) => state.toggleViewOnly);
 
-  const [prevSeriesId, setPrevSeriesId] = useState(activeSeriesId);
+  const prevSeriesIdRef = useRef(activeSeriesId);
 
-  if (activeSeriesId !== prevSeriesId) {
-    setPrevSeriesId(activeSeriesId);
-    setCurrentImageIndex(0);
-  }
+  useEffect(() => {
+    if (activeSeriesId !== prevSeriesIdRef.current) {
+      prevSeriesIdRef.current = activeSeriesId;
+      setCurrentImageIndex(0);
+    }
+  }, [activeSeriesId, setCurrentImageIndex]);
 
   const [showComparison, setShowComparison] = useState(false);
   const [comparisonMode, setComparisonMode] = useState<ViewMode>("toggle");

@@ -51,6 +51,9 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
   // Preload only a small number of upcoming pages and skip on slow/data-save connections.
   useEffect(() => {
     if (!images || images.length === 0) return;
+    let preloadNext = 4;
+    let preloadBack = 1;
+
     if (typeof navigator !== "undefined") {
       type NetworkInformation = {
         saveData?: boolean;
@@ -66,11 +69,15 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
       ) {
         return;
       }
+
+      if (connection?.effectiveType === "3g") {
+        preloadNext = 2;
+        preloadBack = 1;
+      }
     }
 
-    const PRELOAD_NEXT = 2;
-    const startIndex = currentIndex + 1;
-    const endIndex = Math.min(currentIndex + PRELOAD_NEXT, images.length - 1);
+    const startIndex = Math.max(0, currentIndex - preloadBack);
+    const endIndex = Math.min(currentIndex + preloadNext, images.length - 1);
 
     for (let i = startIndex; i <= endIndex; i++) {
       const img = images[i];
@@ -192,8 +199,8 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
           }}
           navigation={!isUIVisible ? false : true}
           virtual={{
-            addSlidesAfter: 1,
-            addSlidesBefore: 1,
+            addSlidesAfter: 3,
+            addSlidesBefore: 2,
           }}
           thumbs={{
             swiper:
@@ -224,10 +231,17 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
                       src={displayUrl}
                       alt={img.fileName}
                       className="max-w-full max-h-full object-contain select-none"
-                      loading={index === currentIndex ? "eager" : "lazy"}
+                      loading={Math.abs(index - currentIndex) <= 1 ? "eager" : "lazy"}
                       decoding="async"
                       /* @ts-expect-error - fetchpriority is a valid web standard but may not be in all TS versions */
-                      fetchpriority={index === currentIndex ? "high" : "low"}
+                      fetchpriority={
+                        index === currentIndex
+                          ? "high"
+                          : Math.abs(index - currentIndex) <= 2
+                            ? "auto"
+                            : "low"
+                      }
+                      draggable={false}
                     />
                   )}
                 </div>

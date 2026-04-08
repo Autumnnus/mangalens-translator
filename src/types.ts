@@ -61,7 +61,15 @@ export interface TranslationSettings {
   batchSize: number;
   batchDelay: number;
   useCustomApiKey?: boolean;
-  customApiKey?: string;
+  customApiKeyPool?: string;
+  namedApiKeys?: NamedApiKey[];
+}
+
+export interface NamedApiKey {
+  id: string;
+  name: string;
+  key: string;
+  enabled?: boolean;
 }
 
 export interface ImagePair {

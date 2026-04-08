@@ -1,4 +1,6 @@
 import {
+  ArrowDown,
+  ArrowUp,
   Baseline,
   Cpu,
   DollarSign,
@@ -9,10 +11,11 @@ import {
   Sparkles,
   Square,
   Text,
+  Trash2,
   X,
 } from "lucide-react";
 import React, { useState } from "react";
-import { GEMINI_MODELS, TranslationSettings } from "../types";
+import { GEMINI_MODELS, NamedApiKey, TranslationSettings } from "../types";
 
 const PasswordChangeForm = () => {
   const [password, setPassword] = useState("");
@@ -118,10 +121,32 @@ const SettingsModal: React.FC<Props> = ({
   const [localSettings, setLocalSettings] =
     useState<TranslationSettings>(settings);
 
+  const createApiKeyId = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `key-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
   // Sync with store/props when modal opens or settings change in store
   React.useEffect(() => {
     if (isOpen) {
-      setLocalSettings(settings);
+      const migratedNamedKeys =
+        settings.namedApiKeys && settings.namedApiKeys.length > 0
+          ? settings.namedApiKeys
+          : (settings.customApiKeyPool || "")
+              .split(/[\n,]/g)
+              .map((item) => item.trim())
+              .filter((item) => item.length > 0)
+              .map((key, index) => ({
+                id: createApiKeyId(),
+                name: `Key ${index + 1}`,
+                key,
+                enabled: true,
+              }));
+
+      setLocalSettings({
+        ...settings,
+        namedApiKeys: migratedNamedKeys,
+      });
     }
   }, [isOpen, settings]);
 
@@ -135,8 +160,66 @@ const SettingsModal: React.FC<Props> = ({
   };
 
   const handleSave = () => {
-    onSettingsChange(localSettings);
+    const preparedNamedKeys = (localSettings.namedApiKeys || []).map((item) => ({
+      ...item,
+      name: item.name.trim() || "Untitled Key",
+      key: item.key.trim(),
+      enabled: item.enabled ?? true,
+    }));
+
+    const preparedSettings: TranslationSettings = {
+      ...localSettings,
+      namedApiKeys: preparedNamedKeys,
+      customApiKeyPool: preparedNamedKeys.map((item) => item.key).join("\n"),
+    };
+
+    onSettingsChange(preparedSettings);
     onClose();
+  };
+
+  const setNamedKeys = (updater: (prev: NamedApiKey[]) => NamedApiKey[]) => {
+    setLocalSettings((prev) => ({
+      ...prev,
+      namedApiKeys: updater(prev.namedApiKeys || []),
+    }));
+  };
+
+  const addNamedKey = () => {
+    setNamedKeys((prev) => [
+      ...prev,
+      {
+        id: createApiKeyId(),
+        name: `Key ${prev.length + 1}`,
+        key: "",
+        enabled: true,
+      },
+    ]);
+  };
+
+  const updateNamedKey = (
+    id: string,
+    field: "name" | "key" | "enabled",
+    value: string | boolean,
+  ) => {
+    setNamedKeys((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+    );
+  };
+
+  const removeNamedKey = (id: string) => {
+    setNamedKeys((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const moveNamedKey = (id: string, direction: -1 | 1) => {
+    setNamedKeys((prev) => {
+      const index = prev.findIndex((item) => item.id === id);
+      const nextIndex = index + direction;
+      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const [item] = copy.splice(index, 1);
+      copy.splice(nextIndex, 0, item);
+      return copy;
+    });
   };
 
   return (
@@ -251,9 +334,7 @@ const SettingsModal: React.FC<Props> = ({
                 <span
                   className={`text-[10px] font-black uppercase tracking-widest transition-colors ${localSettings.useCustomApiKey ? "text-primary" : "text-text-dark"}`}
                 >
-                  {localSettings.useCustomApiKey
-                    ? "Custom Key"
-                    : "System Default"}
+                  {localSettings.useCustomApiKey ? "Pool Enabled" : "System Default"}
                 </span>
                 <button
                   onClick={() =>
@@ -282,27 +363,13 @@ const SettingsModal: React.FC<Props> = ({
             <div
               className={`transition-all duration-500 overflow-hidden ${
                 localSettings.useCustomApiKey
-                  ? "max-h-32 opacity-100"
+                  ? "max-h-[36rem] opacity-100"
                   : "max-h-0 opacity-0 pointer-events-none"
               }`}
             >
               <div className="space-y-3">
-                <div className="relative group">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted group-focus-within:text-primary transition-colors">
-                    <Sparkles className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="password"
-                    value={localSettings.customApiKey || ""}
-                    onChange={(e) =>
-                      handleChange("customApiKey", e.target.value)
-                    }
-                    placeholder="Enter your Gemini API Key..."
-                    className="w-full bg-surface-raised border border-border-muted rounded-2xl pl-12 pr-5 py-4 text-xs font-bold focus:ring-2 ring-primary outline-none text-text-main transition-all placeholder:text-text-muted/30"
-                  />
-                </div>
                 <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-                  Your custom key is saved locally. Get your key from{" "}
+                  Add your pool keys below. Get your keys from{" "}
                   <a
                     href="https://aistudio.google.com/app/apikey"
                     target="_blank"
@@ -311,7 +378,98 @@ const SettingsModal: React.FC<Props> = ({
                   >
                     Google AI Studio
                   </a>
-                  .
+                  . Keys are used in listed order.
+                </p>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                      API Key Pool (Named + Ordered)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={addNamedKey}
+                      className="px-3 py-1.5 rounded-lg bg-primary/15 border border-primary/30 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary/20"
+                    >
+                      Add Key
+                    </button>
+                  </div>
+
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                    {(localSettings.namedApiKeys || []).map((item, index) => (
+                      <div
+                        key={item.id}
+                        className="bg-surface-raised/60 border border-border-muted rounded-xl p-3 space-y-2"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">
+                            Priority {index + 1}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => moveNamedKey(item.id, -1)}
+                              disabled={index === 0}
+                              className="w-7 h-7 rounded-lg border border-border-muted text-text-main disabled:opacity-40"
+                            >
+                              <ArrowUp className="w-3 h-3 mx-auto" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveNamedKey(item.id, 1)}
+                              disabled={
+                                index === (localSettings.namedApiKeys || []).length - 1
+                              }
+                              className="w-7 h-7 rounded-lg border border-border-muted text-text-main disabled:opacity-40"
+                            >
+                              <ArrowDown className="w-3 h-3 mx-auto" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeNamedKey(item.id)}
+                              className="w-7 h-7 rounded-lg border border-red-500/40 text-red-400"
+                            >
+                              <Trash2 className="w-3 h-3 mx-auto" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) =>
+                            updateNamedKey(item.id, "name", e.target.value)
+                          }
+                          placeholder="Key Name (e.g. Main-01)"
+                          className="w-full bg-surface border border-border-muted rounded-lg px-3 py-2 text-[11px] font-semibold focus:ring-2 ring-primary outline-none"
+                        />
+                        <input
+                          type="password"
+                          value={item.key}
+                          onChange={(e) =>
+                            updateNamedKey(item.id, "key", e.target.value)
+                          }
+                          placeholder="AIza..."
+                          className="w-full bg-surface border border-border-muted rounded-lg px-3 py-2 text-[11px] font-mono focus:ring-2 ring-primary outline-none"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  {(localSettings.namedApiKeys || []).length === 0 && (
+                    <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+                      No pool key yet. Click Add Key to create your ordered list.
+                    </p>
+                  )}
+
+                  <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+                    Priority is top-to-bottom. Rate-limited key is skipped and
+                    next key is used automatically.
+                  </p>
+                </div>
+
+                <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+                  Cooldown is automatic and managed by model limits (RPM/RPD/TPM).
                 </p>
               </div>
             </div>
