@@ -150,7 +150,6 @@ export const useImageProcessor = () => {
         settings.targetLanguage,
         settings.customInstructions,
         settings.model,
-        settings.useCustomApiKey ? settings.customApiKey : undefined,
       );
 
       if (controller.signal.aborted) return false;
