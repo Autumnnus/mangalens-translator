@@ -250,46 +250,57 @@ export const useImageProcessor = () => {
 
   const processAll = async () => {
     if (!activeSeriesId || !images || !images.length) return;
+    if (isProcessingAll) return;
+
+    const pendingImages = images.filter(
+      (img) =>
+        (!img.translatedKey || img.translatedKey.trim().length === 0) &&
+        !img.translatedUrl,
+    );
+
+    if (pendingImages.length === 0) {
+      showToast("No untranslated images found to process.", "info", 4000);
+      return;
+    }
 
     setIsProcessingAll(true);
     showToast(
-      "Translate All started in the background. You can keep using the app.",
+      `Translate All started in client background (${pendingImages.length} images).`,
       "info",
       6000,
     );
 
-    const refreshTimer = window.setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: seriesKeys.images(activeSeriesId),
-      });
-      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
-    }, 5000);
-
     try {
-      const response = await fetch("/api/gemini/translate-all", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          seriesId: activeSeriesId,
-        }),
-      });
+      let successCount = 0;
 
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(
-          (data as { error?: string }).error || "Failed to start background translation",
-        );
+      for (const image of pendingImages) {
+        const succeeded = await processImage(image, 0, true);
+        if (succeeded) {
+          successCount += 1;
+        }
+
+        // Optional client-side pacing between items.
+        if (settings.batchDelay && settings.batchDelay > 0) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, settings.batchDelay),
+          );
+        }
       }
 
-      // Refresh once so the UI picks up queued/processing state.
+      showToast(
+        `Translate All completed. Success: ${successCount}/${pendingImages.length}`,
+        successCount === pendingImages.length ? "success" : "warning",
+        5500,
+      );
+
       queryClient.invalidateQueries({
         queryKey: seriesKeys.images(activeSeriesId),
       });
       queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+    } catch (error) {
+      console.error("Translate all failed on client", error);
+      showToast("Translate All failed on client side.", "error", 5000);
     } finally {
-      window.clearInterval(refreshTimer);
       setIsProcessingAll(false);
     }
   };

@@ -1,6 +1,9 @@
 import React from "react";
 import { useConfirm } from "../../hooks/useConfirm";
-import { useDeleteImageMutation } from "../../hooks/useImageMutations";
+import {
+  useDeleteImageMutation,
+  useSetImageStatusMutation,
+} from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useUIStore } from "../../stores/useUIStore";
@@ -17,7 +20,9 @@ interface Props {
 const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   const { activeSeriesId } = useSeriesStore();
   const { mutate: deleteImage } = useDeleteImageMutation();
-  const { setSelectedImage } = useUIStore();
+  const { mutateAsync: setImageStatus, isPending: isStatusUpdating } =
+    useSetImageStatusMutation();
+  const { setSelectedImage, showToast } = useUIStore();
   const { confirm } = useConfirm();
   const { processImage, cancelProcessing } = useImageProcessor();
 
@@ -69,6 +74,27 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
       },
       type: "danger",
     });
+  };
+
+  const handleStatusChange = async (
+    e: React.ChangeEvent<HTMLSelectElement>,
+  ) => {
+    if (!activeSeriesId) return;
+
+    const nextStatus = e.target.value as ProcessedImage["status"];
+    if (nextStatus === image.status) return;
+
+    try {
+      await setImageStatus({
+        seriesId: activeSeriesId,
+        imageId: image.id,
+        status: nextStatus,
+      });
+      showToast(`${image.fileName}: status set to ${nextStatus}`, "success", 3500);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      showToast(`Status update failed: ${message}`, "error", 4500);
+    }
   };
 
   return (
@@ -146,6 +172,23 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
           >
             <i className="fas fa-trash-alt text-sm"></i>
           </button>
+        </div>
+
+        <div className="mb-3">
+          <label className="block text-[10px] font-black uppercase tracking-wider text-text-dark mb-1">
+            Manual Status
+          </label>
+          <select
+            value={image.status}
+            onChange={handleStatusChange}
+            disabled={isStatusUpdating}
+            className="w-full bg-surface-raised/50 border border-border-muted rounded-xl px-3 py-2 text-xs font-semibold text-text-main disabled:opacity-60"
+          >
+            <option value="idle">idle</option>
+            <option value="processing">processing</option>
+            <option value="completed">completed</option>
+            <option value="error">error</option>
+          </select>
         </div>
 
         <div className="flex items-center gap-2">

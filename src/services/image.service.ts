@@ -27,4 +27,26 @@ export const imageService = {
   reorderImages: async (imageIds: string[]) => {
     return await reorderImagesAction(imageIds);
   },
+
+  setImageStatus: async ({
+    seriesId,
+    imageId,
+    status,
+  }: {
+    seriesId: string;
+    imageId: string;
+    status: ProcessedImage["status"];
+  }) => {
+    const res = await fetch("/api/images/status", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ seriesId, imageId, status }),
+    });
+
+    if (!res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      throw new Error(data.error || "Failed to update image status");
+    }
+  },
 };

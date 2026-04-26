@@ -330,3 +330,24 @@ export const useSaveTranslatedImageMutation = () => {
     },
   });
 };
+
+export const useSetImageStatusMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      seriesId,
+      imageId,
+      status,
+    }: {
+      seriesId: string;
+      imageId: string;
+      status: ProcessedImage["status"];
+    }) => imageService.setImageStatus({ seriesId, imageId, status }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: seriesKeys.images(variables.seriesId),
+      });
+      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+    },
+  });
+};
