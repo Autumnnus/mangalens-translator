@@ -252,10 +252,10 @@ export const useImageProcessor = () => {
     if (!activeSeriesId || !images || !images.length) return;
     if (isProcessingAll) return;
 
-    const pendingImages = images.filter((img) => img.status === "completed");
+    const pendingImages = images.filter((img) => img.status !== "completed");
 
     if (pendingImages.length === 0) {
-      showToast("No completed images found to process.", "info", 4000);
+      showToast("No non-completed images found to process.", "info", 4000);
       return;
     }
 
