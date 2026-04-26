@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-const VERSION_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+const VERSION_CHECK_INTERVAL_MS = 30 * 1000;
 
 export default function VersionChecker() {
   useEffect(() => {
@@ -39,11 +39,18 @@ export default function VersionChecker() {
     const interval = setInterval(checkVersion, VERSION_CHECK_INTERVAL_MS);
 
     const handleFocus = () => checkVersion();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void checkVersion();
+      }
+    };
     window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 

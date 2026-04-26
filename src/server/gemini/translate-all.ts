@@ -137,6 +137,22 @@ const translateWithKey = async ({
       ],
       responseSchema: {
         type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            box_2d: {
+              type: Type.ARRAY,
+              items: { type: Type.INTEGER },
+            },
+            original_text: { type: Type.STRING },
+            translated_text: { type: Type.STRING },
+            type: {
+              type: Type.STRING,
+              enum: ["dialogue", "environmental"],
+            },
+          },
+          required: ["box_2d", "original_text", "translated_text", "type"],
+        },
       },
     },
   });
@@ -214,7 +230,11 @@ export async function processTranslateAll(seriesId: string, userId: string) {
     orderBy: asc(images.sequenceNumber),
   });
 
-  for (const img of imageRows) {
+  const pendingRows = imageRows.filter(
+    (img) => !img.translatedKey || img.translatedKey.trim().length === 0,
+  );
+
+  for (const img of pendingRows) {
     await db
       .update(images)
       .set({ status: "processing", updatedAt: new Date() })
