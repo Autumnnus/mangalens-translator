@@ -19,7 +19,9 @@ const ToastViewport: React.FC = () => {
               ? "border-red-500/30 bg-red-500/15 text-red-100"
               : toast.type === "success"
                 ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-100"
-                : "border-primary/30 bg-surface-elevated/90 text-text-main"
+                : toast.type === "warning"
+                  ? "border-amber-500/30 bg-amber-500/15 text-amber-100"
+                  : "border-primary/30 bg-surface-elevated/90 text-text-main"
           }`}
         >
           <div className="flex items-start gap-3">
@@ -29,7 +31,9 @@ const ToastViewport: React.FC = () => {
                   ? "fas fa-triangle-exclamation text-red-300"
                   : toast.type === "success"
                     ? "fas fa-circle-check text-emerald-300"
-                    : "fas fa-circle-info text-primary"
+                    : toast.type === "warning"
+                      ? "fas fa-circle-exclamation text-amber-300"
+                      : "fas fa-circle-info text-primary"
               }`}
             />
             <p className="flex-1 text-sm leading-5">{toast.message}</p>

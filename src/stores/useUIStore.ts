@@ -39,7 +39,7 @@ interface UIState {
   closeConfirmModal: () => void;
   showToast: (
     message: string,
-    type?: "success" | "error" | "info",
+    type?: "success" | "error" | "info" | "warning",
     durationMs?: number,
   ) => void;
   dismissToast: (id: string) => void;
@@ -48,7 +48,7 @@ interface UIState {
 export interface ToastMessage {
   id: string;
   message: string;
-  type: "success" | "error" | "info";
+  type: "success" | "error" | "info" | "warning";
 }
 
 export const useUIStore = create<UIState>((set) => ({

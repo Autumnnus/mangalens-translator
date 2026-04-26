@@ -7,12 +7,12 @@ import { createTranslatedImageBlob } from "../utils/image";
 import { resolveImageUrl } from "../utils/url";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { useUIStore } from "../stores/useUIStore";
 import {
   useSaveTranslatedImageMutation,
   useUpdateImageMutation,
 } from "./useImageMutations";
 import { seriesKeys, useSeriesImagesQuery } from "./useSeriesQueries";
-import { useUIStore } from "../stores/useUIStore";
 
 const MAX_RETRY_ATTEMPTS = 6;
 const RETRY_INTERVAL_MS = 5000;
@@ -289,7 +289,7 @@ export const useImageProcessor = () => {
 
       showToast(
         `Translate All completed. Success: ${successCount}/${pendingImages.length}`,
-        successCount === pendingImages.length ? "success" : "warning",
+        successCount === pendingImages.length ? "success" : "info",
         5500,
       );
 
