@@ -1,8 +1,6 @@
-"use server";
-
 import { db } from "@/db";
 import { images, users } from "@/db/schema";
-import { uploadObject } from "@/lib/storage";
+import { getObjectBuffer, uploadObject } from "@/lib/storage";
 import { getGeminiApiKeyPool } from "@/server/gemini/keyPool";
 import { NamedApiKey, TranslationSettings, UsageMetadata } from "@/types";
 import {
@@ -29,6 +27,54 @@ const parseNamedKeyPool = (input?: NamedApiKey[]): string[] =>
     .filter((item) => item.enabled !== false)
     .map((item) => item.key?.trim())
     .filter((key): key is string => !!key);
+
+const sleep = (ms: number) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+const parseStatusCode = (error: unknown): number | null => {
+  if (!error || typeof error !== "object") return null;
+
+  const candidate = error as Record<string, unknown>;
+  const direct = candidate.status ?? candidate.code;
+  if (typeof direct === "number") return direct;
+  if (typeof direct === "string") {
+    const parsed = Number.parseInt(direct, 10);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+
+  const nestedError = candidate.error;
+  if (nestedError && typeof nestedError === "object") {
+    const nested = nestedError as Record<string, unknown>;
+    const nestedCode = nested.status ?? nested.code;
+    if (typeof nestedCode === "number") return nestedCode;
+    if (typeof nestedCode === "string") {
+      const parsed = Number.parseInt(nestedCode, 10);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+  }
+
+  return null;
+};
+
+const isRetryableGeminiError = (error: unknown): boolean => {
+  const statusCode = parseStatusCode(error);
+  if (statusCode === 429 || statusCode === 503) return true;
+
+  const message = (
+    error instanceof Error ? error.message : String(error)
+  ).toLowerCase();
+
+  return (
+    message.includes("429") ||
+    message.includes("503") ||
+    message.includes("too many requests") ||
+    message.includes("service unavailable") ||
+    message.includes("quota") ||
+    message.includes("rate limit")
+  );
+};
 
 const buildPrompt = (targetLanguage: string, customInstructions?: string) => {
   let prompt = `
@@ -105,10 +151,12 @@ const translateWithKey = async ({
   };
 };
 
-const toBase64 = async (url: string) => {
-  const response = await fetch(url);
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer).toString("base64");
+const toBase64 = async (objectKey: string) => {
+  const bytes = await getObjectBuffer(objectKey);
+  if (!bytes || bytes.length === 0) {
+    throw new Error(`Image object not found or empty: ${objectKey}`);
+  }
+  return Buffer.from(bytes).toString("base64");
 };
 
 const createTranslatedSvg = (imageUrl: string, bubbles: Bubble[]) => {
@@ -172,42 +220,73 @@ export async function processTranslateAll(seriesId: string, userId: string) {
       .set({ status: "processing", updatedAt: new Date() })
       .where(eq(images.id, img.id));
 
-    const lease = pool.acquire({
-      modelName: settings.model || "gemini-2.5-flash",
-      excludeKeys: new Set(),
-    });
-
-    if (!lease.key || !lease.release) throw new Error("No Gemini key acquired");
-
     try {
+      const modelName = settings.model || "gemini-2.5-flash";
+      const triedThisImage = new Set<string>();
+      let translated = false;
+
       const imageUrl =
         `${process.env.NEXT_PUBLIC_MINIO_URL || "http://localhost:9000/mangalens"}/${img.originalKey}`;
-      const base64 = await toBase64(imageUrl);
-      const result = await translateWithKey({
-        apiKey: lease.key,
-        modelName: settings.model || "gemini-2.5-flash",
-        base64Image: base64,
-        prompt,
-      });
-      pool.markSuccess(lease.key, result.usage.totalTokenCount);
+      const base64 = await toBase64(img.originalKey);
 
-      const svg = createTranslatedSvg(imageUrl, result.bubbles);
-      const translatedKey = `${seriesId}/translated_${img.id}.svg`;
-      await uploadObject(translatedKey, svg, "image/svg+xml");
+      while (triedThisImage.size < activeKeys.length) {
+        const lease = pool.acquire({
+          modelName,
+          excludeKeys: triedThisImage,
+        });
 
-      await db
-        .update(images)
-        .set({
-          translatedKey,
-          status: "completed",
-          bubbles: result.bubbles,
-          usage: result.usage,
-          updatedAt: new Date(),
-        })
-        .where(eq(images.id, img.id));
+        if (!lease.key || !lease.release) {
+          const summary = pool.getStatusSummary(modelName);
+          const waitFor = Math.max(lease.waitMs, summary.earliestReadyInMs || 500);
+          await sleep(waitFor);
+          continue;
+        }
+
+        triedThisImage.add(lease.key);
+
+        try {
+          const result = await translateWithKey({
+            apiKey: lease.key,
+            modelName,
+            base64Image: base64,
+            prompt,
+          });
+          pool.markSuccess(lease.key, result.usage.totalTokenCount);
+
+          const svg = createTranslatedSvg(imageUrl, result.bubbles);
+          const translatedKey = `${seriesId}/translated_${img.id}.svg`;
+          await uploadObject(translatedKey, svg, "image/svg+xml");
+
+          await db
+            .update(images)
+            .set({
+              translatedKey,
+              status: "completed",
+              bubbles: result.bubbles,
+              usage: result.usage,
+              updatedAt: new Date(),
+            })
+            .where(eq(images.id, img.id));
+
+          translated = true;
+          break;
+        } catch (error) {
+          if (isRetryableGeminiError(error)) {
+            pool.markRateLimited(lease.key, modelName);
+            continue;
+          }
+          throw error;
+        } finally {
+          lease.release();
+        }
+      }
+
+      if (!translated) {
+        throw new Error(
+          "All configured API keys are unavailable (cooldown or rate limit).",
+        );
+      }
     } catch (error) {
-      pool.markRateLimited(lease.key, settings.model || "gemini-2.5-flash");
-      lease.release();
       await db
         .update(images)
         .set({ status: "error", updatedAt: new Date() })
@@ -215,6 +294,5 @@ export async function processTranslateAll(seriesId: string, userId: string) {
       console.error("Translate-all job failed for image", img.id, error);
       continue;
     }
-    lease.release();
   }
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import React, { Suspense, useCallback, useEffect, useMemo } from "react";
-import { getUserSettingsAction } from "../actions/settings";
 import {
   useCategoriesQuery,
   useUpdateCategoryMutation,
@@ -65,11 +64,26 @@ const MainAppContent: React.FC = () => {
 
   // Mount effects
   useEffect(() => {
-    getUserSettingsAction().then((dbSettings) => {
-      if (dbSettings) {
-        initializeSettings(dbSettings);
+    const loadSettings = async () => {
+      try {
+        const response = await fetch("/api/settings", {
+          method: "GET",
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+
+        if (!response.ok) return;
+
+        const dbSettings = await response.json();
+        if (dbSettings) {
+          initializeSettings(dbSettings);
+        }
+      } catch (error) {
+        console.error("Failed to load user settings:", error);
       }
-    });
+    };
+
+    void loadSettings();
   }, [initializeSettings]);
 
   // Optimized callbacks

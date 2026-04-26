@@ -48,8 +48,15 @@ export const useSettingsStore = create<SettingsState>()(
         }));
 
         if (syncWithDb) {
-          import("../actions/settings").then((mod) => {
-            mod.updateUserSettingsAction(newSettings);
+          void fetch("/api/settings", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            credentials: "same-origin",
+            body: JSON.stringify(newSettings),
+          }).catch((error) => {
+            console.error("Failed to sync settings:", error);
           });
         }
       },
