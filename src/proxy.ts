@@ -17,14 +17,20 @@ export default auth((req) => {
     return NextResponse.next();
   }
 
-  if (isLoginRoute && isAuthenticated) {
+  if (isLoginRoute) {
+    if (!isAuthenticated) {
+      return NextResponse.next();
+    }
+
     return NextResponse.redirect(new URL("/", nextUrl));
   }
 
   if (!isAuthenticated) {
     const loginUrl = new URL("/auth/login", nextUrl);
     const callbackUrl = `${nextUrl.pathname}${nextUrl.search}`;
-    if (callbackUrl !== "/auth/login") {
+    const isLoginCallback = callbackUrl.startsWith("/auth/login");
+
+    if (!isLoginCallback) {
       loginUrl.searchParams.set("callbackUrl", callbackUrl);
     }
 
