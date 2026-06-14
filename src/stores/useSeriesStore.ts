@@ -363,6 +363,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
         await addImageAction(seriesId, {
           fileName: image.fileName,
           originalKey: key,
+          originalSize: blob.size,
           sequenceNumber: image.sequenceNumber,
         });
 
@@ -454,6 +455,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
       // 3. Update Database
       const updates: Partial<ProcessedImage> = {
         translatedKey: key,
+        translatedSize: blob.size,
         status: "completed" as ProcessedImage["status"],
         bubbles: meta?.bubbles || [],
         usage: meta?.usage || undefined,

@@ -15,6 +15,8 @@ export interface ProcessedImage {
   id: string;
   originalUrl: string;
   translatedUrl: string | null;
+  originalSize?: number;
+  translatedSize?: number;
   status: "idle" | "processing" | "completed" | "error";
   bubbles: TextBubble[];
   fileName: string;
@@ -98,6 +100,7 @@ export interface Series {
   previewImages?: string[];
   imageCount?: number;
   completedCount?: number;
+  storageBytes?: number;
   sequenceNumber: number;
   createdAt: number;
   updatedAt: number;
@@ -120,7 +123,9 @@ export interface SeriesInput {
 export interface ImageUpdateInput {
   fileName?: string;
   originalKey?: string;
+  originalSize?: number;
   translatedKey?: string;
+  translatedSize?: number;
   status?: ProcessedImage["status"];
   sequenceNumber?: number;
   bubbles?: TextBubble[];

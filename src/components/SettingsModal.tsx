@@ -9,6 +9,7 @@ import {
   Palette,
   Sliders,
   Sparkles,
+  HardDrive,
   Square,
   Text,
   Trash2,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import React, { useState } from "react";
 import { GEMINI_MODELS, NamedApiKey, TranslationSettings } from "../types";
+import { formatBytes } from "../utils/format";
 
 const PasswordChangeForm = () => {
   const [password, setPassword] = useState("");
@@ -109,6 +111,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   settings: TranslationSettings;
+  totalStorageBytes: number;
   onSettingsChange: (settings: TranslationSettings) => void;
 }
 
@@ -116,6 +119,7 @@ const SettingsModal: React.FC<Props> = ({
   isOpen,
   onClose,
   settings,
+  totalStorageBytes,
   onSettingsChange,
 }) => {
   const [localSettings, setLocalSettings] =
@@ -253,6 +257,27 @@ const SettingsModal: React.FC<Props> = ({
         </div>
 
         <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+          {/* Target Language */}
+          <div className="space-y-4 bg-surface-raised/30 p-5 rounded-[2rem] border border-border-muted">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 text-primary">
+                <HardDrive className="w-4 h-4" />
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                  Storage Usage
+                </label>
+              </div>
+              <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
+                {formatBytes(totalStorageBytes)}
+              </span>
+            </div>
+            <p className="text-[10px] font-bold text-text-dark/70 leading-relaxed">
+              Total MinIO usage across all series, including original and
+              translated images.
+            </p>
+          </div>
+
+          <div className="h-px bg-white/5"></div>
+
           {/* Target Language */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 text-primary">

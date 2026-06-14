@@ -28,6 +28,7 @@ export const seriesService = {
         originalTitle: s.originalTitle || undefined,
         imageCount: Number(s.imageCount) || 0,
         completedCount: Number(s.completedCount) || 0,
+        storageBytes: Number(s.storageBytes) || 0,
         previewImages: s.previewImages || [],
         images: [], // Lazy loaded
       })) as Series[],
@@ -42,6 +43,8 @@ export const seriesService = {
       fileName: img.fileName,
       originalUrl: img.originalUrl,
       translatedUrl: img.translatedUrl,
+      originalSize: img.originalSize || 0,
+      translatedSize: img.translatedSize || 0,
       status: img.status as ProcessedImage["status"],
       sequenceNumber: img.sequenceNumber || 0,
       bubbles: (img.bubbles as unknown as import("@/types").TextBubble[]) || [], // Jsonb to TextBubble[]

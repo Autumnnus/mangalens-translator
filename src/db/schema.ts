@@ -79,7 +79,9 @@ export const images = pgTable("images", {
     .references(() => series.id, { onDelete: "cascade" }),
   fileName: text("file_name").notNull(),
   originalKey: text("original_key").notNull(),
+  originalSize: integer("original_size").default(0),
   translatedKey: text("translated_key"),
+  translatedSize: integer("translated_size").default(0),
   status: text("status").default("idle"), // idle, processing, completed, error
   sequenceNumber: integer("sequence_number").default(0),
   bubbles: jsonb("bubbles"), // Array of TextBubble

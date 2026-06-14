@@ -71,8 +71,15 @@ const GlobalModals: React.FC = () => {
   const { data: seriesListData } = useSeriesQuery();
   const { data: categoriesData } = useCategoriesQuery();
 
-  const seriesItems = seriesListData?.items || [];
-  const categories = categoriesData || [];
+  const seriesItems = React.useMemo(
+    () => seriesListData?.items || [],
+    [seriesListData],
+  );
+  const categories = React.useMemo(() => categoriesData || [], [categoriesData]);
+  const totalStorageBytes = React.useMemo(
+    () => seriesItems.reduce((sum, item) => sum + (item.storageBytes || 0), 0),
+    [seriesItems],
+  );
 
   const { mutateAsync: createSeries } = useCreateSeriesMutation();
   const { mutate: updateSeries } = useUpdateSeriesMutation();
@@ -206,6 +213,7 @@ const GlobalModals: React.FC = () => {
         isOpen={isSettingsModalOpen}
         onClose={() => toggleSettingsModal(false)}
         settings={settings}
+        totalStorageBytes={totalStorageBytes}
         onSettingsChange={updateSettings}
       />
 

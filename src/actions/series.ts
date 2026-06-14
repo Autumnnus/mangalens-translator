@@ -3,9 +3,70 @@
 import { auth } from "@/auth";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
-import { getPresignedViewUrl } from "@/lib/storage";
+import { getObjectSize, getPresignedViewUrl } from "@/lib/storage";
 import { SeriesInput } from "@/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
+
+async function backfillMissingImageSizes(userId: string) {
+  const staleImages = await db
+    .select({
+      id: schema.images.id,
+      originalKey: schema.images.originalKey,
+      originalSize: schema.images.originalSize,
+      translatedKey: schema.images.translatedKey,
+      translatedSize: schema.images.translatedSize,
+    })
+    .from(schema.images)
+    .innerJoin(schema.series, eq(schema.images.seriesId, schema.series.id))
+    .where(
+      and(
+        eq(schema.series.userId, userId),
+        sql`(
+          COALESCE(${schema.images.originalSize}, 0) = 0
+          OR (
+            ${schema.images.translatedKey} IS NOT NULL
+            AND COALESCE(${schema.images.translatedSize}, 0) = 0
+          )
+        )`,
+      ),
+    )
+    .limit(50);
+
+  if (staleImages.length === 0) return;
+
+  await Promise.all(
+    staleImages.map(async (image) => {
+      try {
+        const updates: {
+          originalSize?: number;
+          translatedSize?: number;
+          updatedAt?: Date;
+        } = {};
+
+        if ((image.originalSize || 0) === 0 && image.originalKey) {
+          updates.originalSize = await getObjectSize(image.originalKey);
+        }
+
+        if (
+          image.translatedKey &&
+          (image.translatedSize || 0) === 0
+        ) {
+          updates.translatedSize = await getObjectSize(image.translatedKey);
+        }
+
+        if (Object.keys(updates).length === 0) return;
+
+        updates.updatedAt = new Date();
+        await db
+          .update(schema.images)
+          .set(updates)
+          .where(eq(schema.images.id, image.id));
+      } catch (error) {
+        console.error(`Failed to backfill image size for ${image.id}:`, error);
+      }
+    }),
+  );
+}
 
 export async function fetchSeriesAction(
   userId?: string,
@@ -15,6 +76,8 @@ export async function fetchSeriesAction(
   const session = await auth();
   const id = userId || session?.user?.id;
   if (!id) return { items: [], total: 0 };
+
+  await backfillMissingImageSizes(id);
 
   const seriesData = await db
     .select({
@@ -33,6 +96,10 @@ export async function fetchSeriesAction(
       completedCount:
         sql<number>`count(CASE WHEN ${schema.images.status} = 'completed' THEN 1 END)`.as(
           "completed_count",
+        ),
+      storageBytes:
+        sql<number>`COALESCE(SUM(COALESCE(${schema.images.originalSize}, 0) + COALESCE(${schema.images.translatedSize}, 0)), 0)`.as(
+          "storage_bytes",
         ),
     })
     .from(schema.series)

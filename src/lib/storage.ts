@@ -1,8 +1,11 @@
 import {
   _Object,
+  CreateBucketCommand,
   DeleteObjectCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadBucketCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
@@ -22,6 +25,7 @@ const VIEW_URL_CACHE_BUFFER_MS = 60_000;
 const globalForS3 = globalThis as unknown as {
   s3: S3Client;
   viewUrlCache: Map<string, { url: string; expiresAt: number }>;
+  bucketInitPromise?: Promise<void>;
 };
 
 const viewUrlCache = globalForS3.viewUrlCache || new Map();
@@ -41,10 +45,61 @@ export const s3Client =
 
 if (process.env.NODE_ENV !== "production") globalForS3.s3 = s3Client;
 
+const ensureBucketExists = async () => {
+  if (globalForS3.bucketInitPromise) {
+    await globalForS3.bucketInitPromise;
+    return;
+  }
+
+  globalForS3.bucketInitPromise = (async () => {
+    try {
+      await s3Client.send(
+        new HeadBucketCommand({
+          Bucket: S3_BUCKET,
+        }),
+      );
+    } catch (error: unknown) {
+      const errorName = error instanceof Error ? error.name : "";
+      const statusCode =
+        typeof error === "object" &&
+        error !== null &&
+        "$metadata" in error &&
+        typeof error.$metadata === "object" &&
+        error.$metadata !== null &&
+        "httpStatusCode" in error.$metadata
+          ? error.$metadata.httpStatusCode
+          : undefined;
+
+      if (
+        errorName !== "NotFound" &&
+        errorName !== "NoSuchBucket" &&
+        statusCode !== 404
+      ) {
+        throw error;
+      }
+
+      await s3Client.send(
+        new CreateBucketCommand({
+          Bucket: S3_BUCKET,
+        }),
+      );
+    }
+  })();
+
+  try {
+    await globalForS3.bucketInitPromise;
+  } catch (error) {
+    globalForS3.bucketInitPromise = undefined;
+    throw error;
+  }
+};
+
 export const getPresignedUploadUrl = async (
   key: string,
   contentType: string,
 ) => {
+  await ensureBucketExists();
+
   const command = new PutObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
@@ -110,11 +165,22 @@ export const getObjectBuffer = async (key: string) => {
   return response.Body?.transformToByteArray();
 };
 
+export const getObjectSize = async (key: string) => {
+  const command = new HeadObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+  });
+  const response = await s3Client.send(command);
+  return response.ContentLength || 0;
+};
+
 export const uploadObject = async (
   key: string,
   body: Uint8Array | Buffer | string,
   contentType?: string,
 ) => {
+  await ensureBucketExists();
+
   const command = new PutObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,

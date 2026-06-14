@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "../../hooks/useConfirm";
 import { useReorderImagesMutation } from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
@@ -71,13 +71,14 @@ const EditorWorkspace: React.FC = () => {
     );
   }, [images]);
 
-  const [prevSeriesId, setPrevSeriesId] = useState(activeSeriesId);
+  const prevSeriesIdRef = useRef(activeSeriesId);
 
-  // If the active series changed, reset the page to 1 immediately during render
-  if (activeSeriesId !== prevSeriesId) {
-    setPrevSeriesId(activeSeriesId);
-    setEditorPage(1);
-  }
+  useEffect(() => {
+    if (activeSeriesId !== prevSeriesIdRef.current) {
+      prevSeriesIdRef.current = activeSeriesId;
+      setEditorPage(1);
+    }
+  }, [activeSeriesId, setEditorPage]);
 
   const editorPageSize = 20;
   const totalEditorPages = Math.ceil(images.length / editorPageSize);

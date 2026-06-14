@@ -1,6 +1,7 @@
 import React from "react";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { Series } from "../../types";
+import { formatBytes } from "../../utils/format";
 
 interface EditorHeaderProps {
   activeSeries: Series | undefined;
@@ -100,6 +101,14 @@ const EditorHeader: React.FC<EditorHeaderProps> = ({
             </span>
             <span className="text-xs font-black text-text-muted font-mono">
               {imageCount}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-surface-raised/50 rounded-lg border border-border-muted shadow-sm">
+            <span className="text-[9px] font-bold text-text-dark uppercase tracking-widest">
+              Storage
+            </span>
+            <span className="text-xs font-black text-sky-400 font-mono">
+              {formatBytes(activeSeries?.storageBytes)}
             </span>
           </div>
         </div>

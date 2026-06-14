@@ -46,6 +46,7 @@ export const useAddImageMutation = () => {
       return imageService.addImage(seriesId, {
         ...image,
         originalKey,
+        originalSize: file?.size,
       });
     },
     onSuccess: (_, variables) => {
@@ -146,6 +147,7 @@ export const useBatchAddImagesMutation = () => {
         const dbItems = chunk.map((item, idx) => ({
           ...item.image,
           originalKey: uploadUrls[idx].key,
+          originalSize: item.file?.size,
         }));
 
         try {

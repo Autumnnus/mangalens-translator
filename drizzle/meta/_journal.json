@@ -15,6 +15,13 @@
       "when": 1773410528585,
       "tag": "0001_tranquil_la_nuit",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773410528586,
+      "tag": "0002_storage_sizes",
+      "breakpoints": true
     }
   ]
 }

@@ -14,8 +14,14 @@ export async function addImageAction(seriesId: string, data: ImageUpdateInput) {
     seriesId,
     fileName: data.fileName || "unknown",
     originalKey: data.originalKey || "",
+    originalSize: data.originalSize || 0,
+    translatedKey: data.translatedKey || null,
+    translatedSize: data.translatedSize || 0,
     status: data.status || "idle",
     sequenceNumber: data.sequenceNumber || 0,
+    bubbles: data.bubbles || [],
+    usage: data.usage || null,
+    cost: data.cost || 0,
   });
 }
 
@@ -34,6 +40,9 @@ export async function addImagesAction(
         seriesId,
         fileName: item.fileName || "unknown",
         originalKey: item.originalKey || "",
+        originalSize: item.originalSize || 0,
+        translatedKey: item.translatedKey || null,
+        translatedSize: item.translatedSize || 0,
         status: item.status || "idle",
         sequenceNumber: item.sequenceNumber || 0,
         bubbles: item.bubbles || [],
