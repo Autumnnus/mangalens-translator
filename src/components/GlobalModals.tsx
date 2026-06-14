@@ -20,11 +20,14 @@ import {
 import {
   useCreateSeriesMutation,
   useSeriesImagesQuery,
+  seriesKeys,
   useSeriesQuery,
   useUpdateSeriesMutation,
 } from "../hooks/useSeriesQueries";
+import { useQueryClient } from "@tanstack/react-query";
 
 const GlobalModals: React.FC = () => {
+  const queryClient = useQueryClient();
   const {
     isCategoryModalOpen,
     toggleCategoryModal,
@@ -214,6 +217,14 @@ const GlobalModals: React.FC = () => {
         onClose={() => toggleSettingsModal(false)}
         settings={settings}
         totalStorageBytes={totalStorageBytes}
+        onStorageScanComplete={() => {
+          queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+          if (activeSeriesId) {
+            queryClient.invalidateQueries({
+              queryKey: seriesKeys.images(activeSeriesId),
+            });
+          }
+        }}
         onSettingsChange={updateSettings}
       />
 

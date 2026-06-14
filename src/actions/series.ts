@@ -7,7 +7,7 @@ import { getObjectSize, getPresignedViewUrl } from "@/lib/storage";
 import { SeriesInput } from "@/types";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 
-async function backfillMissingImageSizes(userId: string) {
+export async function backfillMissingImageSizes(userId: string) {
   const staleImages = await db
     .select({
       id: schema.images.id,
@@ -32,7 +32,9 @@ async function backfillMissingImageSizes(userId: string) {
     )
     .limit(50);
 
-  if (staleImages.length === 0) return;
+  if (staleImages.length === 0) return { scanned: 0, updated: 0 };
+
+  let updated = 0;
 
   await Promise.all(
     staleImages.map(async (image) => {
@@ -61,11 +63,14 @@ async function backfillMissingImageSizes(userId: string) {
           .update(schema.images)
           .set(updates)
           .where(eq(schema.images.id, image.id));
+        updated += 1;
       } catch (error) {
         console.error(`Failed to backfill image size for ${image.id}:`, error);
       }
     }),
   );
+
+  return { scanned: staleImages.length, updated };
 }
 
 export async function fetchSeriesAction(

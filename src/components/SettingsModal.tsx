@@ -112,6 +112,7 @@ interface Props {
   onClose: () => void;
   settings: TranslationSettings;
   totalStorageBytes: number;
+  onStorageScanComplete?: () => void;
   onSettingsChange: (settings: TranslationSettings) => void;
 }
 
@@ -120,10 +121,16 @@ const SettingsModal: React.FC<Props> = ({
   onClose,
   settings,
   totalStorageBytes,
+  onStorageScanComplete,
   onSettingsChange,
 }) => {
   const [localSettings, setLocalSettings] =
     useState<TranslationSettings>(settings);
+  const [isScanningStorage, setIsScanningStorage] = useState(false);
+  const [storageScanMessage, setStorageScanMessage] = useState<{
+    text: string;
+    type: "success" | "error";
+  } | null>(null);
 
   const createApiKeyId = () =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -179,6 +186,43 @@ const SettingsModal: React.FC<Props> = ({
 
     onSettingsChange(preparedSettings);
     onClose();
+  };
+
+  const handleStorageScan = async () => {
+    setIsScanningStorage(true);
+    setStorageScanMessage(null);
+
+    try {
+      const res = await fetch("/api/storage/scan", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        scanned?: number;
+        updated?: number;
+        error?: string;
+      };
+
+      if (!res.ok) {
+        throw new Error(data.error || "Storage scan failed");
+      }
+
+      setStorageScanMessage({
+        text:
+          data.updated && data.updated > 0
+            ? `Scan complete. Updated ${data.updated} image records.`
+            : `Scan complete. No missing storage sizes found.`,
+        type: "success",
+      });
+      onStorageScanComplete?.();
+    } catch (error: unknown) {
+      setStorageScanMessage({
+        text: error instanceof Error ? error.message : "Storage scan failed",
+        type: "error",
+      });
+    } finally {
+      setIsScanningStorage(false);
+    }
   };
 
   const setNamedKeys = (updater: (prev: NamedApiKey[]) => NamedApiKey[]) => {
@@ -274,6 +318,26 @@ const SettingsModal: React.FC<Props> = ({
               Total MinIO usage across all series, including original and
               translated images.
             </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleStorageScan}
+                disabled={isScanningStorage}
+                className="px-4 py-2 rounded-xl bg-sky-500/15 border border-sky-400/30 text-sky-300 text-[10px] font-black uppercase tracking-widest hover:bg-sky-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isScanningStorage ? "Scanning..." : "Scan Storage"}
+              </button>
+              <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
+                Use after backup import to backfill old image sizes from MinIO.
+              </p>
+            </div>
+            {storageScanMessage && (
+              <div
+                className={`text-[10px] font-bold px-3 py-2 rounded-xl ${storageScanMessage.type === "success" ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}
+              >
+                {storageScanMessage.text}
+              </div>
+            )}
           </div>
 
           <div className="h-px bg-white/5"></div>
