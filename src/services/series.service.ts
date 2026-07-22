@@ -28,6 +28,7 @@ export const seriesService = {
         originalTitle: s.originalTitle || undefined,
         imageCount: Number(s.imageCount) || 0,
         completedCount: Number(s.completedCount) || 0,
+        errorCount: Number(s.errorCount) || 0,
         previewImages: s.previewImages || [],
         images: [], // Lazy loaded
       })) as Series[],

@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { ImageUpdateInput } from "@/types";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 export async function addImageAction(seriesId: string, data: ImageUpdateInput) {
   const session = await auth();
@@ -52,19 +52,41 @@ export async function addImagesAction(
 }
 
 export async function deleteImageAction(imageId: string) {
+  const deleted = await deleteImagesAction([imageId]);
+  return deleted;
+}
+
+/**
+ * Deletes only images owned by the current user and returns their storage keys
+ * so the client can remove the corresponding objects from storage as well.
+ */
+export async function deleteImagesAction(imageIds: string[]) {
   const session = await auth();
   if (!session?.user?.id) throw new Error("Unauthorized");
+  const userId = session.user.id;
 
-  const img = await db.query.images.findFirst({
-    where: eq(schema.images.id, imageId),
+  const uniqueImageIds = [...new Set(imageIds)].filter(Boolean);
+  if (uniqueImageIds.length === 0) return [];
+
+  const imagesToDelete = await db.query.images.findMany({
+    where: inArray(schema.images.id, uniqueImageIds),
     with: { series: true },
   });
 
-  if (!img || img.series.userId !== session.user.id) return null;
+  if (
+    imagesToDelete.length !== uniqueImageIds.length ||
+    imagesToDelete.some((image) => image.series.userId !== userId)
+  ) {
+    throw new Error("Unauthorized");
+  }
 
-  await db.delete(schema.images).where(eq(schema.images.id, imageId));
+  await db
+    .delete(schema.images)
+    .where(inArray(schema.images.id, uniqueImageIds));
 
-  return [img.originalKey, img.translatedKey].filter(Boolean) as string[];
+  return imagesToDelete.flatMap((image) =>
+    [image.originalKey, image.translatedKey].filter(Boolean),
+  ) as string[];
 }
 
 export async function updateImageAction(

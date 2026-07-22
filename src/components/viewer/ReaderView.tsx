@@ -58,6 +58,12 @@ const ReaderView: React.FC = () => {
 
   const currentImage = images[currentImageIndex];
 
+  useEffect(() => {
+    if (images.length > 0 && currentImageIndex >= images.length) {
+      setCurrentImageIndex(images.length - 1);
+    }
+  }, [currentImageIndex, images.length, setCurrentImageIndex]);
+
   const handleNext = useCallback(() => {
     setCurrentImageIndex(Math.min(currentImageIndex + 1, images.length - 1));
   }, [currentImageIndex, images.length, setCurrentImageIndex]);
@@ -68,6 +74,14 @@ const ReaderView: React.FC = () => {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "input, textarea, select, [contenteditable='true']",
+        )
+      ) {
+        return;
+      }
       if (e.key === "ArrowRight") handleNext();
       if (e.key === "ArrowLeft") handlePrev();
     };
@@ -75,15 +89,11 @@ const ReaderView: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleNext, handlePrev]);
 
-  const handleThumbPagePrev = useCallback(() => {
-    setCurrentImageIndex(Math.max(0, currentImageIndex - thumbnailsPerPage));
-  }, [currentImageIndex, setCurrentImageIndex]);
-
-  const handleThumbPageNext = useCallback(() => {
+  const handleThumbPageChange = useCallback((page: number) => {
     setCurrentImageIndex(
-      Math.min(images.length - 1, currentImageIndex + thumbnailsPerPage),
+      Math.min(images.length - 1, Math.max(0, (page - 1) * thumbnailsPerPage)),
     );
-  }, [currentImageIndex, images.length, setCurrentImageIndex]);
+  }, [images.length, setCurrentImageIndex, thumbnailsPerPage]);
 
   if (
     isImagesLoading ||
@@ -157,10 +167,9 @@ const ReaderView: React.FC = () => {
               comparisonMode={comparisonMode}
               onSelectIndex={(idx) => {
                 setCurrentImageIndex(idx);
-                setComparisonMode("slider"); // Switch back to slider on selection
+                setComparisonMode("toggle");
               }}
-              onPagePrev={handleThumbPagePrev}
-              onPageNext={handleThumbPageNext}
+              onPageChange={handleThumbPageChange}
               isOverlay={false}
             />
           </div>

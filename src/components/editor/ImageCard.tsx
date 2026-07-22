@@ -15,9 +15,18 @@ interface Props {
   index: number;
   total: number;
   onMove: (dir: "up" | "down" | "jump", targetPos?: number) => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
+const ImageCard: React.FC<Props> = ({
+  image,
+  index,
+  total,
+  onMove,
+  isSelected = false,
+  onToggleSelect,
+}) => {
   const { activeSeriesId } = useSeriesStore();
   const { mutate: deleteImage } = useDeleteImageMutation();
   const { mutateAsync: setImageStatus, isPending: isStatusUpdating } =
@@ -36,29 +45,21 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   const [sequenceInput, setSequenceInput] = React.useState(
     String(image.sequenceNumber),
   );
-  const [isUpdatingSequence, setIsUpdatingSequence] = React.useState(false);
 
   React.useEffect(() => {
     setSequenceInput(String(image.sequenceNumber));
   }, [image.sequenceNumber]);
 
-  React.useEffect(() => {
+  const commitSequence = () => {
     const val = parseInt(sequenceInput);
 
     if (isNaN(val) || val === image.sequenceNumber) {
-      setIsUpdatingSequence(false);
+      setSequenceInput(String(image.sequenceNumber));
       return;
     }
 
-    setIsUpdatingSequence(true);
-    const timer = setTimeout(() => {
-      moveImage("jump", val);
-
-      setIsUpdatingSequence(false);
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [sequenceInput, image.sequenceNumber]);
+    moveImage("jump", val);
+  };
 
   const handleRemove = () => {
     confirm({
@@ -98,7 +99,11 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   };
 
   return (
-    <div className="glass-card rounded-[2rem] overflow-hidden group transition-all duration-500 hover:scale-[1.02] active:scale-[0.98]">
+    <div
+      className={`glass-card rounded-[2rem] overflow-hidden group transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] ${
+        isSelected ? "ring-2 ring-primary border-primary/70 shadow-glow" : ""
+      }`}
+    >
       <div
         className="relative aspect-[2/3] bg-black/40 group-hover:bg-black/20 transition-colors cursor-pointer overflow-hidden"
         onClick={() => setSelectedImage(image)}
@@ -116,8 +121,31 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
           onLoad={() => setIsLoaded(true)}
         />
 
+        {onToggleSelect && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleSelect();
+            }}
+            aria-label={`${isSelected ? "Unselect" : "Select"} ${image.fileName}`}
+            aria-pressed={isSelected}
+            className={`absolute left-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-xl border backdrop-blur-md transition-all ${
+              isSelected
+                ? "border-primary bg-primary text-white shadow-glow"
+                : "border-border-muted bg-background/75 text-text-muted hover:border-primary/70 hover:text-primary"
+            }`}
+          >
+            <i className={`fas ${isSelected ? "fa-check" : "fa-square"} text-xs`} />
+          </button>
+        )}
+
         {/* Status Overlay */}
-        <div className="absolute top-4 left-4 flex flex-col gap-2">
+        <div
+          className={`absolute top-4 flex flex-col gap-2 ${
+            onToggleSelect ? "left-16" : "left-4"
+          }`}
+        >
           <div
             className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest backdrop-blur-md border shadow-lg transition-colors ${
               image.status === "completed"
@@ -250,16 +278,21 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
               <div className="relative">
                 <input
                   type="number"
-                  className={`w-10 bg-transparent text-center text-xs font-black text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 rounded-lg py-1 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${isUpdatingSequence ? "opacity-50" : ""}`}
+                  min={1}
+                  max={total}
+                  className="w-10 bg-transparent text-center text-xs font-black text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 rounded-lg py-1 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   value={sequenceInput}
                   onChange={(e) => setSequenceInput(e.target.value)}
                   onFocus={(e) => e.target.select()}
+                  onBlur={commitSequence}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (event.key === "Escape") {
+                      setSequenceInput(String(image.sequenceNumber));
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
-                {isUpdatingSequence && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <i className="fas fa-circle-notch fa-spin text-primary text-[10px]"></i>
-                  </div>
-                )}
               </div>
             </div>
 

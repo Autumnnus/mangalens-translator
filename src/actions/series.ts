@@ -34,6 +34,10 @@ export async function fetchSeriesAction(
         sql<number>`count(CASE WHEN ${schema.images.status} = 'completed' THEN 1 END)`.as(
           "completed_count",
         ),
+      errorCount:
+        sql<number>`count(CASE WHEN ${schema.images.status} = 'error' THEN 1 END)`.as(
+          "error_count",
+        ),
     })
     .from(schema.series)
     .leftJoin(schema.images, eq(schema.series.id, schema.images.seriesId))

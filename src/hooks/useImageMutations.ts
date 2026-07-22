@@ -222,8 +222,10 @@ export const useUpdateImageMutation = () => {
 export const useDeleteImageMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ imageId }: { seriesId: string; imageId: string }) =>
-      imageService.deleteImage(imageId),
+    mutationFn: async ({ imageId }: { seriesId: string; imageId: string }) => {
+      const keys = await imageService.deleteImage(imageId);
+      await deleteStorageObjects(keys);
+    },
     onMutate: async ({ seriesId, imageId }) => {
       await queryClient.cancelQueries({
         queryKey: seriesKeys.images(seriesId),
@@ -241,6 +243,71 @@ export const useDeleteImageMutation = () => {
       return { previousImages };
     },
     onError: (err, { seriesId }, context) => {
+      if (context?.previousImages) {
+        queryClient.setQueryData(
+          seriesKeys.images(seriesId),
+          context.previousImages,
+        );
+      }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: seriesKeys.images(variables.seriesId),
+      });
+      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+    },
+  });
+};
+
+const deleteStorageObjects = async (keys: string[] | null | undefined) => {
+  if (!keys?.length) return;
+
+  try {
+    const response = await fetch("/api/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ keys }),
+    });
+
+    if (!response.ok) {
+      console.error("Image records were deleted but their files could not be removed");
+    }
+  } catch (error) {
+    console.error("Image records were deleted but storage cleanup failed", error);
+  }
+};
+
+export const useBulkDeleteImagesMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      imageIds,
+    }: {
+      seriesId: string;
+      imageIds: string[];
+    }) => {
+      const keys = await imageService.deleteImages(imageIds);
+      await deleteStorageObjects(keys);
+    },
+    onMutate: async ({ seriesId, imageIds }) => {
+      await queryClient.cancelQueries({
+        queryKey: seriesKeys.images(seriesId),
+      });
+
+      const previousImages = queryClient.getQueryData<ProcessedImage[]>(
+        seriesKeys.images(seriesId),
+      );
+      const selectedIds = new Set(imageIds);
+
+      queryClient.setQueryData<ProcessedImage[]>(
+        seriesKeys.images(seriesId),
+        (old) => (old || []).filter((image) => !selectedIds.has(image.id)),
+      );
+
+      return { previousImages };
+    },
+    onError: (_error, { seriesId }, context) => {
       if (context?.previousImages) {
         queryClient.setQueryData(
           seriesKeys.images(seriesId),
@@ -343,6 +410,69 @@ export const useSetImageStatusMutation = () => {
       imageId: string;
       status: ProcessedImage["status"];
     }) => imageService.setImageStatus({ seriesId, imageId, status }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: seriesKeys.images(variables.seriesId),
+      });
+      queryClient.invalidateQueries({ queryKey: seriesKeys.lists() });
+    },
+  });
+};
+
+export const useBulkSetImageStatusMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      seriesId,
+      imageIds,
+      status,
+    }: {
+      seriesId: string;
+      imageIds: string[];
+      status: ProcessedImage["status"];
+    }) => {
+      const response = await fetch("/api/images/status", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ seriesId, imageIds, status }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error || "Failed to update image statuses");
+      }
+    },
+    onMutate: async ({ seriesId, imageIds, status }) => {
+      await queryClient.cancelQueries({
+        queryKey: seriesKeys.images(seriesId),
+      });
+
+      const previousImages = queryClient.getQueryData<ProcessedImage[]>(
+        seriesKeys.images(seriesId),
+      );
+      const selectedIds = new Set(imageIds);
+
+      queryClient.setQueryData<ProcessedImage[]>(
+        seriesKeys.images(seriesId),
+        (old) =>
+          old?.map((image) =>
+            selectedIds.has(image.id) ? { ...image, status } : image,
+          ) || [],
+      );
+
+      return { previousImages };
+    },
+    onError: (_error, { seriesId }, context) => {
+      if (context?.previousImages) {
+        queryClient.setQueryData(
+          seriesKeys.images(seriesId),
+          context.previousImages,
+        );
+      }
+    },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: seriesKeys.images(variables.seriesId),

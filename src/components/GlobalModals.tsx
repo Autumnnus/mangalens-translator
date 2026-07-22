@@ -86,7 +86,7 @@ const GlobalModals: React.FC = () => {
   const { close: closeConfirmModal } = useConfirm();
 
   const [modalCompareMode, setModalCompareMode] =
-    React.useState<ViewMode>("slider");
+    React.useState<ViewMode>("toggle");
 
   const handleConfirmSeries = useCallback(
     async (

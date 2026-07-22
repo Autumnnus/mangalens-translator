@@ -2,6 +2,7 @@ import {
   addImageAction,
   addImagesAction,
   deleteImageAction,
+  deleteImagesAction,
   reorderImagesAction,
   updateImageAction,
 } from "@/actions/images";
@@ -22,6 +23,10 @@ export const imageService = {
 
   deleteImage: async (imageId: string) => {
     return await deleteImageAction(imageId);
+  },
+
+  deleteImages: async (imageIds: string[]) => {
+    return await deleteImagesAction(imageIds);
   },
 
   reorderImages: async (imageIds: string[]) => {

@@ -156,6 +156,7 @@ export interface Series {
   previewImages?: string[];
   imageCount?: number;
   completedCount?: number;
+  errorCount?: number;
   sequenceNumber: number;
   createdAt: number;
   updatedAt: number;

@@ -57,6 +57,16 @@ const SeriesSidebar: React.FC<Props> = ({
     showInProgress: true,
   });
 
+  const resetFilters = useCallback(() => {
+    setFilters({
+      search: "",
+      categories: [],
+      sortBy: "sequence",
+      showCompleted: true,
+      showInProgress: true,
+    });
+  }, []);
+
   const toggleCategory = useCallback((categoryId: string) => {
     setCollapsedCategories((prev) => {
       const newSet = new Set(prev);
@@ -79,7 +89,9 @@ const SeriesSidebar: React.FC<Props> = ({
     }
 
     if (filters.categories.length > 0) {
-      result = result.filter((s) => filters.categories.includes(s.category));
+      result = result.filter(
+        (s) => !!s.categoryId && filters.categories.includes(s.categoryId),
+      );
     }
 
     result = result.filter((s) => {
@@ -130,6 +142,34 @@ const SeriesSidebar: React.FC<Props> = ({
     );
   }, [categories]);
 
+  const hasNarrowingFilter =
+    Boolean(filters.search.trim()) ||
+    filters.categories.length > 0 ||
+    !filters.showCompleted ||
+    !filters.showInProgress;
+
+  const visibleRootCategories = useMemo(() => {
+    if (!hasNarrowingFilter) return rootCategories;
+
+    const containsVisibleSeries = (categoryId: string): boolean => {
+      if (filteredAndSortedSeries.some((series) => series.categoryId === categoryId)) {
+        return true;
+      }
+      return categories
+        .filter((category) => category.parentId === categoryId)
+        .some((child) => containsVisibleSeries(child.id));
+    };
+
+    return rootCategories.filter((category) => containsVisibleSeries(category.id));
+  }, [categories, filteredAndSortedSeries, hasNarrowingFilter, rootCategories]);
+
+  const activeFilterCount =
+    (filters.search.trim() ? 1 : 0) +
+    filters.categories.length +
+    (filters.sortBy !== "sequence" ? 1 : 0) +
+    (!filters.showCompleted ? 1 : 0) +
+    (!filters.showInProgress ? 1 : 0);
+
   const uncategorizedSeries = useMemo(() => {
     const categoryIds = new Set(categories.map((c) => c.id));
     return filteredAndSortedSeries.filter(
@@ -155,6 +195,13 @@ const SeriesSidebar: React.FC<Props> = ({
       <SidebarActions
         onAdd={onAdd}
         onOpenFilter={() => setIsFilterModalOpen(true)}
+        search={filters.search}
+        onSearchChange={(search) =>
+          setFilters((current) => ({ ...current, search }))
+        }
+        activeFilterCount={activeFilterCount}
+        onClearFilters={resetFilters}
+        isSidebarCollapsed={isSidebarCollapsed}
         isViewOnly={isViewOnly}
       />
 
@@ -193,9 +240,10 @@ const SeriesSidebar: React.FC<Props> = ({
               onMoveSeries={onMoveSeries}
               onMoveCategory={onMoveCategory}
               onMoveSeriesUpDown={onMoveSeriesUpDown}
+              forceExpanded={hasNarrowingFilter}
             />
 
-            {rootCategories.map((cat) => (
+            {visibleRootCategories.map((cat) => (
               <CategoryNode
                 key={cat.id}
                 category={cat}
@@ -215,6 +263,8 @@ const SeriesSidebar: React.FC<Props> = ({
                 onMoveCategory={onMoveCategory}
                 onAddSubcategory={handleAddSubcategory}
                 onMoveSeriesUpDown={onMoveSeriesUpDown}
+                forceExpanded={hasNarrowingFilter}
+                hideEmptyCategories={hasNarrowingFilter}
               />
             ))}
           </>
@@ -257,13 +307,18 @@ const SeriesSidebar: React.FC<Props> = ({
         {sidebarContent}
       </aside>
 
-      <FilterSortModal
-        isOpen={isFilterModalOpen}
-        onClose={() => setIsFilterModalOpen(false)}
-        availableCategories={categories.map((c) => c.name)}
-        currentFilters={filters}
-        onApply={setFilters}
-      />
+      {isFilterModalOpen && (
+        <FilterSortModal
+          isOpen={isFilterModalOpen}
+          onClose={() => setIsFilterModalOpen(false)}
+          availableCategories={categories.map((category) => ({
+            id: category.id,
+            name: category.name,
+          }))}
+          currentFilters={filters}
+          onApply={setFilters}
+        />
+      )}
     </>
   );
 };

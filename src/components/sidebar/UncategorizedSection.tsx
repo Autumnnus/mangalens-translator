@@ -20,6 +20,7 @@ interface UncategorizedSectionProps {
     targetParentId: string | undefined,
   ) => void;
   onMoveSeriesUpDown?: (id: string, direction: "up" | "down") => void;
+  forceExpanded?: boolean;
 }
 
 const UncategorizedSection: React.FC<UncategorizedSectionProps> = ({
@@ -36,10 +37,13 @@ const UncategorizedSection: React.FC<UncategorizedSectionProps> = ({
   onMoveSeries,
   onMoveCategory,
   onMoveSeriesUpDown,
+  forceExpanded = false,
 }) => {
   if (uncategorizedSeries.length === 0) return null;
 
-  const isCollapsed = collapsedCategories.has("uncategorized");
+  const isCollapsed = forceExpanded
+    ? false
+    : collapsedCategories.has("uncategorized");
 
   return (
     <div className="border-b border-slate-800/50">
@@ -62,6 +66,8 @@ const UncategorizedSection: React.FC<UncategorizedSectionProps> = ({
         className={`w-full flex items-center justify-between hover:bg-slate-800/30 transition-colors group px-4 py-3 ${
           isSidebarCollapsed ? "justify-center" : ""
         }`}
+        aria-expanded={!isCollapsed}
+        title={`${isCollapsed ? "Expand" : "Collapse"} uncategorized series`}
       >
         <div className="flex items-center gap-2">
           <i
@@ -83,9 +89,7 @@ const UncategorizedSection: React.FC<UncategorizedSectionProps> = ({
       </button>
       {!isCollapsed && (
         <div className="space-y-1 pb-2">
-          {uncategorizedSeries
-            .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
-            .map((s, index) => (
+          {uncategorizedSeries.map((s, index) => (
               <div
                 key={s.id}
                 draggable={!isViewOnly}
@@ -98,6 +102,17 @@ const UncategorizedSection: React.FC<UncategorizedSectionProps> = ({
                   onSelect(s.id);
                   setIsMobileOpen(false);
                 }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onSelect(s.id);
+                    setIsMobileOpen(false);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-current={activeId === s.id ? "page" : undefined}
+                title={isSidebarCollapsed ? s.name : undefined}
                 className={`group flex items-center gap-2 px-2 py-2.5 rounded-xl transition-all cursor-pointer ${
                   activeId === s.id
                     ? "bg-indigo-600/20 border border-indigo-500/50"
@@ -132,13 +147,23 @@ const UncategorizedSection: React.FC<UncategorizedSectionProps> = ({
                       )}
                     </div>
                   )}
-                <SeriesIcon images={s.images} previewImages={s.previewImages} />
+                <SeriesIcon
+                  images={s.images}
+                  previewImages={s.previewImages}
+                  seriesName={s.name}
+                  imageCount={s.imageCount}
+                />
                 {!isSidebarCollapsed && (
                   <>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold truncate">{s.name}</p>
                       <p className="text-[10px] text-slate-500 font-bold">
-                        {s.imageCount ?? s.images.length} pages
+                        {s.completedCount || 0}/{s.imageCount ?? s.images.length} translated
+                        {(s.errorCount || 0) > 0 && (
+                          <span className="ml-1 text-red-400/90">
+                            ({s.errorCount} error{s.errorCount === 1 ? "" : "s"})
+                          </span>
+                        )}
                       </p>
                     </div>
                     {!isViewOnly && (

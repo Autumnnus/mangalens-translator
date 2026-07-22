@@ -1,12 +1,17 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfirm } from "../../hooks/useConfirm";
-import { useReorderImagesMutation } from "../../hooks/useImageMutations";
+import {
+  useBulkDeleteImagesMutation,
+  useBulkSetImageStatusMutation,
+  useReorderImagesMutation,
+} from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useImageUpload } from "../../hooks/useImageUpload";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
 import EditorHeader from "./EditorHeader";
+import EditorBulkActions from "./EditorBulkActions";
 import EditorPagination from "./EditorPagination";
 import EmptyWorkspace from "./EmptyWorkspace";
 import ImageCard from "./ImageCard";
@@ -21,7 +26,6 @@ import {
 const EditorWorkspace: React.FC = () => {
   // Selective store access for performance
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
-  const setImages = useSeriesStore((state) => state.setImages);
 
   const editorPage = useUIStore((state) => state.editorPage);
   const setEditorPage = useUIStore((state) => state.setEditorPage);
@@ -34,12 +38,29 @@ const EditorWorkspace: React.FC = () => {
     (state) => state.toggleNewSeriesModal,
   );
   const setSelectedImage = useUIStore((state) => state.setSelectedImage);
+  const showToast = useUIStore((state) => state.showToast);
 
   const isViewOnly = useSettingsStore((state) => state.isViewOnly);
 
   const { confirm } = useConfirm();
-  const { handleFileUpload } = useImageUpload();
-  const { processAll, isProcessingAll } = useImageProcessor();
+  const { handleFileUpload, isUploading } = useImageUpload();
+  const { processAll, processImage, isProcessingAll } = useImageProcessor();
+  const { mutate: reorderImages } = useReorderImagesMutation();
+  const {
+    mutateAsync: bulkDeleteImages,
+    isPending: isBulkDeleting,
+  } = useBulkDeleteImagesMutation();
+  const {
+    mutateAsync: bulkSetImageStatus,
+    isPending: isBulkStatusUpdating,
+  } = useBulkSetImageStatusMutation();
+
+  const workspaceRef = useRef<HTMLElement>(null);
+  const previousSeriesIdRef = useRef(activeSeriesId);
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [isBulkTranslating, setIsBulkTranslating] = useState(false);
 
   const [viewMode, setViewMode] = useState<"grid" | "list" | "detail">(() => {
     if (typeof window !== "undefined") {
@@ -71,38 +92,108 @@ const EditorWorkspace: React.FC = () => {
     );
   }, [images]);
 
-  const [prevSeriesId, setPrevSeriesId] = useState(activeSeriesId);
-
-  // If the active series changed, reset the page to 1 immediately during render
-  if (activeSeriesId !== prevSeriesId) {
-    setPrevSeriesId(activeSeriesId);
-    setEditorPage(1);
-  }
-
   const editorPageSize = 20;
-  const totalEditorPages = Math.ceil(images.length / editorPageSize);
+  const totalEditorPages = Math.max(1, Math.ceil(images.length / editorPageSize));
 
   const paginatedImages = useMemo(() => {
     const start = (editorPage - 1) * editorPageSize;
     return images.slice(start, start + editorPageSize);
   }, [images, editorPage]);
 
+  useEffect(() => {
+    if (activeSeriesId === previousSeriesIdRef.current) return;
+    previousSeriesIdRef.current = activeSeriesId;
+    setEditorPage(1);
+    setSelectedImageIds(new Set());
+  }, [activeSeriesId, setEditorPage]);
+
+  useEffect(() => {
+    if (editorPage > totalEditorPages) {
+      setEditorPage(totalEditorPages);
+    }
+  }, [editorPage, setEditorPage, totalEditorPages]);
+
+  useEffect(() => {
+    const imageIds = new Set(images.map((image) => image.id));
+    setSelectedImageIds((current) => {
+      const next = new Set([...current].filter((id) => imageIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [images]);
+
+  const handlePageChange = useCallback(
+    (page: number) => {
+      setEditorPage(page);
+      workspaceRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    },
+    [setEditorPage],
+  );
+
+  const toggleImageSelection = useCallback((imageId: string) => {
+    setSelectedImageIds((current) => {
+      const next = new Set(current);
+      if (next.has(imageId)) {
+        next.delete(imageId);
+      } else {
+        next.add(imageId);
+      }
+      return next;
+    });
+  }, []);
+
+  const isPageSelected =
+    paginatedImages.length > 0 &&
+    paginatedImages.every((image) => selectedImageIds.has(image.id));
+
+  const togglePageSelection = useCallback(() => {
+    setSelectedImageIds((current) => {
+      const next = new Set(current);
+      const pageIsSelected = paginatedImages.every((image) =>
+        next.has(image.id),
+      );
+      for (const image of paginatedImages) {
+        if (pageIsSelected) {
+          next.delete(image.id);
+        } else {
+          next.add(image.id);
+        }
+      }
+      return next;
+    });
+  }, [paginatedImages]);
+
+  const selectAllImages = useCallback(() => {
+    setSelectedImageIds(new Set(images.map((image) => image.id)));
+  }, [images]);
+
   const clearAll = useCallback(() => {
     confirm({
       title: "Wipe Series",
       message: "This will remove ALL images from this series. Are you sure?",
       onConfirm: () => {
-        images.forEach((img) => {
-          if (img.originalUrl.startsWith("blob:"))
-            URL.revokeObjectURL(img.originalUrl);
-        });
-        if (activeSeriesId) {
-          setImages(activeSeriesId, []);
-        }
+        if (!activeSeriesId || images.length === 0) return;
+        void bulkDeleteImages({
+          seriesId: activeSeriesId,
+          imageIds: images.map((image) => image.id),
+        })
+          .then(() => {
+            setSelectedImageIds(new Set());
+            showToast("All pages were deleted.", "success", 3500);
+          })
+          .catch((error: unknown) => {
+            showToast(
+              error instanceof Error ? error.message : "Could not delete pages.",
+              "error",
+              5000,
+            );
+          });
       },
       type: "danger",
     });
-  }, [confirm, images, activeSeriesId, setImages]);
+  }, [activeSeriesId, bulkDeleteImages, confirm, images, showToast]);
 
   const handleSelectImage = useCallback(
     (image: import("../../types").ProcessedImage) => {
@@ -110,8 +201,6 @@ const EditorWorkspace: React.FC = () => {
     },
     [setSelectedImage],
   );
-
-  const { mutate: reorderImages } = useReorderImagesMutation();
 
   const handleMoveImage = useCallback(
     (imageId: string, dir: "up" | "down" | "jump", targetPos?: number) => {
@@ -149,6 +238,90 @@ const EditorWorkspace: React.FC = () => {
     [images, activeSeriesId, reorderImages],
   );
 
+  const handleBulkStatusChange = useCallback(
+    (status: import("../../types").ProcessedImage["status"]) => {
+      const imageIds = [...selectedImageIds];
+      if (!activeSeriesId || imageIds.length === 0) return;
+
+      void bulkSetImageStatus({ seriesId: activeSeriesId, imageIds, status })
+        .then(() => {
+          showToast(
+            `${imageIds.length} page${imageIds.length === 1 ? "" : "s"} marked ${status}.`,
+            "success",
+            3500,
+          );
+        })
+        .catch((error: unknown) => {
+          showToast(
+            error instanceof Error ? error.message : "Could not update pages.",
+            "error",
+            5000,
+          );
+        });
+    },
+    [activeSeriesId, bulkSetImageStatus, selectedImageIds, showToast],
+  );
+
+  const handleTranslateSelected = useCallback(async () => {
+    const selectedImages = images.filter(
+      (image) =>
+        selectedImageIds.has(image.id) && image.status !== "processing",
+    );
+    if (selectedImages.length === 0 || isBulkTranslating || isProcessingAll) {
+      return;
+    }
+
+    setIsBulkTranslating(true);
+    showToast(
+      `Translating ${selectedImages.length} selected page${selectedImages.length === 1 ? "" : "s"}.`,
+      "info",
+      4000,
+    );
+
+    try {
+      let completed = 0;
+      for (const image of selectedImages) {
+        if (await processImage(image, 0, true)) completed += 1;
+      }
+      showToast(
+        `Selected translation finished: ${completed}/${selectedImages.length}.`,
+        completed === selectedImages.length ? "success" : "info",
+        5000,
+      );
+    } finally {
+      setIsBulkTranslating(false);
+    }
+  }, [images, isBulkTranslating, isProcessingAll, processImage, selectedImageIds, showToast]);
+
+  const handleDeleteSelected = useCallback(() => {
+    const imageIds = [...selectedImageIds];
+    if (!activeSeriesId || imageIds.length === 0) return;
+
+    confirm({
+      title: "Delete Selected Pages",
+      message: `This will permanently remove ${imageIds.length} selected page${imageIds.length === 1 ? "" : "s"}. Are you sure?`,
+      onConfirm: () => {
+        void bulkDeleteImages({ seriesId: activeSeriesId, imageIds })
+          .then(() => {
+            setSelectedImageIds(new Set());
+            showToast(
+              `${imageIds.length} page${imageIds.length === 1 ? "" : "s"} deleted.`,
+              "success",
+              3500,
+            );
+          })
+          .catch((error: unknown) => {
+            showToast(
+              error instanceof Error ? error.message : "Could not delete pages.",
+              "error",
+              5000,
+            );
+          });
+      },
+      type: "danger",
+    });
+  }, [activeSeriesId, bulkDeleteImages, confirm, selectedImageIds, showToast]);
+
   if (!activeSeries) {
     return (
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
@@ -181,6 +354,7 @@ const EditorWorkspace: React.FC = () => {
         <NoImagesState
           seriesName={activeSeries.name}
           onUpload={handleFileUpload}
+          isUploading={isUploading}
         />
       </main>
     );
@@ -199,7 +373,10 @@ const EditorWorkspace: React.FC = () => {
   }
 
   return (
-    <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
+    <main
+      ref={workspaceRef}
+      className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10"
+    >
       <EditorHeader
         activeSeries={activeSeries}
         totalStats={totalStats}
@@ -211,6 +388,33 @@ const EditorWorkspace: React.FC = () => {
         isViewOnly={isViewOnly}
         onUpload={handleFileUpload}
         onWipe={clearAll}
+      />
+
+      {!isViewOnly && (
+        <EditorBulkActions
+          selectedCount={selectedImageIds.size}
+          totalCount={images.length}
+          isPageSelected={isPageSelected}
+          isBusy={
+            isBulkDeleting ||
+            isBulkStatusUpdating ||
+            isBulkTranslating ||
+            isProcessingAll
+          }
+          onTogglePage={togglePageSelection}
+          onSelectAll={selectAllImages}
+          onClear={() => setSelectedImageIds(new Set())}
+          onStatusChange={handleBulkStatusChange}
+          onTranslate={() => void handleTranslateSelected()}
+          onDelete={handleDeleteSelected}
+        />
+      )}
+
+      <EditorPagination
+        currentPage={editorPage}
+        totalPages={totalEditorPages}
+        onPageChange={handlePageChange}
+        placement="top"
       />
 
       <div
@@ -230,6 +434,8 @@ const EditorWorkspace: React.FC = () => {
                 key={image.id}
                 image={image}
                 onSelect={() => handleSelectImage(image)}
+                isSelected={selectedImageIds.has(image.id)}
+                onToggleSelect={() => toggleImageSelection(image.id)}
               />
             );
           }
@@ -242,6 +448,8 @@ const EditorWorkspace: React.FC = () => {
               onMove={(dir, targetPos) =>
                 handleMoveImage(image.id, dir, targetPos)
               }
+              isSelected={selectedImageIds.has(image.id)}
+              onToggleSelect={() => toggleImageSelection(image.id)}
             />
           );
         })}
@@ -250,7 +458,7 @@ const EditorWorkspace: React.FC = () => {
       <EditorPagination
         currentPage={editorPage}
         totalPages={totalEditorPages}
-        onPageChange={setEditorPage}
+        onPageChange={handlePageChange}
       />
     </main>
   );
