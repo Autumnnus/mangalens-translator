@@ -9,7 +9,11 @@ export default auth((req) => {
   const isAuthenticated = Boolean(req.auth?.user);
 
   const isApiAuthRoute = nextUrl.pathname.startsWith("/api/auth");
-  const isPublicApiRoute = nextUrl.pathname === "/api/version";
+  const isWorkerApiRoute = nextUrl.pathname.startsWith(
+    "/api/local-ocr/worker/",
+  );
+  const isPublicApiRoute =
+    nextUrl.pathname === "/api/version" || isWorkerApiRoute;
   const isLoginRoute = nextUrl.pathname.startsWith("/auth/login");
   const isPublicFile = /\.[^/]+$/.test(nextUrl.pathname);
 

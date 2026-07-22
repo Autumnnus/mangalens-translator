@@ -22,6 +22,8 @@ export async function updateUserSettingsAction(
 
   const currentSettings = (user?.settings as TranslationSettings) || {
     targetLanguage: "Turkish",
+    translationPipeline: "auto",
+    developerMode: false,
     fontSize: 24,
     fontColor: "#000000",
     backgroundColor: "#ffffff",

@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 const DEFAULT_SETTINGS: TranslationSettings = {
   targetLanguage: "Turkish",
+  translationPipeline: "auto",
+  developerMode: false,
   fontSize: 24,
   fontColor: "#000000",
   backgroundColor: "#ffffff",
@@ -28,10 +30,16 @@ const withTranslationPipelineDefaults = (
   stored?: Partial<TranslationSettings> | null,
 ): TranslationSettings => {
   const isLegacy = !!stored && stored.enableQualityFallback === undefined;
+  const translationPipeline = ["auto", "gemini_vision", "local_ocr"].includes(
+    String(stored?.translationPipeline),
+  )
+    ? stored?.translationPipeline
+    : "auto";
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
     model: isLegacy ? "gemini-2.5-flash-lite" : stored?.model || DEFAULT_SETTINGS.model,
+    translationPipeline,
   };
 };
 
@@ -82,6 +90,11 @@ export async function PATCH(req: NextRequest) {
     const updatedSettings: TranslationSettings = {
       ...currentSettings,
       ...incoming,
+      translationPipeline: ["auto", "gemini_vision", "local_ocr"].includes(
+        String(incoming.translationPipeline),
+      )
+        ? incoming.translationPipeline
+        : currentSettings.translationPipeline,
     };
 
     await db

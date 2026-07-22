@@ -5,6 +5,7 @@ import { useSettingsStore } from "../stores/useSettingsStore";
 import {
   BatchTranslationItemResult,
   BatchTranslationJobSummary,
+  LocalOcrJobSummary,
   ProcessedImage,
 } from "../types";
 import { calculateGeminiCost } from "../utils/cost";
@@ -23,6 +24,8 @@ const MAX_RETRY_ATTEMPTS = 6;
 const RETRY_INTERVAL_MS = 5000;
 const BATCH_POLL_INTERVAL_MS = 5000;
 const MAX_BATCH_POLL_ATTEMPTS = 120;
+const LOCAL_OCR_POLL_INTERVAL_MS = 5000;
+const MAX_LOCAL_OCR_POLL_ATTEMPTS = 120;
 
 export const useImageProcessor = () => {
   const [isProcessingAll, setIsProcessingAll] = useState(false);
@@ -113,6 +116,39 @@ export const useImageProcessor = () => {
     );
   };
 
+  const pollLocalOcrJob = async (
+    initialJob: LocalOcrJobSummary,
+    signal: AbortSignal,
+  ) => {
+    let job = initialJob;
+    for (
+      let attempt = 0;
+      attempt < MAX_LOCAL_OCR_POLL_ATTEMPTS;
+      attempt += 1
+    ) {
+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (job.status === "completed" || job.status === "failed") return job;
+      if (attempt > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, LOCAL_OCR_POLL_INTERVAL_MS),
+        );
+      }
+      const response = await fetch(
+        `/api/local-ocr/jobs?jobId=${encodeURIComponent(job.id)}`,
+        { cache: "no-store" },
+      );
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(data.error || "Local OCR status could not be read");
+      }
+      const data = (await response.json()) as { job: LocalOcrJobSummary };
+      job = data.job;
+    }
+    return job;
+  };
+
   const processImage = async (
     image: ProcessedImage,
     retryCount = 0,
@@ -156,11 +192,14 @@ export const useImageProcessor = () => {
     try {
       if (controller.signal.aborted) return false;
 
-      const imageInput = await urlToImageInput(image.originalUrl);
+      const imageInput =
+        settings.translationPipeline === "local_ocr"
+          ? { base64: "", mimeType: "image/jpeg" }
+          : await urlToImageInput(image.originalUrl);
 
       if (controller.signal.aborted) return false;
 
-      const { bubbles, usage } = await geminiService.current.translateImage(
+      const translation = await geminiService.current.translateImage(
         imageInput.base64,
         imageInput.mimeType,
         settings.targetLanguage,
@@ -168,7 +207,56 @@ export const useImageProcessor = () => {
         settings.model,
         settings.fallbackModel,
         settings.enableQualityFallback,
+        activeSeriesId,
+        image.id,
+        settings.translationPipeline || "auto",
       );
+
+      const completedTranslation =
+        translation.status === "local_ocr_pending"
+          ? await (async () => {
+              showToast(
+                `${image.fileName}: Yerel OCR kuyruğuna alındı.`,
+                "info",
+                4000,
+              );
+              return pollLocalOcrJob(translation.job, controller.signal);
+            })()
+          : null;
+      if (
+        translation.status === "local_ocr_pending" &&
+        completedTranslation?.status !== "completed"
+      ) {
+        abortControllers.current.delete(image.id);
+        if (completedTranslation?.status === "failed") {
+          throw new Error(
+            completedTranslation.error || "Local OCR fallback failed",
+          );
+        }
+        showToast(
+          `${image.fileName}: Yerel OCR işi bekliyor. Bilgisayarındaki worker açık olduğunda devam edecek.`,
+          "info",
+          7000,
+        );
+        return false;
+      }
+      const bubbles =
+        translation.status === "completed"
+          ? translation.bubbles
+          : completedTranslation?.bubbles || [];
+      const usage =
+        translation.status === "completed"
+          ? translation.usage
+          : completedTranslation?.usage;
+      if (!usage) throw new Error("Local OCR translation usage is missing");
+
+      if (translation.status === "local_ocr_pending") {
+        showToast(
+          `${image.fileName}: Yerel OCR ve metin çevirisi tamamlandı.`,
+          "success",
+          4000,
+        );
+      }
 
       if (controller.signal.aborted) return false;
 
@@ -501,7 +589,10 @@ export const useImageProcessor = () => {
       let successCount = 0;
       let deferredCount = 0;
 
-      if (settings.useGeminiBatch) {
+      if (
+        settings.useGeminiBatch &&
+        settings.translationPipeline !== "local_ocr"
+      ) {
         const result = await processAllWithGeminiBatch(pendingImages);
         successCount = result.successCount;
         deferredCount = result.deferredCount;

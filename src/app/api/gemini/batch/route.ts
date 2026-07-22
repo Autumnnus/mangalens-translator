@@ -67,6 +67,36 @@ const normalizeMimeType = (contentType: string | undefined, key: string) => {
 const emptyUsage = (model: string): UsageMetadata =>
   combineUsage([], model, false);
 
+const withVisionMetadata = (
+  usage: UsageMetadata,
+  requestedPipeline: string,
+  model: string,
+  fallbackUsed: boolean,
+  regions: number,
+): UsageMetadata => {
+  const normalizedPipeline: "auto" | "gemini_vision" =
+    requestedPipeline === "gemini_vision" ? "gemini_vision" : "auto";
+  return {
+    ...usage,
+    processing: {
+      requestedPipeline: normalizedPipeline,
+      actualPipeline: "gemini_vision",
+      detection: {
+        provider: "gemini",
+        model,
+        regions,
+      },
+      translation: {
+        provider: "gemini",
+        model,
+        inputMode: "image",
+        fallbackUsed,
+      },
+      completedAt: new Date().toISOString(),
+    },
+  };
+};
+
 const getUserSettingsAndKeys = async (userId: string) => {
   const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
   const settings = (user?.settings || {}) as Partial<TranslationSettings>;
@@ -242,6 +272,7 @@ export async function POST(request: NextRequest) {
           fallbackModel,
           prompt,
           qualityFallback: qualityFallback ? 1 : 0,
+          pipeline: settings.translationPipeline || "auto",
           imageIds: chunk.imageIds,
           status: "queued",
         })
@@ -445,7 +476,13 @@ export async function GET(request: NextRequest) {
                 results.push({
                   imageId,
                   bubbles: fallback.parsed.bubbles,
-                  usage: combineUsage(usageEntries, fallbackModel, true),
+                  usage: withVisionMetadata(
+                    combineUsage(usageEntries, fallbackModel, true),
+                    storedJob.pipeline,
+                    fallbackModel,
+                    true,
+                    fallback.parsed.bubbles.length,
+                  ),
                 });
                 fallbackSucceeded = true;
                 break;
@@ -465,7 +502,13 @@ export async function GET(request: NextRequest) {
         results.push({
           imageId,
           bubbles: primaryParsed.bubbles,
-          usage: combineUsage(usageEntries, storedJob.model, false),
+          usage: withVisionMetadata(
+            combineUsage(usageEntries, storedJob.model, false),
+            storedJob.pipeline,
+            storedJob.model,
+            false,
+            primaryParsed.bubbles.length,
+          ),
         });
       } else {
         results.push({

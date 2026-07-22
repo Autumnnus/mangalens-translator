@@ -20,6 +20,8 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       settings: {
         targetLanguage: "Turkish",
+        translationPipeline: "auto",
+        developerMode: false,
         fontSize: 24,
         fontColor: "#000000",
         backgroundColor: "#ffffff",

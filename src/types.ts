@@ -33,6 +33,36 @@ export interface UsageMetadata {
   breakdown?: UsageBreakdown[];
   modelUsed?: string;
   fallbackUsed?: boolean;
+  processing?: ProcessingMetadata;
+}
+
+export interface ProcessingMetadata {
+  requestedPipeline: "auto" | "gemini_vision" | "local_ocr";
+  actualPipeline: "gemini_vision" | "local_ocr";
+  detection: {
+    provider: "gemini" | "paddleocr";
+    model: string;
+    workerId?: string;
+    device?: string;
+    durationMs?: number;
+    regions?: number;
+    mangaOcrEnabled?: boolean;
+  };
+  translation: {
+    provider: "gemini";
+    model: string;
+    inputMode: "image" | "text";
+    fallbackUsed: boolean;
+  };
+  completedAt: string;
+}
+
+export interface LocalOcrRunMetadata {
+  engine: string;
+  device: string;
+  durationMs: number;
+  regions: number;
+  mangaOcrEnabled: boolean;
 }
 
 export interface BatchTranslationItemResult {
@@ -47,6 +77,22 @@ export interface BatchTranslationJobSummary {
   imageIds: string[];
   status: "queued" | "running" | "completed" | "failed";
   results?: BatchTranslationItemResult[];
+  error?: string;
+}
+
+export interface LocalOcrBubble {
+  id: string;
+  box_2d: [number, number, number, number];
+  original_text: string;
+  confidence: number;
+  type?: TextBubble["type"];
+}
+
+export interface LocalOcrJobSummary {
+  id: string;
+  status: "queued" | "leased" | "translating" | "completed" | "failed";
+  bubbles?: TextBubble[];
+  usage?: UsageMetadata;
   error?: string;
 }
 
@@ -106,6 +152,8 @@ export const GEMINI_MODELS: GeminiModel[] = [
 
 export interface TranslationSettings {
   targetLanguage: string;
+  translationPipeline?: "auto" | "gemini_vision" | "local_ocr";
+  developerMode?: boolean;
   fontSize: number;
   fontColor: string;
   backgroundColor: string;
@@ -163,6 +211,7 @@ export interface Series {
   author?: string;
   group?: string;
   originalTitle?: string;
+  contentMode?: "standard" | "adult_verified";
 }
 
 export interface SeriesInput {
@@ -174,6 +223,7 @@ export interface SeriesInput {
   originalTitle?: string;
   sequenceNumber?: number;
   tags?: string[];
+  contentMode?: "standard" | "adult_verified";
 }
 
 export interface ImageUpdateInput {

@@ -7,7 +7,12 @@ import {
   ThinkingLevel,
   Type,
 } from "@google/genai";
-import { TextBubble, UsageBreakdown, UsageMetadata } from "@/types";
+import {
+  LocalOcrBubble,
+  TextBubble,
+  UsageBreakdown,
+  UsageMetadata,
+} from "@/types";
 
 type RawBubble = {
   box_2d?: unknown;
@@ -37,9 +42,32 @@ export type TranslationAttempt = {
 
 export type TranslationAttemptError = Error & {
   usage?: UsageBreakdown;
+  blockReason?: string;
+  finishReason?: string;
+  safetyCategories?: string[];
+  isSafetyBlocked?: boolean;
 };
 
 const BUBBLE_TYPES = ["speech", "caption", "sfx", "label"] as const;
+
+const SAFETY_SETTINGS = [
+  {
+    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+];
 
 export const buildTranslationPrompt = (
   targetLanguage: string,
@@ -107,25 +135,125 @@ export const buildGenerationConfig = (
   thinkingConfig: modelName.startsWith("gemini-3")
     ? { thinkingLevel: ThinkingLevel.LOW }
     : { thinkingBudget: 0 },
-  safetySettings: [
-    {
-      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-      threshold: HarmBlockThreshold.BLOCK_NONE,
-    },
-    {
-      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-      threshold: HarmBlockThreshold.BLOCK_NONE,
-    },
-    {
-      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-      threshold: HarmBlockThreshold.BLOCK_NONE,
-    },
-    {
-      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-      threshold: HarmBlockThreshold.BLOCK_NONE,
-    },
-  ],
+  safetySettings: SAFETY_SETTINGS,
 });
+
+const TEXT_ONLY_RESPONSE_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    translations: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          translated_text: { type: Type.STRING },
+          type: { type: Type.STRING, enum: [...BUBBLE_TYPES] },
+          confidence: { type: Type.INTEGER },
+        },
+        required: ["id", "translated_text", "type", "confidence"],
+      },
+    },
+  },
+  required: ["translations"],
+};
+
+export const generateTextOnlyTranslation = async ({
+  apiKey,
+  modelName,
+  targetLanguage,
+  customInstructions,
+  bubbles,
+}: {
+  apiKey: string;
+  modelName: string;
+  targetLanguage: string;
+  customInstructions?: string | null;
+  bubbles: LocalOcrBubble[];
+}): Promise<{ bubbles: TextBubble[]; usage: UsageBreakdown }> => {
+  const prompt = [
+    `Translate the supplied comic OCR text into ${targetLanguage}.`,
+    "This is a transformation task. Preserve meaning, tone, names, honorifics, and reading order.",
+    "Return exactly one translation for every supplied id. Do not add or omit dialogue.",
+    customInstructions?.trim()
+      ? `Additional rules:\n${customInstructions.trim()}`
+      : "",
+    `OCR items:\n${JSON.stringify(
+      bubbles.map((bubble) => ({
+        id: bubble.id,
+        text: bubble.original_text,
+        suggested_type: bubble.type || "speech",
+      })),
+    )}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  const client = new GoogleGenAI({ apiKey });
+  const response = await client.models.generateContent({
+    model: modelName,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: TEXT_ONLY_RESPONSE_SCHEMA,
+      temperature: 0.1,
+      topP: 0.9,
+      maxOutputTokens: 8192,
+      thinkingConfig: modelName.startsWith("gemini-3")
+        ? { thinkingLevel: ThinkingLevel.LOW }
+        : { thinkingBudget: 0 },
+      safetySettings: SAFETY_SETTINGS,
+    },
+  });
+  const usage = usageFromResponse(response, modelName, "standard");
+
+  try {
+    if (!response.text) throw new Error("Gemini returned no text-only response");
+    const decoded = JSON.parse(response.text) as {
+      translations?: Array<{
+        id?: unknown;
+        translated_text?: unknown;
+        type?: unknown;
+        confidence?: unknown;
+      }>;
+    };
+    const byId = new Map(
+      (decoded.translations || []).map((item) => [String(item.id || ""), item]),
+    );
+    const translated = bubbles.map((bubble) => {
+      const item = byId.get(bubble.id);
+      const text = String(item?.translated_text || "").trim();
+      if (!text) throw new Error(`Missing translation for OCR item ${bubble.id}`);
+      const rawType = String(item?.type || bubble.type || "speech");
+      const type = BUBBLE_TYPES.includes(
+        rawType as (typeof BUBBLE_TYPES)[number],
+      )
+        ? (rawType as TextBubble["type"])
+        : "speech";
+      return {
+        box_2d: bubble.box_2d,
+        original_text: bubble.original_text,
+        translated_text: text,
+        type,
+        confidence: Math.min(
+          bubble.confidence,
+          normalizeConfidence(item?.confidence),
+        ),
+      } satisfies TextBubble;
+    });
+    return { bubbles: translated, usage };
+  } catch (error) {
+    const attemptError = new Error(
+      error instanceof Error ? error.message : "Text-only translation failed",
+    ) as TranslationAttemptError;
+    attemptError.usage = usage;
+    attemptError.blockReason = response.promptFeedback?.blockReason;
+    attemptError.finishReason = response.candidates?.[0]?.finishReason;
+    attemptError.isSafetyBlocked =
+      attemptError.blockReason === "SAFETY" ||
+      attemptError.finishReason === "SAFETY";
+    throw attemptError;
+  }
+};
 
 export const generateTranslation = async ({
   apiKey,
@@ -155,6 +283,21 @@ export const generateTranslation = async ({
   });
 
   const usage = usageFromResponse(response, modelName, billingMode);
+  const candidate = response.candidates?.[0];
+  const blockReason = response.promptFeedback?.blockReason;
+  const finishReason = candidate?.finishReason;
+  const safetyRatings = [
+    ...(response.promptFeedback?.safetyRatings || []),
+    ...(candidate?.safetyRatings || []),
+  ];
+  const safetyCategories = [
+    ...new Set(
+      safetyRatings
+        .filter((rating) => rating.blocked === true)
+        .map((rating) => String(rating.category || ""))
+        .filter(Boolean),
+    ),
+  ];
   try {
     if (!response.text) throw new Error("Gemini returned an empty response");
     return {
@@ -166,8 +309,23 @@ export const generateTranslation = async ({
       error instanceof Error ? error.message : "Gemini response could not be parsed",
     ) as TranslationAttemptError;
     attemptError.usage = usage;
+    attemptError.blockReason = blockReason;
+    attemptError.finishReason = finishReason;
+    attemptError.safetyCategories = safetyCategories;
+    attemptError.isSafetyBlocked =
+      blockReason === "SAFETY" || finishReason === "SAFETY";
     throw attemptError;
   }
+};
+
+export const isEligibleAdultSafetyError = (error: unknown) => {
+  const attempt = error as TranslationAttemptError;
+  return (
+    attempt?.isSafetyBlocked === true &&
+    (attempt.safetyCategories || []).includes(
+      HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    )
+  );
 };
 
 const clamp = (value: number, min: number, max: number) =>

@@ -26,6 +26,8 @@ export const seriesService = {
         author: s.author || undefined,
         group: s.groupName || undefined,
         originalTitle: s.originalTitle || undefined,
+        contentMode:
+          s.contentMode === "adult_verified" ? "adult_verified" : "standard",
         imageCount: Number(s.imageCount) || 0,
         completedCount: Number(s.completedCount) || 0,
         errorCount: Number(s.errorCount) || 0,

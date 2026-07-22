@@ -112,6 +112,15 @@ interface Props {
   onSettingsChange: (settings: TranslationSettings) => void;
 }
 
+type LocalOcrStatus = {
+  configured: boolean;
+  online: boolean;
+  workerId: string | null;
+  lastSeenAt: string | null;
+  queuedJobs: number;
+  activeJobs: number;
+};
+
 const SettingsModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -120,6 +129,7 @@ const SettingsModal: React.FC<Props> = ({
 }) => {
   const [localSettings, setLocalSettings] =
     useState<TranslationSettings>(settings);
+  const [ocrStatus, setOcrStatus] = useState<LocalOcrStatus | null>(null);
 
   const createApiKeyId = () =>
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -149,6 +159,29 @@ const SettingsModal: React.FC<Props> = ({
       });
     }
   }, [isOpen, settings]);
+
+  React.useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/local-ocr/status", {
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("OCR status unavailable");
+        const status = (await response.json()) as LocalOcrStatus;
+        if (active) setOcrStatus(status);
+      } catch {
+        if (active) setOcrStatus(null);
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(refresh, 5000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -273,6 +306,94 @@ const SettingsModal: React.FC<Props> = ({
               <option value="French">French</option>
               <option value="German">German</option>
             </select>
+          </div>
+
+          <div className="h-px bg-white/5"></div>
+
+          {/* Translation pipeline */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 text-primary">
+                <Cpu className="w-4 h-4" />
+                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
+                  Text Detection Pipeline
+                </label>
+              </div>
+              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    ocrStatus?.online
+                      ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]"
+                      : "bg-red-400"
+                  }`}
+                />
+                <span
+                  className={
+                    ocrStatus?.online ? "text-emerald-400" : "text-text-dark"
+                  }
+                >
+                  {ocrStatus?.online
+                    ? `OCR Online · ${ocrStatus.workerId}`
+                    : ocrStatus?.configured
+                      ? "OCR Offline"
+                      : "OCR Not Configured"}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3">
+              {[
+                {
+                  id: "auto" as const,
+                  title: "Automatic",
+                  description:
+                    "Use Gemini Vision first and switch to local OCR only for an eligible safety rejection.",
+                },
+                {
+                  id: "gemini_vision" as const,
+                  title: "Gemini Vision",
+                  description:
+                    "Always send the page to Gemini for detection and translation; local OCR is disabled.",
+                },
+                {
+                  id: "local_ocr" as const,
+                  title: "Local OCR + Text Translation",
+                  description:
+                    "Detect text on your Mac, then send only OCR text to Gemini. Uses fewer input tokens but still needs a working Gemini key.",
+                },
+              ].map((pipeline) => {
+                const selected =
+                  (localSettings.translationPipeline || "auto") === pipeline.id;
+                return (
+                  <button
+                    key={pipeline.id}
+                    type="button"
+                    onClick={() =>
+                      handleChange("translationPipeline", pipeline.id)
+                    }
+                    className={`rounded-2xl border p-4 text-left transition-all ${
+                      selected
+                        ? "border-primary bg-primary/10 ring-1 ring-primary"
+                        : "border-border-muted bg-surface-raised/50 hover:border-primary/30"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-text-main">
+                        {pipeline.title}
+                      </p>
+                      {pipeline.id === "local_ocr" && (
+                        <span className="text-[9px] font-black uppercase text-text-dark">
+                          Queue {ocrStatus?.queuedJobs || 0} · Active {ocrStatus?.activeJobs || 0}
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 text-[9px] font-bold leading-relaxed text-text-dark/70">
+                      {pipeline.description}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="h-px bg-white/5"></div>
@@ -499,8 +620,17 @@ const SettingsModal: React.FC<Props> = ({
                   description:
                     "Detect the light bubble interior locally before covering and typesetting.",
                 },
+                {
+                  key: "developerMode" as const,
+                  title: "Developer Mode",
+                  description:
+                    "Show per-image pipeline, OCR engine, translation model, timing, token, and fallback metadata cards.",
+                },
               ].map((option) => {
-                const enabled = localSettings[option.key] !== false;
+                const enabled =
+                  option.key === "developerMode"
+                    ? localSettings.developerMode === true
+                    : localSettings[option.key] !== false;
                 return (
                   <button
                     key={option.key}

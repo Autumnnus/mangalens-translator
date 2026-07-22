@@ -11,16 +11,24 @@ import {
   buildTranslationPrompt,
   combineUsage,
   generateTranslation,
+  isEligibleAdultSafetyError,
   ParsedTranslation,
   TranslationAttemptError,
 } from "@/server/gemini/translation";
+import { isLocalOcrConfigured } from "@/server/local-ocr/auth";
+import {
+  buildLocalOcrRequestKey,
+  enqueueLocalOcrJob,
+  findLocalOcrJobByRequestKey,
+  toLocalOcrSummary,
+} from "@/server/local-ocr/jobs";
 import { TranslationSettings, UsageBreakdown } from "@/types";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 const requestSchema = z.object({
-  base64Image: z.string().min(1),
+  base64Image: z.string().default(""),
   mimeType: z
     .enum(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"])
     .default("image/jpeg"),
@@ -29,6 +37,11 @@ const requestSchema = z.object({
   fallbackModelName: z.string().min(1).optional(),
   enableQualityFallback: z.boolean().optional(),
   customInstructions: z.string().optional(),
+  seriesId: z.string().uuid().optional(),
+  imageId: z.string().uuid().optional(),
+  translationPipeline: z
+    .enum(["auto", "gemini_vision", "local_ocr"])
+    .default("auto"),
 });
 
 export async function POST(request: Request) {
@@ -37,6 +50,7 @@ export async function POST(request: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const userId = session.user.id;
 
     const parsedRequest = requestSchema.safeParse(await request.json());
     if (!parsedRequest.success) {
@@ -48,7 +62,7 @@ export async function POST(request: Request) {
 
     const payload = parsedRequest.data;
     const user = await db.query.users.findFirst({
-      where: eq(users.id, session.user.id),
+      where: eq(users.id, userId),
     });
     const settings = (user?.settings || {}) as Partial<TranslationSettings>;
     const activeKeys = resolveActiveGeminiKeys(settings);
@@ -64,12 +78,119 @@ export async function POST(request: Request) {
       );
     }
 
+    const primaryModel = payload.modelName;
+    const fallbackModel =
+      payload.fallbackModelName || settings.fallbackModel || "gemini-2.5-flash";
+    const fallbackEnabled =
+      payload.enableQualityFallback ?? settings.enableQualityFallback ?? true;
+    const localRequestKey =
+      payload.translationPipeline !== "gemini_vision" &&
+      payload.seriesId &&
+      payload.imageId &&
+      isLocalOcrConfigured()
+        ? buildLocalOcrRequestKey({
+            userId,
+            imageId: payload.imageId,
+            targetLanguage: payload.targetLanguage,
+            customInstructions: payload.customInstructions,
+            primaryModel,
+            fallbackModel,
+            pipeline: payload.translationPipeline,
+          })
+        : null;
+
+    if (localRequestKey) {
+      const existingLocalJob = await findLocalOcrJobByRequestKey(
+        localRequestKey,
+        userId,
+      );
+      if (existingLocalJob?.status === "completed") {
+        return NextResponse.json({
+          bubbles: existingLocalJob.translatedBubbles || [],
+          usage: existingLocalJob.usage,
+        });
+      }
+      if (
+        existingLocalJob &&
+        ["queued", "leased", "translating"].includes(existingLocalJob.status)
+      ) {
+        return NextResponse.json(
+          { localOcrJob: toLocalOcrSummary(existingLocalJob) },
+          { status: 202 },
+        );
+      }
+      if (existingLocalJob?.status === "failed") {
+        const requeued = await enqueueLocalOcrJob({
+          requestKey: localRequestKey,
+          userId,
+          seriesId: payload.seriesId!,
+          imageId: payload.imageId!,
+          targetLanguage: payload.targetLanguage,
+          customInstructions: payload.customInstructions,
+          primaryModel,
+          fallbackModel,
+          initialUsage:
+            existingLocalJob.initialUsage ||
+            combineUsage([], primaryModel, false),
+          pipeline: payload.translationPipeline,
+        });
+        if (requeued) {
+          return NextResponse.json(
+            { localOcrJob: toLocalOcrSummary(requeued) },
+            { status: 202 },
+          );
+        }
+      }
+    }
+
+    if (payload.translationPipeline === "local_ocr") {
+      if (!localRequestKey || !payload.seriesId || !payload.imageId) {
+        return NextResponse.json(
+          {
+            error:
+              "Local OCR is not configured or the image identifiers are missing.",
+          },
+          { status: 503 },
+        );
+      }
+      const job = await enqueueLocalOcrJob({
+        requestKey: localRequestKey,
+        userId,
+        seriesId: payload.seriesId,
+        imageId: payload.imageId,
+        targetLanguage: payload.targetLanguage,
+        customInstructions: payload.customInstructions,
+        primaryModel,
+        fallbackModel,
+        initialUsage: combineUsage([], primaryModel, false),
+        requireVerifiedAdult: false,
+        pipeline: "local_ocr",
+      });
+      if (!job) {
+        return NextResponse.json(
+          { error: "The selected image is not available for local OCR." },
+          { status: 404 },
+        );
+      }
+      return NextResponse.json(
+        { localOcrJob: toLocalOcrSummary(job) },
+        { status: 202 },
+      );
+    }
+
+    if (!payload.base64Image) {
+      return NextResponse.json(
+        { error: "Image data is required for Gemini Vision." },
+        { status: 400 },
+      );
+    }
+
     const prompt = buildTranslationPrompt(
       payload.targetLanguage,
       payload.customInstructions,
     );
     const pool = getGeminiApiKeyPool({
-      poolId: session.user.id,
+      poolId: userId,
       keys: activeKeys,
     });
     const usageEntries: UsageBreakdown[] = [];
@@ -125,23 +246,66 @@ export async function POST(request: Request) {
       throw lastError || new Error("All Gemini API keys failed");
     };
 
-    const primaryModel = payload.modelName;
-    const fallbackModel =
-      payload.fallbackModelName || settings.fallbackModel || "gemini-2.5-flash";
-    const fallbackEnabled =
-      payload.enableQualityFallback ?? settings.enableQualityFallback ?? true;
-
     let result: ParsedTranslation;
     let modelUsed = primaryModel;
     let fallbackUsed = false;
 
+    const queueEligibleSafetyFailure = async (error: unknown) => {
+      if (
+        !localRequestKey ||
+        !payload.seriesId ||
+        !payload.imageId ||
+        payload.translationPipeline === "gemini_vision" ||
+        !isEligibleAdultSafetyError(error)
+      ) {
+        return null;
+      }
+      const job = await enqueueLocalOcrJob({
+        requestKey: localRequestKey,
+        userId,
+        seriesId: payload.seriesId,
+        imageId: payload.imageId,
+        targetLanguage: payload.targetLanguage,
+        customInstructions: payload.customInstructions,
+        primaryModel,
+        fallbackModel,
+        initialUsage: combineUsage(
+          usageEntries,
+          usageEntries.at(-1)?.model || primaryModel,
+          fallbackUsed ||
+            usageEntries.some((entry) => entry.model !== primaryModel),
+        ),
+        pipeline: "auto",
+      });
+      return job
+        ? NextResponse.json(
+            { localOcrJob: toLocalOcrSummary(job) },
+            { status: 202 },
+          )
+        : null;
+    };
+
     try {
       result = await runWithPool(primaryModel);
     } catch (primaryError) {
-      if (!fallbackEnabled || fallbackModel === primaryModel) throw primaryError;
-      result = await runWithPool(fallbackModel);
-      modelUsed = fallbackModel;
-      fallbackUsed = true;
+      if (!fallbackEnabled || fallbackModel === primaryModel) {
+        const queued = await queueEligibleSafetyFailure(primaryError);
+        if (queued) return queued;
+        throw primaryError;
+      }
+      try {
+        result = await runWithPool(fallbackModel);
+        modelUsed = fallbackModel;
+        fallbackUsed = true;
+      } catch (fallbackError) {
+        fallbackUsed = true;
+        const safetyError = isEligibleAdultSafetyError(fallbackError)
+          ? fallbackError
+          : primaryError;
+        const queued = await queueEligibleSafetyFailure(safetyError);
+        if (queued) return queued;
+        throw fallbackError;
+      }
     }
 
     if (
@@ -161,10 +325,25 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({
-      bubbles: result.bubbles,
-      usage: combineUsage(usageEntries, modelUsed, fallbackUsed),
-    });
+    const usage = combineUsage(usageEntries, modelUsed, fallbackUsed);
+    usage.processing = {
+      requestedPipeline: payload.translationPipeline,
+      actualPipeline: "gemini_vision",
+      detection: {
+        provider: "gemini",
+        model: modelUsed,
+        regions: result.bubbles.length,
+      },
+      translation: {
+        provider: "gemini",
+        model: modelUsed,
+        inputMode: "image",
+        fallbackUsed,
+      },
+      completedAt: new Date().toISOString(),
+    };
+
+    return NextResponse.json({ bubbles: result.bubbles, usage });
   } catch (error) {
     console.error("Gemini route error:", error);
     const statusCode = parseGeminiStatusCode(error);
@@ -175,7 +354,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unknown server error",
+        error:
+          (error as TranslationAttemptError)?.isSafetyBlocked === true
+            ? "Gemini blocked this page for safety. Local OCR fallback requires a configured worker and a verified-adult series."
+            : error instanceof Error
+              ? error.message
+              : "Unknown server error",
+        reason:
+          (error as TranslationAttemptError)?.blockReason ||
+          (error as TranslationAttemptError)?.finishReason,
         retryAfterMs,
       },
       {

@@ -63,6 +63,10 @@ MangaLens Translator is an advanced, AI-powered web application designed to tran
 
     NEXT_PUBLIC_GEMINI_API_KEY=
     AUTH_SECRET="your-secret-key"
+
+    # Optional: enables the outbound local OCR worker for verified-adult series.
+    # Generate with: openssl rand -hex 32
+    LOCAL_OCR_WORKER_TOKEN=
    ```
 
 4. **Start Infrastructure (DB & MinIO)**
@@ -93,6 +97,18 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Local OCR Worker
+
+When Gemini returns an adjustable sexually-explicit safety block for a series
+explicitly marked `adult_verified`, a Mac can perform OCR without exposing a
+local port. The worker polls this server over outbound HTTPS and returns only
+the detected text regions; text-only translation and image rendering remain in
+the existing application flow.
+
+See [local-worker/README.md](local-worker/README.md) for installation and token
+configuration. The fallback remains disabled when `LOCAL_OCR_WORKER_TOKEN` is
+unset, for standard series, and for `OTHER` or `PROHIBITED_CONTENT` blocks.
 
 ### Default Login Credentials
 

@@ -6,6 +6,7 @@ import {
 } from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
 import { ProcessedImage } from "../../types";
 import { resolveImageUrl } from "../../utils/url";
@@ -34,6 +35,10 @@ const ImageCard: React.FC<Props> = ({
   const { setSelectedImage, showToast } = useUIStore();
   const { confirm } = useConfirm();
   const { processImage, cancelProcessing } = useImageProcessor();
+  const developerMode = useSettingsStore(
+    (state) => state.settings.developerMode === true,
+  );
+  const processing = image.usage?.processing;
 
   const [isLoaded, setIsLoaded] = React.useState(false);
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
@@ -218,6 +223,100 @@ const ImageCard: React.FC<Props> = ({
             <option value="error">error</option>
           </select>
         </div>
+
+        {developerMode && image.usage && (
+          <div className="mb-4 rounded-2xl border border-primary/20 bg-background/40 p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="text-[9px] font-black uppercase tracking-[0.18em] text-primary">
+                Developer Metadata
+              </span>
+              <span className="text-[8px] font-mono text-text-dark">
+                {processing?.completedAt
+                  ? new Date(processing.completedAt).toLocaleTimeString()
+                  : "Legacy result"}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                {
+                  label: "Pipeline",
+                  value: processing
+                    ? `${processing.requestedPipeline} → ${processing.actualPipeline}`
+                    : "unknown",
+                },
+                {
+                  label: "Detection",
+                  value: processing
+                    ? `${processing.detection.provider} · ${processing.detection.model}`
+                    : image.usage.modelUsed || "unknown",
+                },
+                {
+                  label: "Translation",
+                  value: processing
+                    ? `${processing.translation.model} · ${processing.translation.inputMode}`
+                    : image.usage.modelUsed || "unknown",
+                },
+                {
+                  label: "Usage",
+                  value: `${image.usage.promptTokenCount.toLocaleString()} in · ${image.usage.candidatesTokenCount.toLocaleString()} out`,
+                },
+                {
+                  label: "OCR Runtime",
+                  value: processing?.detection.durationMs
+                    ? `${processing.detection.durationMs.toLocaleString()} ms · ${processing.detection.regions || 0} regions`
+                    : "Not applicable",
+                },
+                {
+                  label: "Fallback",
+                  value: processing?.translation.fallbackUsed
+                    ? "Used"
+                    : "Not used",
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="min-w-0 rounded-xl border border-border-muted bg-surface-raised/60 p-2.5"
+                >
+                  <p className="text-[7px] font-black uppercase tracking-widest text-text-dark">
+                    {item.label}
+                  </p>
+                  <p
+                    className="mt-1 break-words text-[9px] font-bold leading-tight text-text-main"
+                    title={item.value}
+                  >
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {(image.usage.breakdown || []).length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                <p className="text-[7px] font-black uppercase tracking-widest text-text-dark">
+                  Model Calls
+                </p>
+                {(image.usage.breakdown || []).map((call, callIndex) => (
+                  <div
+                    key={`${call.model}-${callIndex}`}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border-muted bg-surface-raised/40 px-2 py-1.5 text-[8px]"
+                  >
+                    <span className="truncate font-bold text-text-main">
+                      {call.model}
+                    </span>
+                    <span className="shrink-0 font-mono text-text-dark">
+                      {call.billingMode} · {call.totalTokenCount.toLocaleString()} tok
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {processing?.detection.workerId && (
+              <p className="mt-2 truncate text-[8px] font-mono text-text-dark">
+                Worker: {processing.detection.workerId} · Device:{" "}
+                {processing.detection.device || "unknown"}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <button
