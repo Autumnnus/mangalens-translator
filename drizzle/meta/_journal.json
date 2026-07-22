@@ -15,6 +15,20 @@
       "when": 1773410528585,
       "tag": "0001_tranquil_la_nuit",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784737072360,
+      "tag": "0002_melted_wild_child",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784737366465,
+      "tag": "0003_productive_leo",
+      "breakpoints": true
     }
   ]
 }

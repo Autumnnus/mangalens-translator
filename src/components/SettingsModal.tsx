@@ -479,6 +479,63 @@ const SettingsModal: React.FC<Props> = ({
 
           {/* Batch Processing Controls */}
           <div className="space-y-6 bg-surface-raised/30 p-5 rounded-[2rem] border border-border-muted">
+            <div className="grid grid-cols-1 gap-3">
+              {[
+                {
+                  key: "useGeminiBatch" as const,
+                  title: "Gemini Batch Pricing",
+                  description:
+                    "Paid Gemini tiers use 50%-priced asynchronous jobs; unsupported/free tiers fall back safely.",
+                },
+                {
+                  key: "enableQualityFallback" as const,
+                  title: "Quality Fallback",
+                  description:
+                    "Uncertain Flash-Lite pages are retried with Gemini 2.5 Flash.",
+                },
+                {
+                  key: "refineBubbles" as const,
+                  title: "Local Bubble Refinement",
+                  description:
+                    "Detect the light bubble interior locally before covering and typesetting.",
+                },
+              ].map((option) => {
+                const enabled = localSettings[option.key] !== false;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => handleChange(option.key, !enabled)}
+                    className={`flex items-center justify-between gap-4 rounded-2xl border p-4 text-left transition-all ${
+                      enabled
+                        ? "border-primary/50 bg-primary/10"
+                        : "border-border-muted bg-surface-raised/40"
+                    }`}
+                  >
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-text-main">
+                        {option.title}
+                      </p>
+                      <p className="mt-1 text-[9px] font-bold leading-relaxed text-text-dark/70">
+                        {option.description}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-lg px-2 py-1 text-[9px] font-black uppercase ${
+                        enabled
+                          ? "bg-primary text-white"
+                          : "bg-surface text-text-dark"
+                      }`}
+                    >
+                      {enabled ? "On" : "Off"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="h-px bg-white/5"></div>
+
             {/* Batch Size */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">

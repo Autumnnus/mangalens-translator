@@ -3,9 +3,12 @@ import { TextBubble, UsageMetadata } from "../types";
 export class GeminiService {
   async translateImage(
     base64Image: string,
+    mimeType: string,
     targetLanguage: string,
     customInstructions?: string,
-    modelName: string = "gemini-1.5-flash",
+    modelName: string = "gemini-2.5-flash-lite",
+    fallbackModelName: string = "gemini-2.5-flash",
+    enableQualityFallback: boolean = true,
   ): Promise<{ bubbles: TextBubble[]; usage: UsageMetadata }> {
     try {
       const response = await fetch("/api/gemini/translate", {
@@ -15,9 +18,12 @@ export class GeminiService {
         },
         body: JSON.stringify({
           base64Image,
+          mimeType,
           targetLanguage,
           customInstructions,
           modelName,
+          fallbackModelName,
+          enableQualityFallback,
         }),
       });
 

@@ -1,14 +1,53 @@
 export interface TextBubble {
   box_2d: [number, number, number, number];
+  /** Refined client-side layout box. `box_2d` remains the model output. */
+  render_box_2d?: [number, number, number, number];
   original_text: string;
   translated_text: string;
-  type: "dialogue" | "environmental";
+  type:
+    | "speech"
+    | "caption"
+    | "sfx"
+    | "label"
+    | "dialogue"
+    | "environmental";
+  /** Model confidence normalized to 0-1. Used only as a fallback signal. */
+  confidence?: number;
+  refinement?: "local-mask" | "model-box";
+}
+
+export interface UsageBreakdown {
+  model: string;
+  billingMode: "standard" | "batch";
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+  thoughtsTokenCount: number;
+  totalTokenCount: number;
 }
 
 export interface UsageMetadata {
   promptTokenCount: number;
   candidatesTokenCount: number;
+  thoughtsTokenCount: number;
   totalTokenCount: number;
+  breakdown?: UsageBreakdown[];
+  modelUsed?: string;
+  fallbackUsed?: boolean;
+}
+
+export interface BatchTranslationItemResult {
+  imageId: string;
+  bubbles: TextBubble[];
+  usage: UsageMetadata;
+  error?: string;
+}
+
+export interface BatchTranslationJobSummary {
+  id: string;
+  imageIds: string[];
+  status: "queued" | "running" | "completed" | "failed";
+  results?: BatchTranslationItemResult[];
+  error?: string;
 }
 
 export interface ProcessedImage {
@@ -30,22 +69,37 @@ export interface GeminiModel {
   name: string;
   inputCostPer1k: number;
   outputCostPer1k: number;
+  batchInputCostPer1k: number;
+  batchOutputCostPer1k: number;
   description: string;
 }
 
 export const GEMINI_MODELS: GeminiModel[] = [
   {
+    id: "gemini-2.5-flash-lite",
+    name: "Gemini 2.5 Flash-Lite",
+    inputCostPer1k: 0.0001,
+    outputCostPer1k: 0.0004,
+    batchInputCostPer1k: 0.00005,
+    batchOutputCostPer1k: 0.0002,
+    description: "Default low-cost model for high-volume comic translation.",
+  },
+  {
     id: "gemini-2.5-flash",
     name: "Gemini 2.5 Flash",
     inputCostPer1k: 0.0003,
     outputCostPer1k: 0.0025,
-    description: "Fast model for daily translation workflows.",
+    batchInputCostPer1k: 0.00015,
+    batchOutputCostPer1k: 0.00125,
+    description: "Quality fallback for uncertain pages.",
   },
   {
     id: "gemini-3-flash-preview",
     name: "Gemini 3 Flash (Preview)",
     inputCostPer1k: 0.0005,
     outputCostPer1k: 0.003,
+    batchInputCostPer1k: 0.00025,
+    batchOutputCostPer1k: 0.0015,
     description: "Preview model with stronger output quality.",
   },
 ];
@@ -58,6 +112,10 @@ export interface TranslationSettings {
   strokeColor: string;
   customInstructions?: string;
   model: string;
+  fallbackModel?: string;
+  enableQualityFallback?: boolean;
+  useGeminiBatch?: boolean;
+  refineBubbles?: boolean;
   batchSize: number;
   batchDelay: number;
   useCustomApiKey?: boolean;

@@ -8,7 +8,7 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { TranslationSettings } from "../types";
+import { BatchTranslationItemResult, TranslationSettings } from "../types";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -89,6 +89,28 @@ export const images = pgTable("images", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const translationJobs = pgTable("translation_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  seriesId: uuid("series_id")
+    .notNull()
+    .references(() => series.id, { onDelete: "cascade" }),
+  providerJobName: text("provider_job_name").notNull(),
+  keyFingerprint: text("key_fingerprint").notNull(),
+  model: text("model").notNull(),
+  fallbackModel: text("fallback_model").notNull(),
+  prompt: text("prompt").notNull(),
+  qualityFallback: integer("quality_fallback").default(1).notNull(),
+  imageIds: jsonb("image_ids").$type<string[]>().notNull(),
+  status: text("status").default("queued").notNull(),
+  results: jsonb("results").$type<BatchTranslationItemResult[]>(),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relations
 export const seriesRelations = relations(series, ({ one, many }) => ({
   user: one(users, {
@@ -124,3 +146,17 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
     relationName: "category_hierarchy",
   }),
 }));
+
+export const translationJobsRelations = relations(
+  translationJobs,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [translationJobs.userId],
+      references: [users.id],
+    }),
+    series: one(series, {
+      fields: [translationJobs.seriesId],
+      references: [series.id],
+    }),
+  }),
+);

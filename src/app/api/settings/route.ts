@@ -12,12 +12,27 @@ const DEFAULT_SETTINGS: TranslationSettings = {
   backgroundColor: "#ffffff",
   strokeColor: "#ffffff",
   customInstructions: "",
-  model: "gemini-2.5-flash",
+  model: "gemini-2.5-flash-lite",
+  fallbackModel: "gemini-2.5-flash",
+  enableQualityFallback: true,
+  useGeminiBatch: true,
+  refineBubbles: true,
   batchSize: 10,
   batchDelay: 0,
   useCustomApiKey: false,
   customApiKeyPool: "",
   namedApiKeys: [],
+};
+
+const withTranslationPipelineDefaults = (
+  stored?: Partial<TranslationSettings> | null,
+): TranslationSettings => {
+  const isLegacy = !!stored && stored.enableQualityFallback === undefined;
+  return {
+    ...DEFAULT_SETTINGS,
+    ...stored,
+    model: isLegacy ? "gemini-2.5-flash-lite" : stored?.model || DEFAULT_SETTINGS.model,
+  };
 };
 
 export async function GET() {
@@ -32,7 +47,9 @@ export async function GET() {
     });
 
     return NextResponse.json(
-      (user?.settings as TranslationSettings | null) || DEFAULT_SETTINGS,
+      withTranslationPipelineDefaults(
+        user?.settings as Partial<TranslationSettings> | null,
+      ),
     );
   } catch (error) {
     return NextResponse.json(
@@ -58,8 +75,9 @@ export async function PATCH(req: NextRequest) {
       where: eq(users.id, session.user.id),
     });
 
-    const currentSettings =
-      (user?.settings as TranslationSettings | null) || DEFAULT_SETTINGS;
+    const currentSettings = withTranslationPipelineDefaults(
+      user?.settings as Partial<TranslationSettings> | null,
+    );
 
     const updatedSettings: TranslationSettings = {
       ...currentSettings,
