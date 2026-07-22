@@ -8,7 +8,7 @@ import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useUIStore } from "../../stores/useUIStore";
 import { ProcessedImage } from "../../types";
-import { resolveImageUrl } from "../../utils/url";
+import { getThumbnailUrl } from "../../utils/url";
 
 interface Props {
   image: ProcessedImage;
@@ -27,7 +27,9 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   const { processImage, cancelProcessing } = useImageProcessor();
 
   const [isLoaded, setIsLoaded] = React.useState(false);
-  const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
+  const previewKey = image.translatedKey || image.originalKey;
+  const previewUrl = image.translatedUrl || image.originalUrl;
+  const displayUrl = getThumbnailUrl(previewKey, previewUrl, 512, 72);
 
   const moveImage = (dir: "up" | "down" | "jump", targetPos?: number) => {
     onMove(dir, targetPos);
@@ -113,6 +115,7 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
           alt={image.fileName}
           className={`w-full h-full object-cover transition-all duration-500 ${isLoaded ? "opacity-100 scale-100 group-hover:scale-110" : "opacity-0 scale-105"}`}
           loading="lazy"
+          decoding="async"
           onLoad={() => setIsLoaded(true)}
         />
 

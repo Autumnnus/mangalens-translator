@@ -132,7 +132,11 @@ const UncategorizedSection: React.FC<UncategorizedSectionProps> = ({
                       )}
                     </div>
                   )}
-                <SeriesIcon images={s.images} previewImages={s.previewImages} />
+                <SeriesIcon
+                  images={s.images}
+                  previewImages={s.previewImages}
+                  previewImageKeys={s.previewImageKeys}
+                />
                 {!isSidebarCollapsed && (
                   <>
                     <div className="flex-1 min-w-0">

@@ -1,10 +1,9 @@
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { images, series } from "@/db/schema";
-import { getObjectBuffer } from "@/lib/storage";
+import { getOrCreateThumbnail } from "@/server/images/thumbnails";
 import { and, eq, or } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
-import sharp from "sharp";
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
@@ -35,8 +34,12 @@ export async function GET(req: NextRequest) {
       90,
     );
 
-    const allowed = await db
-      .select({ id: images.id })
+    const imageRows = await db
+      .select({
+        id: images.id,
+        originalKey: images.originalKey,
+        translatedKey: images.translatedKey,
+      })
       .from(images)
       .innerJoin(series, eq(images.seriesId, series.id))
       .where(
@@ -47,20 +50,31 @@ export async function GET(req: NextRequest) {
       )
       .limit(1);
 
-    if (allowed.length === 0) {
+    if (imageRows.length === 0) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const source = await getObjectBuffer(key);
-    if (!source) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const image = imageRows[0];
+    let cacheHit = false;
+    let thumbnail: Buffer;
+    try {
+      const result = await getOrCreateThumbnail(key, width, quality);
+      thumbnail = result.thumbnail;
+      cacheHit = result.cacheHit;
+    } catch (error) {
+      if (key !== image.translatedKey || !image.originalKey) {
+        throw error;
+      }
+
+      console.warn(
+        `Translated thumbnail failed for ${key}; falling back to original image.`,
+        error,
+      );
+      const result = await getOrCreateThumbnail(image.originalKey, width, quality);
+      thumbnail = result.thumbnail;
+      cacheHit = result.cacheHit;
     }
 
-    const thumbnail = await sharp(source)
-      .rotate()
-      .resize({ width, fit: "inside", withoutEnlargement: true })
-      .webp({ quality })
-      .toBuffer();
     const body = new Blob([Uint8Array.from(thumbnail).buffer], {
       type: "image/webp",
     });
@@ -71,6 +85,7 @@ export async function GET(req: NextRequest) {
         "Content-Type": "image/webp",
         "Cache-Control":
           "private, max-age=86400, stale-while-revalidate=604800",
+        "X-Thumbnail-Cache": cacheHit ? "HIT" : "MISS",
       },
     });
   } catch (error) {

@@ -10,7 +10,8 @@
     "drizzle": "npx drizzle-kit generate",
     "drizzle-push": "npx drizzle-kit push",
     "patch": "npm version patch --no-git-tag-version",
-    "seed": "npx tsx scripts/seed.ts"
+    "seed": "npx tsx scripts/seed.ts",
+    "warm-thumbnails": "npx tsx scripts/warm-thumbnails.ts"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.1",
@@ -33,6 +34,7 @@
     "react-dom": "^19.2.3",
     "react-image-gallery": "^1.4.0",
     "react-zoom-pan-pinch": "^3.7.0",
+    "sharp": "^0.34.5",
     "swiper": "^12.0.3",
     "zod": "^4.3.5",
     "zustand": "^5.0.9"

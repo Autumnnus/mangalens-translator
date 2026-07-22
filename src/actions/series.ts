@@ -5,7 +5,7 @@ import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { getObjectSize, getPresignedViewUrl } from "@/lib/storage";
 import { SeriesInput } from "@/types";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 export async function backfillMissingImageSizes(userId: string) {
   const staleImages = await db
@@ -121,46 +121,55 @@ export async function fetchSeriesAction(
     .where(eq(schema.series.userId, id));
   const total = Number(allSeriesCount[0]?.count || 0);
 
-  const itemsWithPreviews = await Promise.all(
-    seriesData.map(async (item) => {
-      const allImages = await db.query.images.findMany({
-        where: eq(schema.images.seriesId, item.id),
-        orderBy: schema.images.sequenceNumber,
-        columns: {
-          originalKey: true,
-          translatedKey: true,
-        },
-      });
+  const seriesIds = seriesData.map((item) => item.id);
+  const previewKeysBySeries = new Map<string, string[]>();
 
-      const previewKeys: string[] = [];
-      if (allImages.length > 0) {
-        previewKeys.push(
-          allImages[0].translatedKey || allImages[0].originalKey,
-        );
-        if (allImages.length > 2) {
-          const mid = Math.floor(allImages.length / 2);
-          previewKeys.push(
-            allImages[mid].translatedKey || allImages[mid].originalKey,
-          );
-        }
-        if (allImages.length > 1) {
-          previewKeys.push(
-            allImages[allImages.length - 1].translatedKey ||
-              allImages[allImages.length - 1].originalKey,
-          );
-        }
+  if (seriesIds.length > 0) {
+    const rankedImages = db
+      .select({
+        seriesId: schema.images.seriesId,
+        previewKey:
+          sql<string>`COALESCE(NULLIF(${schema.images.translatedKey}, ''), ${schema.images.originalKey})`.as(
+            "preview_key",
+          ),
+        rowNumber:
+          sql<number>`ROW_NUMBER() OVER (PARTITION BY ${schema.images.seriesId} ORDER BY ${schema.images.sequenceNumber} ASC, ${schema.images.createdAt} ASC)`.as(
+            "row_number",
+          ),
+        imageCount:
+          sql<number>`COUNT(*) OVER (PARTITION BY ${schema.images.seriesId})`.as(
+            "image_count",
+          ),
+      })
+      .from(schema.images)
+      .where(inArray(schema.images.seriesId, seriesIds))
+      .as("ranked_images");
+
+    const previewRows = await db
+      .select({
+        seriesId: rankedImages.seriesId,
+        previewKey: rankedImages.previewKey,
+        rowNumber: rankedImages.rowNumber,
+      })
+      .from(rankedImages)
+      .where(
+        sql`${rankedImages.rowNumber} IN (1, ${rankedImages.imageCount}, FLOOR(${rankedImages.imageCount}::numeric / 2)::bigint + 1)`,
+      )
+      .orderBy(rankedImages.seriesId, rankedImages.rowNumber);
+
+    for (const row of previewRows) {
+      const keys = previewKeysBySeries.get(row.seriesId) || [];
+      if (row.previewKey && !keys.includes(row.previewKey)) {
+        keys.push(row.previewKey);
       }
+      previewKeysBySeries.set(row.seriesId, keys);
+    }
+  }
 
-      const previewUrls = await Promise.all(
-        previewKeys.map((key) => getPresignedViewUrl(key)),
-      );
-
-      return {
-        ...item,
-        previewImages: previewUrls,
-      };
-    }),
-  );
+  const itemsWithPreviews = seriesData.map((item) => ({
+    ...item,
+    previewImageKeys: previewKeysBySeries.get(item.id) || [],
+  }));
 
   return { items: itemsWithPreviews, total };
 }

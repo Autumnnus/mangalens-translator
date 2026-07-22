@@ -1,5 +1,6 @@
 import React from "react";
 import { ProcessedImage } from "../../types";
+import { getThumbnailUrl } from "../../utils/url";
 
 interface ListViewItemProps {
   image: ProcessedImage;
@@ -7,6 +8,9 @@ interface ListViewItemProps {
 }
 
 const ListViewItem: React.FC<ListViewItemProps> = ({ image, onSelect }) => {
+  const previewKey = image.translatedKey || image.originalKey;
+  const previewUrl = image.translatedUrl || image.originalUrl;
+
   return (
     <div
       onClick={() => onSelect(image.id)}
@@ -14,9 +18,11 @@ const ListViewItem: React.FC<ListViewItemProps> = ({ image, onSelect }) => {
     >
       <div className="w-12 h-16 bg-slate-900 rounded-md overflow-hidden shrink-0">
         <img
-          src={image.originalUrl}
+          src={getThumbnailUrl(previewKey, previewUrl, 160, 66)}
           className="w-full h-full object-cover"
           alt={image.fileName}
+          loading="lazy"
+          decoding="async"
         />
       </div>
       <div className="flex-1 min-w-0">

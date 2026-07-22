@@ -174,6 +174,20 @@ export const getObjectSize = async (key: string) => {
   return response.ContentLength || 0;
 };
 
+export const getObjectMetadata = async (key: string) => {
+  const command = new HeadObjectCommand({
+    Bucket: S3_BUCKET,
+    Key: key,
+  });
+  const response = await s3Client.send(command);
+  return {
+    eTag: response.ETag?.replaceAll('"', ""),
+    size: response.ContentLength || 0,
+    contentType: response.ContentType,
+    lastModified: response.LastModified,
+  };
+};
+
 export const uploadObject = async (
   key: string,
   body: Uint8Array | Buffer | string,

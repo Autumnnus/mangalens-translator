@@ -258,6 +258,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                   <SeriesIcon
                     images={s.images}
                     previewImages={s.previewImages}
+                    previewImageKeys={s.previewImageKeys}
                   />
                   {!isSidebarCollapsed && (
                     <>

@@ -98,6 +98,7 @@ export interface Series {
   tags: string[];
   images: ProcessedImage[];
   previewImages?: string[];
+  previewImageKeys?: string[];
   imageCount?: number;
   completedCount?: number;
   storageBytes?: number;
