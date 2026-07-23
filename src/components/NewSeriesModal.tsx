@@ -9,7 +9,12 @@ interface Props {
     name: string,
     category: string,
     categoryId?: string,
-    metadata?: { author?: string; group?: string; originalTitle?: string },
+    metadata?: {
+      author?: string;
+      group?: string;
+      originalTitle?: string;
+      contentMode?: "standard" | "adult_verified";
+    },
   ) => void;
   existingTitles: string[];
   categories: Category[];
@@ -20,6 +25,7 @@ interface Props {
   initialAuthor?: string;
   initialGroup?: string;
   initialOriginalTitle?: string;
+  initialContentMode?: "standard" | "adult_verified";
 }
 
 const NewSeriesModal: React.FC<Props> = ({
@@ -35,6 +41,7 @@ const NewSeriesModal: React.FC<Props> = ({
   initialAuthor = "",
   initialGroup = "",
   initialOriginalTitle = "",
+  initialContentMode = "standard",
 }) => {
   const [name, setName] = useState(initialName);
   const [categoryName, setCategoryName] = useState(
@@ -44,6 +51,9 @@ const NewSeriesModal: React.FC<Props> = ({
   const [author, setAuthor] = useState(initialAuthor);
   const [group, setGroup] = useState(initialGroup);
   const [originalTitle, setOriginalTitle] = useState(initialOriginalTitle);
+  const [adultVerified, setAdultVerified] = useState(
+    initialContentMode === "adult_verified",
+  );
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [error, setError] = useState("");
@@ -69,6 +79,7 @@ const NewSeriesModal: React.FC<Props> = ({
       setAuthor(initialAuthor);
       setGroup(initialGroup);
       setOriginalTitle(initialOriginalTitle);
+      setAdultVerified(initialContentMode === "adult_verified");
     }
   }, [
     isOpen,
@@ -78,6 +89,7 @@ const NewSeriesModal: React.FC<Props> = ({
     initialAuthor,
     initialGroup,
     initialOriginalTitle,
+    initialContentMode,
     categories,
   ]);
 
@@ -101,6 +113,7 @@ const NewSeriesModal: React.FC<Props> = ({
       author,
       group,
       originalTitle,
+      contentMode: adultVerified ? "adult_verified" : "standard",
     });
     setName("");
     onClose();
@@ -148,7 +161,7 @@ const NewSeriesModal: React.FC<Props> = ({
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
       <div
-        className="w-full max-w-md bg-surface border border-border-muted rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 glass-card"
+        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-border-muted bg-surface shadow-2xl animate-in zoom-in-95 duration-200 glass-card"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-6 border-b border-border-muted flex items-center justify-between bg-surface-raised/50">
@@ -223,6 +236,25 @@ const NewSeriesModal: React.FC<Props> = ({
               className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
             />
           </div>
+
+          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-border-muted bg-surface-raised/40 p-4">
+            <input
+              type="checkbox"
+              checked={adultVerified}
+              onChange={(event) => setAdultVerified(event.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-primary"
+            />
+            <span>
+              <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-text-main">
+                Verified adult content
+              </span>
+              <span className="mt-1 block text-[9px] font-bold leading-relaxed text-text-dark/70">
+                I confirm that the sexual content in this series depicts adults
+                only. Local OCR safety fallback stays disabled for standard or
+                age-ambiguous content.
+              </span>
+            </span>
+          </label>
 
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">

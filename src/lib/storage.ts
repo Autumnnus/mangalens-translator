@@ -101,14 +101,20 @@ export const listObjects = async (prefix?: string): Promise<_Object[]> => {
   return allContents;
 };
 
-export const getObjectBuffer = async (key: string) => {
+export const getObjectData = async (key: string) => {
   const command = new GetObjectCommand({
     Bucket: S3_BUCKET,
     Key: key,
   });
   const response = await s3Client.send(command);
-  return response.Body?.transformToByteArray();
+  return {
+    bytes: await response.Body?.transformToByteArray(),
+    contentType: response.ContentType,
+  };
 };
+
+export const getObjectBuffer = async (key: string) =>
+  (await getObjectData(key)).bytes;
 
 export const uploadObject = async (
   key: string,

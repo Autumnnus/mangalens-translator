@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { ProcessedImage } from "../../types";
 import { getThumbnailUrl } from "../../utils/url";
 
@@ -10,8 +10,7 @@ interface ThumbnailStripProps {
   totalThumbPages: number;
   comparisonMode: string;
   onSelectIndex: (index: number) => void;
-  onPagePrev: () => void;
-  onPageNext: () => void;
+  onPageChange: (page: number) => void;
   isOverlay?: boolean;
 }
 
@@ -23,10 +22,28 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
   totalThumbPages,
   comparisonMode,
   onSelectIndex,
-  onPagePrev,
-  onPageNext,
+  onPageChange,
   isOverlay = false,
 }) => {
+  const [pageInput, setPageInput] = useState(String(currentThumbPage + 1));
+
+  useEffect(() => {
+    setPageInput(String(currentThumbPage + 1));
+  }, [currentThumbPage]);
+
+  const changePage = (page: number) => {
+    onPageChange(Math.min(Math.max(page, 1), totalThumbPages));
+  };
+
+  const commitPageInput = () => {
+    const page = Number.parseInt(pageInput, 10);
+    if (Number.isNaN(page)) {
+      setPageInput(String(currentThumbPage + 1));
+      return;
+    }
+    changePage(page);
+  };
+
   return (
     <div
       className={`${isOverlay ? "p-2 sm:p-5 mx-0 sm:mx-6 mb-0 sm:mb-6 rounded-none sm:rounded-[3rem] border-x-0 sm:border-x" : "mt-3 sm:mt-10 p-3 sm:p-5 mx-2 sm:mx-6 mb-4 sm:mb-6 rounded-3xl border"} bg-surface/30 backdrop-blur-2xl border-border-muted shrink-0 transition-all glass-card ${
@@ -37,9 +54,23 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
     >
       <div className="flex items-center justify-between mb-2 sm:mb-4 px-2">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-black text-primary uppercase tracking-widest bg-primary/10 px-3 py-1 rounded-full border border-primary/20">
-            {currentThumbPage + 1}/{totalThumbPages}
-          </span>
+          <label className="flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-primary">
+            <span className="hidden sm:inline">Grid</span>
+            <input
+              type="number"
+              min={1}
+              max={totalThumbPages}
+              value={pageInput}
+              onChange={(event) => setPageInput(event.target.value)}
+              onBlur={commitPageInput}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              className="w-6 bg-transparent text-center text-[10px] font-black text-primary outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              aria-label={`Go to thumbnail grid page, between 1 and ${totalThumbPages}`}
+            />
+            <span>/{totalThumbPages}</span>
+          </label>
           {!isOverlay && (
             <span className="text-[9px] font-black text-text-dark uppercase tracking-widest hidden sm:inline ml-2">
               {images.length} Pages
@@ -49,14 +80,14 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
 
         <div className="flex items-center gap-1.5">
           <button
-            onClick={onPagePrev}
+            onClick={() => changePage(currentThumbPage)}
             disabled={currentThumbPage === 0}
             className="w-8 h-8 sm:w-10 sm:h-10 bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main rounded-xl disabled:opacity-30 transition-all border border-border-muted flex items-center justify-center active:scale-95"
           >
             <i className="fas fa-chevron-left text-[10px]"></i>
           </button>
           <button
-            onClick={onPageNext}
+            onClick={() => changePage(currentThumbPage + 2)}
             disabled={currentThumbPage >= totalThumbPages - 1}
             className="w-8 h-8 sm:w-10 sm:h-10 bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main rounded-xl disabled:opacity-30 transition-all border border-border-muted flex items-center justify-center active:scale-95"
           >

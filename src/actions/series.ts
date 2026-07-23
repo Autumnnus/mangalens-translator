@@ -29,10 +29,15 @@ export async function fetchSeriesAction(
       author: schema.series.author,
       groupName: schema.series.groupName,
       originalTitle: schema.series.originalTitle,
+      contentMode: schema.series.contentMode,
       imageCount: sql<number>`count(${schema.images.id})`.as("image_count"),
       completedCount:
         sql<number>`count(CASE WHEN ${schema.images.status} = 'completed' THEN 1 END)`.as(
           "completed_count",
+        ),
+      errorCount:
+        sql<number>`count(CASE WHEN ${schema.images.status} = 'error' THEN 1 END)`.as(
+          "error_count",
         ),
     })
     .from(schema.series)

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Series } from "../../types";
 
 interface ReaderHeaderProps {
@@ -7,6 +7,10 @@ interface ReaderHeaderProps {
   imageCount: number;
   toggleViewOnly: () => void;
   setCurrentImageIndex: (index: number) => void;
+  currentPageGroup: number;
+  totalPageGroups: number;
+  pageGroupSize: number;
+  onPageGroupChange: (group: number) => void;
   comparisonMode: string;
   setComparisonMode: (
     mode: "grid" | "slider" | "side-by-side" | "toggle",
@@ -20,10 +24,33 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
   imageCount,
   toggleViewOnly,
   setCurrentImageIndex,
+  currentPageGroup,
+  totalPageGroups,
+  pageGroupSize,
+  onPageGroupChange,
   comparisonMode,
   setComparisonMode,
   children,
 }) => {
+  const [pageInput, setPageInput] = useState(String(currentImageIndex + 1));
+
+  useEffect(() => {
+    setPageInput(String(currentImageIndex + 1));
+  }, [currentImageIndex]);
+
+  const goToPage = (page: number) => {
+    setCurrentImageIndex(Math.min(Math.max(page - 1, 0), imageCount - 1));
+  };
+
+  const commitPageInput = () => {
+    const page = Number.parseInt(pageInput, 10);
+    if (Number.isNaN(page)) {
+      setPageInput(String(currentImageIndex + 1));
+      return;
+    }
+    goToPage(page);
+  };
+
   return (
     <div className="bg-surface/40 backdrop-blur-xl p-3 sm:p-6 rounded-2xl sm:rounded-[3rem] border border-border-muted flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 mb-4 sm:mb-8 shadow-premium shrink-0 mx-2 sm:mx-6 mt-2 sm:mt-6 overflow-hidden relative glass-card">
       <div className="absolute top-0 left-0 w-32 h-full bg-primary/5 blur-3xl rounded-full -translate-x-1/2 pointer-events-none" />
@@ -54,24 +81,88 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
       </div>
 
       <div className="flex items-center justify-between md:justify-end gap-3 sm:gap-4 z-10">
-        <div className="hidden sm:flex items-center bg-surface-raised/50 rounded-2xl p-1.5 border border-border-muted glass">
+        <div className="flex items-center bg-surface-raised/50 rounded-2xl p-1.5 border border-border-muted glass gap-1">
           <button
-            onClick={() => setCurrentImageIndex(0)}
+            onClick={() => goToPage(1)}
             disabled={currentImageIndex === 0}
-            className="p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
+            className="hidden sm:flex p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
             title="First Page"
           >
             <i className="fas fa-step-backward text-[10px] sm:text-xs"></i>
           </button>
           <button
-            onClick={() => setCurrentImageIndex(imageCount - 1)}
+            onClick={() => goToPage(currentImageIndex)}
+            disabled={currentImageIndex === 0}
+            className="p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
+            title="Previous Page"
+          >
+            <i className="fas fa-chevron-left text-[10px] sm:text-xs"></i>
+          </button>
+          <label className="flex items-center gap-1 px-1 text-[9px] font-black text-text-muted">
+            <span className="sr-only">Go to page</span>
+            <input
+              type="number"
+              min={1}
+              max={imageCount}
+              value={pageInput}
+              onChange={(event) => setPageInput(event.target.value)}
+              onBlur={commitPageInput}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              className="w-8 bg-transparent text-center text-[10px] font-black text-text-main outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+              aria-label={`Go to page, between 1 and ${imageCount}`}
+            />
+            <span className="text-text-dark">/ {imageCount}</span>
+          </label>
+          <button
+            onClick={() => goToPage(currentImageIndex + 2)}
             disabled={currentImageIndex === imageCount - 1}
             className="p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
+            title="Next Page"
+          >
+            <i className="fas fa-chevron-right text-[10px] sm:text-xs"></i>
+          </button>
+          <button
+            onClick={() => goToPage(imageCount)}
+            disabled={currentImageIndex === imageCount - 1}
+            className="hidden sm:flex p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
             title="Last Page"
           >
             <i className="fas fa-step-forward text-[10px] sm:text-xs"></i>
           </button>
         </div>
+
+        {totalPageGroups > 1 && (
+          <div className="flex items-center gap-1 rounded-2xl border border-border-muted bg-surface-raised/50 p-1.5 glass">
+            <button
+              type="button"
+              onClick={() => onPageGroupChange(currentPageGroup - 1)}
+              disabled={currentPageGroup === 1}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-text-muted transition-all hover:bg-surface-elevated hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
+              title="Previous page group"
+              aria-label="Previous page group"
+            >
+              <i className="fas fa-angle-double-left text-xs" />
+            </button>
+            <span
+              className="min-w-14 px-1 text-center text-[9px] font-black uppercase tracking-wider text-text-muted"
+              title={`Pages ${(currentPageGroup - 1) * pageGroupSize + 1}–${Math.min(currentPageGroup * pageGroupSize, imageCount)}`}
+            >
+              Set {currentPageGroup}/{totalPageGroups}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPageGroupChange(currentPageGroup + 1)}
+              disabled={currentPageGroup === totalPageGroups}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-text-muted transition-all hover:bg-surface-elevated hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
+              title="Next page group"
+              aria-label="Next page group"
+            >
+              <i className="fas fa-angle-double-right text-xs" />
+            </button>
+          </div>
+        )}
 
         <div className="flex items-center bg-surface-raised/50 rounded-2xl p-1.5 border border-border-muted glass gap-1.5">
           <button
@@ -86,13 +177,13 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
             <i className="fas fa-th text-[10px] sm:text-xs"></i>
           </button>
           <button
-            onClick={() => setComparisonMode("slider")}
+            onClick={() => setComparisonMode("toggle")}
             className={`p-2 sm:p-2.5 rounded-xl transition-all ${
               comparisonMode !== "grid"
                 ? "bg-primary text-white shadow-glow"
                 : "text-text-muted hover:text-text-main hover:bg-surface-elevated"
             }`}
-            title="Single View"
+            title="Single View (Toggle comparison)"
           >
             <i className="fas fa-image text-[10px] sm:text-xs"></i>
           </button>

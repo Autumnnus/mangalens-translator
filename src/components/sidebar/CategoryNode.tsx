@@ -24,6 +24,8 @@ interface CategoryNodeProps {
   ) => void;
   onAddSubcategory: (parentId: string) => void;
   onMoveSeriesUpDown?: (id: string, direction: "up" | "down") => void;
+  forceExpanded?: boolean;
+  hideEmptyCategories?: boolean;
 }
 
 const CategoryNode: React.FC<CategoryNodeProps> = ({
@@ -44,11 +46,22 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
   onMoveCategory,
   onAddSubcategory,
   onMoveSeriesUpDown,
+  forceExpanded = false,
+  hideEmptyCategories = false,
 }) => {
-  const isCollapsed = collapsedCategories.has(category.id);
+  const isCollapsed = forceExpanded ? false : collapsedCategories.has(category.id);
+
+  const categoryHasVisibleSeries = (categoryId: string): boolean => {
+    if (series.some((item) => item.categoryId === categoryId)) return true;
+    return allCategories
+      .filter((item) => item.parentId === categoryId)
+      .some((child) => categoryHasVisibleSeries(child.id));
+  };
 
   const childrenCategories = allCategories.filter(
-    (c) => c.parentId === category.id,
+    (item) =>
+      item.parentId === category.id &&
+      (!hideEmptyCategories || categoryHasVisibleSeries(item.id)),
   );
 
   const directSeries = series.filter((s) => s.categoryId === category.id);
@@ -128,6 +141,8 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
             draggable={!isViewOnly}
             onDragStart={(e) => handleDragStart(e, "category", category.id)}
             className="flex-1 flex items-center gap-2 overflow-hidden text-left"
+            aria-expanded={!isCollapsed}
+            title={`${isCollapsed ? "Expand" : "Collapse"} ${category.name}`}
           >
             <i
               className={`fas fa-chevron-${
@@ -198,16 +213,16 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
               onMoveSeries={onMoveSeries}
               onMoveCategory={onMoveCategory}
               onAddSubcategory={onAddSubcategory}
-              onMoveSeriesUpDown={onMoveSeriesUpDown}
-            />
+                onMoveSeriesUpDown={onMoveSeriesUpDown}
+                forceExpanded={forceExpanded}
+                hideEmptyCategories={hideEmptyCategories}
+              />
           ))}
 
           <div
             className={`space-y-1 pb-1 ${!isSidebarCollapsed ? "pr-2" : ""}`}
           >
-            {directSeries
-              .sort((a, b) => (a.sequenceNumber || 0) - (b.sequenceNumber || 0))
-              .map((s, index) => (
+            {directSeries.map((s, index) => (
                 <div
                   key={s.id}
                   draggable={!isViewOnly}
@@ -216,6 +231,17 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                     onSelect(s.id);
                     closeMobileSidebar();
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onSelect(s.id);
+                      closeMobileSidebar();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-current={activeId === s.id ? "page" : undefined}
+                  title={isSidebarCollapsed ? s.name : undefined}
                   style={{
                     paddingLeft: !isSidebarCollapsed
                       ? `${(depth + 1) * 16 + 16}px`
@@ -258,6 +284,8 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                   <SeriesIcon
                     images={s.images}
                     previewImages={s.previewImages}
+                    seriesName={s.name}
+                    imageCount={s.imageCount}
                   />
                   {!isSidebarCollapsed && (
                     <>
@@ -268,7 +296,12 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
                           {s.name}
                         </p>
                         <p className="text-[10px] text-text-dark font-bold">
-                          {s.imageCount ?? s.images.length} pages
+                          {s.completedCount || 0}/{s.imageCount ?? s.images.length} translated
+                          {(s.errorCount || 0) > 0 && (
+                            <span className="ml-1 text-red-400/90">
+                              ({s.errorCount} error{s.errorCount === 1 ? "" : "s"})
+                            </span>
+                          )}
                         </p>
                       </div>
                       {!isViewOnly && (

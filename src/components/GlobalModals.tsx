@@ -86,14 +86,19 @@ const GlobalModals: React.FC = () => {
   const { close: closeConfirmModal } = useConfirm();
 
   const [modalCompareMode, setModalCompareMode] =
-    React.useState<ViewMode>("slider");
+    React.useState<ViewMode>("toggle");
 
   const handleConfirmSeries = useCallback(
     async (
       name: string,
       _categoryName: string,
       categoryId?: string,
-      metadata?: { author?: string; group?: string; originalTitle?: string },
+      metadata?: {
+        author?: string;
+        group?: string;
+        originalTitle?: string;
+        contentMode?: "standard" | "adult_verified";
+      },
     ): Promise<void> => {
       const seriesInput: SeriesInput = {
         name,
@@ -103,6 +108,7 @@ const GlobalModals: React.FC = () => {
         author: metadata?.author,
         groupName: metadata?.group,
         originalTitle: metadata?.originalTitle,
+        contentMode: metadata?.contentMode || "standard",
       };
 
       if (editingSeriesId) {
@@ -199,6 +205,11 @@ const GlobalModals: React.FC = () => {
           editingSeriesId
             ? seriesItems.find((s) => s.id === editingSeriesId)?.originalTitle
             : ""
+        }
+        initialContentMode={
+          editingSeriesId
+            ? seriesItems.find((s) => s.id === editingSeriesId)?.contentMode
+            : "standard"
         }
       />
 

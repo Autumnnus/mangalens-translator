@@ -1,14 +1,99 @@
 export interface TextBubble {
   box_2d: [number, number, number, number];
+  /** Refined client-side layout box. `box_2d` remains the model output. */
+  render_box_2d?: [number, number, number, number];
   original_text: string;
   translated_text: string;
-  type: "dialogue" | "environmental";
+  type:
+    | "speech"
+    | "caption"
+    | "sfx"
+    | "label"
+    | "dialogue"
+    | "environmental";
+  /** Model confidence normalized to 0-1. Used only as a fallback signal. */
+  confidence?: number;
+  refinement?: "local-mask" | "model-box";
+}
+
+export interface UsageBreakdown {
+  model: string;
+  billingMode: "standard" | "batch";
+  promptTokenCount: number;
+  candidatesTokenCount: number;
+  thoughtsTokenCount: number;
+  totalTokenCount: number;
 }
 
 export interface UsageMetadata {
   promptTokenCount: number;
   candidatesTokenCount: number;
+  thoughtsTokenCount: number;
   totalTokenCount: number;
+  breakdown?: UsageBreakdown[];
+  modelUsed?: string;
+  fallbackUsed?: boolean;
+  processing?: ProcessingMetadata;
+}
+
+export interface ProcessingMetadata {
+  requestedPipeline: "auto" | "gemini_vision" | "local_ocr";
+  actualPipeline: "gemini_vision" | "local_ocr";
+  detection: {
+    provider: "gemini" | "paddleocr";
+    model: string;
+    workerId?: string;
+    device?: string;
+    durationMs?: number;
+    regions?: number;
+    mangaOcrEnabled?: boolean;
+  };
+  translation: {
+    provider: "gemini";
+    model: string;
+    inputMode: "image" | "text";
+    fallbackUsed: boolean;
+  };
+  completedAt: string;
+}
+
+export interface LocalOcrRunMetadata {
+  engine: string;
+  device: string;
+  durationMs: number;
+  regions: number;
+  mangaOcrEnabled: boolean;
+}
+
+export interface BatchTranslationItemResult {
+  imageId: string;
+  bubbles: TextBubble[];
+  usage: UsageMetadata;
+  error?: string;
+}
+
+export interface BatchTranslationJobSummary {
+  id: string;
+  imageIds: string[];
+  status: "queued" | "running" | "completed" | "failed";
+  results?: BatchTranslationItemResult[];
+  error?: string;
+}
+
+export interface LocalOcrBubble {
+  id: string;
+  box_2d: [number, number, number, number];
+  original_text: string;
+  confidence: number;
+  type?: TextBubble["type"];
+}
+
+export interface LocalOcrJobSummary {
+  id: string;
+  status: "queued" | "leased" | "translating" | "completed" | "failed";
+  bubbles?: TextBubble[];
+  usage?: UsageMetadata;
+  error?: string;
 }
 
 export interface ProcessedImage {
@@ -30,34 +115,55 @@ export interface GeminiModel {
   name: string;
   inputCostPer1k: number;
   outputCostPer1k: number;
+  batchInputCostPer1k: number;
+  batchOutputCostPer1k: number;
   description: string;
 }
 
 export const GEMINI_MODELS: GeminiModel[] = [
   {
+    id: "gemini-2.5-flash-lite",
+    name: "Gemini 2.5 Flash-Lite",
+    inputCostPer1k: 0.0001,
+    outputCostPer1k: 0.0004,
+    batchInputCostPer1k: 0.00005,
+    batchOutputCostPer1k: 0.0002,
+    description: "Default low-cost model for high-volume comic translation.",
+  },
+  {
     id: "gemini-2.5-flash",
     name: "Gemini 2.5 Flash",
     inputCostPer1k: 0.0003,
     outputCostPer1k: 0.0025,
-    description: "Fast model for daily translation workflows.",
+    batchInputCostPer1k: 0.00015,
+    batchOutputCostPer1k: 0.00125,
+    description: "Quality fallback for uncertain pages.",
   },
   {
     id: "gemini-3-flash-preview",
     name: "Gemini 3 Flash (Preview)",
     inputCostPer1k: 0.0005,
     outputCostPer1k: 0.003,
+    batchInputCostPer1k: 0.00025,
+    batchOutputCostPer1k: 0.0015,
     description: "Preview model with stronger output quality.",
   },
 ];
 
 export interface TranslationSettings {
   targetLanguage: string;
+  translationPipeline?: "auto" | "gemini_vision" | "local_ocr";
+  developerMode?: boolean;
   fontSize: number;
   fontColor: string;
   backgroundColor: string;
   strokeColor: string;
   customInstructions?: string;
   model: string;
+  fallbackModel?: string;
+  enableQualityFallback?: boolean;
+  useGeminiBatch?: boolean;
+  refineBubbles?: boolean;
   batchSize: number;
   batchDelay: number;
   useCustomApiKey?: boolean;
@@ -98,12 +204,14 @@ export interface Series {
   previewImages?: string[];
   imageCount?: number;
   completedCount?: number;
+  errorCount?: number;
   sequenceNumber: number;
   createdAt: number;
   updatedAt: number;
   author?: string;
   group?: string;
   originalTitle?: string;
+  contentMode?: "standard" | "adult_verified";
 }
 
 export interface SeriesInput {
@@ -115,6 +223,7 @@ export interface SeriesInput {
   originalTitle?: string;
   sequenceNumber?: number;
   tags?: string[];
+  contentMode?: "standard" | "adult_verified";
 }
 
 export interface ImageUpdateInput {

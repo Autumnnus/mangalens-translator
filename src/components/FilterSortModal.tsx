@@ -19,7 +19,7 @@ export interface FilterSortOptions {
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  availableCategories: string[];
+  availableCategories: { id: string; name: string }[];
   currentFilters: FilterSortOptions;
   onApply: (filters: FilterSortOptions) => void;
 }
@@ -96,23 +96,23 @@ const FilterSortModal: React.FC<Props> = ({
             <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar pr-2">
               {availableCategories.map((cat) => (
                 <label
-                  key={cat}
+                  key={cat.id}
                   className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-raised cursor-pointer transition-all border border-transparent hover:border-border-muted group"
                 >
                   <input
                     type="checkbox"
-                    checked={filters.categories.includes(cat)}
+                    checked={filters.categories.includes(cat.id)}
                     onChange={(e) => {
                       if (e.target.checked) {
                         setFilters({
                           ...filters,
-                          categories: [...filters.categories, cat],
+                          categories: [...filters.categories, cat.id],
                         });
                       } else {
                         setFilters({
                           ...filters,
                           categories: filters.categories.filter(
-                            (c) => c !== cat,
+                            (categoryId) => categoryId !== cat.id,
                           ),
                         });
                       }
@@ -120,7 +120,7 @@ const FilterSortModal: React.FC<Props> = ({
                     className="w-4 h-4 rounded border-border-muted accent-primary cursor-pointer"
                   />
                   <span className="text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
-                    {cat}
+                    {cat.name}
                   </span>
                 </label>
               ))}

@@ -8,7 +8,14 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
-import { TranslationSettings } from "../types";
+import {
+  BatchTranslationItemResult,
+  LocalOcrBubble,
+  LocalOcrRunMetadata,
+  TextBubble,
+  TranslationSettings,
+  UsageMetadata,
+} from "../types";
 
 export const users = pgTable("users", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -70,6 +77,7 @@ export const series = pgTable("series", {
   updatedAt: timestamp("updated_at").defaultNow(),
   // Legacy/Fallback string fields if strict relation not possible during migration (but we are starting fresh)
   categoryName: text("category_name"),
+  contentMode: text("content_mode").default("standard").notNull(),
 });
 
 export const images = pgTable("images", {
@@ -87,6 +95,66 @@ export const images = pgTable("images", {
   cost: real("cost").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const translationJobs = pgTable("translation_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  seriesId: uuid("series_id")
+    .notNull()
+    .references(() => series.id, { onDelete: "cascade" }),
+  providerJobName: text("provider_job_name").notNull(),
+  keyFingerprint: text("key_fingerprint").notNull(),
+  model: text("model").notNull(),
+  fallbackModel: text("fallback_model").notNull(),
+  prompt: text("prompt").notNull(),
+  qualityFallback: integer("quality_fallback").default(1).notNull(),
+  pipeline: text("pipeline").default("auto").notNull(),
+  imageIds: jsonb("image_ids").$type<string[]>().notNull(),
+  status: text("status").default("queued").notNull(),
+  results: jsonb("results").$type<BatchTranslationItemResult[]>(),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const localOcrJobs = pgTable("local_ocr_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  requestKey: text("request_key").notNull().unique(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  seriesId: uuid("series_id")
+    .notNull()
+    .references(() => series.id, { onDelete: "cascade" }),
+  imageId: uuid("image_id")
+    .notNull()
+    .references(() => images.id, { onDelete: "cascade" }),
+  targetLanguage: text("target_language").notNull(),
+  customInstructions: text("custom_instructions"),
+  primaryModel: text("primary_model").notNull(),
+  fallbackModel: text("fallback_model").notNull(),
+  status: text("status").default("queued").notNull(),
+  leaseOwner: text("lease_owner"),
+  leaseExpiresAt: timestamp("lease_expires_at"),
+  attempts: integer("attempts").default(0).notNull(),
+  ocrBubbles: jsonb("ocr_bubbles").$type<LocalOcrBubble[]>(),
+  translatedBubbles: jsonb("translated_bubbles").$type<TextBubble[]>(),
+  usage: jsonb("usage").$type<UsageMetadata>(),
+  initialUsage: jsonb("initial_usage").$type<UsageMetadata>(),
+  pipeline: text("pipeline").default("auto").notNull(),
+  ocrMetadata: jsonb("ocr_metadata").$type<LocalOcrRunMetadata>(),
+  error: text("error"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const localOcrWorkers = pgTable("local_ocr_workers", {
+  workerId: text("worker_id").primaryKey(),
+  lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Relations
@@ -122,5 +190,34 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
   }),
   children: many(categories, {
     relationName: "category_hierarchy",
+  }),
+}));
+
+export const translationJobsRelations = relations(
+  translationJobs,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [translationJobs.userId],
+      references: [users.id],
+    }),
+    series: one(series, {
+      fields: [translationJobs.seriesId],
+      references: [series.id],
+    }),
+  }),
+);
+
+export const localOcrJobsRelations = relations(localOcrJobs, ({ one }) => ({
+  user: one(users, {
+    fields: [localOcrJobs.userId],
+    references: [users.id],
+  }),
+  series: one(series, {
+    fields: [localOcrJobs.seriesId],
+    references: [series.id],
+  }),
+  image: one(images, {
+    fields: [localOcrJobs.imageId],
+    references: [images.id],
   }),
 }));

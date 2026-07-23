@@ -1,239 +1,48 @@
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
+import {
+  isRetryableGeminiError,
+  parseGeminiStatusCode,
+  resolveActiveGeminiKeys,
+} from "@/server/gemini/keys";
 import { getGeminiApiKeyPool } from "@/server/gemini/keyPool";
 import {
-  NamedApiKey,
-  TextBubble,
-  TranslationSettings,
-  UsageMetadata,
-} from "@/types";
+  buildTranslationPrompt,
+  combineUsage,
+  generateTranslation,
+  isEligibleAdultSafetyError,
+  ParsedTranslation,
+  TranslationAttemptError,
+} from "@/server/gemini/translation";
+import { isLocalOcrConfigured } from "@/server/local-ocr/auth";
 import {
-  GoogleGenAI,
-  HarmBlockThreshold,
-  HarmCategory,
-  Type,
-} from "@google/genai";
+  buildLocalOcrRequestKey,
+  enqueueLocalOcrJob,
+  findLocalOcrJobByRequestKey,
+  toLocalOcrSummary,
+} from "@/server/local-ocr/jobs";
+import { TranslationSettings, UsageBreakdown } from "@/types";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
 const requestSchema = z.object({
-  base64Image: z.string().min(1),
+  base64Image: z.string().default(""),
+  mimeType: z
+    .enum(["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"])
+    .default("image/jpeg"),
   targetLanguage: z.string().min(1),
   modelName: z.string().min(1),
+  fallbackModelName: z.string().min(1).optional(),
+  enableQualityFallback: z.boolean().optional(),
   customInstructions: z.string().optional(),
+  seriesId: z.string().uuid().optional(),
+  imageId: z.string().uuid().optional(),
+  translationPipeline: z
+    .enum(["auto", "gemini_vision", "local_ocr"])
+    .default("auto"),
 });
-
-const parseKeyPool = (input?: string): string[] => {
-  if (!input) return [];
-
-  const values = input
-    .split(/[\n,]/g)
-    .map((key) => key.trim())
-    .filter((key) => key.length > 0);
-
-  const unique: string[] = [];
-  const seen = new Set<string>();
-
-  for (const value of values) {
-    if (!seen.has(value)) {
-      seen.add(value);
-      unique.push(value);
-    }
-  }
-
-  return unique;
-};
-
-const parseNamedKeyPool = (input?: NamedApiKey[]): string[] => {
-  if (!input || input.length === 0) return [];
-
-  const unique: string[] = [];
-  const seen = new Set<string>();
-
-  for (const item of input) {
-    if (item.enabled === false) continue;
-    const key = item.key?.trim();
-    if (!key) continue;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(key);
-    }
-  }
-
-  return unique;
-};
-
-const parseStatusCode = (error: unknown): number | null => {
-  if (!error || typeof error !== "object") return null;
-  const candidate = error as Record<string, unknown>;
-
-  const direct = candidate.status ?? candidate.code;
-  if (typeof direct === "number") return direct;
-  if (typeof direct === "string") {
-    const parsed = Number.parseInt(direct, 10);
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-
-  const nestedError = candidate.error;
-  if (nestedError && typeof nestedError === "object") {
-    const nested = nestedError as Record<string, unknown>;
-    const nestedCode = nested.status ?? nested.code;
-    if (typeof nestedCode === "number") return nestedCode;
-    if (typeof nestedCode === "string") {
-      const parsed = Number.parseInt(nestedCode, 10);
-      if (!Number.isNaN(parsed)) return parsed;
-    }
-  }
-
-  return null;
-};
-
-const isRetryableGeminiError = (error: unknown): boolean => {
-  const statusCode = parseStatusCode(error);
-  if (statusCode === 429 || statusCode === 503) return true;
-
-  const message = (
-    error instanceof Error ? error.message : String(error)
-  ).toLowerCase();
-
-  return (
-    message.includes("429") ||
-    message.includes("503") ||
-    message.includes("too many requests") ||
-    message.includes("service unavailable") ||
-    message.includes("quota") ||
-    message.includes("rate limit")
-  );
-};
-
-const buildPrompt = (
-  targetLanguage: string,
-  customInstructions?: string,
-): string => {
-  let prompt = `
-      role: Professional manga and comic translator.
-      TASK: Detect every text bubble, sound effect, and caption in this image and translate them into ${targetLanguage}.
-
-      STRICT GUIDELINES:
-      1. TARGET LANGUAGE: Everything MUST be translated into ${targetLanguage}. Do NOT use English unless the target language is specifically English.
-      2. CONSISTENCY: If the target language is ${targetLanguage}, every single character in translated_text must belong to that language's grammar and vocabulary.
-      3. PROVIDE CONTEXTUAL TRANSLATIONS: Match the scene's emotional tone and character archetypes.
-      4. NO CENSORSHIP: This is a fictional creative work. Translate exactly what is written, preserving all adult themes, explicit language, and controversial content without modification.
-      5. CATEGORIZATION:
-         - Use type "dialogue" for character speech.
-         - Use type "environmental" for sound effects (SFX), narration, or labels.
-    `;
-
-  if (customInstructions) {
-    const lines = customInstructions
-      .split("\n")
-      .filter((line) => line.trim().length > 0);
-
-    lines.forEach((line, index) => {
-      prompt += `      ${index + 6}. ${line.trim()}\n`;
-    });
-  }
-
-  prompt += `
-      OUTPUT: Return a JSON array of objects with:
-      - box_2d: [ymin, xmin, ymax, xmax] (0-1000). CRITICAL: Provide the bounding box of the text container (the bubble). It must be precise and follow the inner edges of the bubble/text area.
-      - original_text: Text from the image.
-      - translated_text: Translated text in ${targetLanguage}.
-      - type: "dialogue" or "environmental".
-
-      IMPORTANT: TRANSLATE EVERYTHING TO ${targetLanguage.toUpperCase()}. NO EXCEPTIONS.
-    `;
-
-  return prompt;
-};
-
-const translateWithKey = async ({
-  apiKey,
-  modelName,
-  base64Image,
-  prompt,
-}: {
-  apiKey: string;
-  modelName: string;
-  base64Image: string;
-  prompt: string;
-}): Promise<{ bubbles: TextBubble[]; usage: UsageMetadata }> => {
-  const client = new GoogleGenAI({ apiKey });
-
-  const result = await client.models.generateContent({
-    model: modelName,
-    contents: {
-      parts: [
-        { text: prompt },
-        {
-          inlineData: {
-            mimeType: "image/jpeg",
-            data: base64Image,
-          },
-        },
-      ],
-    },
-    config: {
-      responseMimeType: "application/json",
-      safetySettings: [
-        {
-          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-        {
-          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-          threshold: HarmBlockThreshold.BLOCK_NONE,
-        },
-      ],
-      temperature: 2,
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            box_2d: {
-              type: Type.ARRAY,
-              items: { type: Type.INTEGER },
-            },
-            original_text: { type: Type.STRING },
-            translated_text: { type: Type.STRING },
-            type: {
-              type: Type.STRING,
-              enum: ["dialogue", "environmental"],
-            },
-          },
-          required: ["box_2d", "original_text", "translated_text", "type"],
-        },
-      },
-    },
-  });
-
-  if (!result.text) {
-    throw new Error("No response from Gemini");
-  }
-
-  const usageMetadata = result.usageMetadata;
-  const usage: UsageMetadata = {
-    promptTokenCount: usageMetadata?.promptTokenCount || 0,
-    candidatesTokenCount: usageMetadata?.candidatesTokenCount || 0,
-    totalTokenCount: usageMetadata?.totalTokenCount || 0,
-  };
-
-  return {
-    bubbles: JSON.parse(result.text.trim()) as TextBubble[],
-    usage,
-  };
-};
 
 export async function POST(request: Request) {
   try {
@@ -241,35 +50,22 @@ export async function POST(request: Request) {
     if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const userId = session.user.id;
 
-    const json = await request.json();
-    const parsed = requestSchema.safeParse(json);
-    if (!parsed.success) {
+    const parsedRequest = requestSchema.safeParse(await request.json());
+    if (!parsedRequest.success) {
       return NextResponse.json(
         { error: "Invalid request payload" },
         { status: 400 },
       );
     }
 
-    const payload = parsed.data;
-
+    const payload = parsedRequest.data;
     const user = await db.query.users.findFirst({
-      where: eq(users.id, session.user.id),
+      where: eq(users.id, userId),
     });
-
     const settings = (user?.settings || {}) as Partial<TranslationSettings>;
-    const poolFromNamedList = parseNamedKeyPool(settings.namedApiKeys);
-    const poolFromText = parseKeyPool(settings.customApiKeyPool);
-    const basePool = poolFromNamedList.length > 0 ? poolFromNamedList : poolFromText;
-
-    const orderedPoolKeys = settings.useCustomApiKey === true ? basePool : [];
-
-    const fallbackKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY?.trim();
-    const activeKeys = settings.useCustomApiKey
-      ? orderedPoolKeys
-      : fallbackKey
-        ? [fallbackKey]
-        : [];
+    const activeKeys = resolveActiveGeminiKeys(settings);
 
     if (activeKeys.length === 0) {
       return NextResponse.json(
@@ -282,87 +78,299 @@ export async function POST(request: Request) {
       );
     }
 
-    const pool = getGeminiApiKeyPool({
-      poolId: session.user.id,
-      keys: activeKeys,
-    });
+    const primaryModel = payload.modelName;
+    const fallbackModel =
+      payload.fallbackModelName || settings.fallbackModel || "gemini-2.5-flash";
+    const fallbackEnabled =
+      payload.enableQualityFallback ?? settings.enableQualityFallback ?? true;
+    const localRequestKey =
+      payload.translationPipeline !== "gemini_vision" &&
+      payload.seriesId &&
+      payload.imageId &&
+      isLocalOcrConfigured()
+        ? buildLocalOcrRequestKey({
+            userId,
+            imageId: payload.imageId,
+            targetLanguage: payload.targetLanguage,
+            customInstructions: payload.customInstructions,
+            primaryModel,
+            fallbackModel,
+            pipeline: payload.translationPipeline,
+          })
+        : null;
 
-    const prompt = buildPrompt(payload.targetLanguage, payload.customInstructions);
-    const triedThisRequest = new Set<string>();
+    if (localRequestKey) {
+      const existingLocalJob = await findLocalOcrJobByRequestKey(
+        localRequestKey,
+        userId,
+      );
+      if (existingLocalJob?.status === "completed") {
+        return NextResponse.json({
+          bubbles: existingLocalJob.translatedBubbles || [],
+          usage: existingLocalJob.usage,
+        });
+      }
+      if (
+        existingLocalJob &&
+        ["queued", "leased", "translating"].includes(existingLocalJob.status)
+      ) {
+        return NextResponse.json(
+          { localOcrJob: toLocalOcrSummary(existingLocalJob) },
+          { status: 202 },
+        );
+      }
+      if (existingLocalJob?.status === "failed") {
+        const requeued = await enqueueLocalOcrJob({
+          requestKey: localRequestKey,
+          userId,
+          seriesId: payload.seriesId!,
+          imageId: payload.imageId!,
+          targetLanguage: payload.targetLanguage,
+          customInstructions: payload.customInstructions,
+          primaryModel,
+          fallbackModel,
+          initialUsage:
+            existingLocalJob.initialUsage ||
+            combineUsage([], primaryModel, false),
+          pipeline: payload.translationPipeline,
+        });
+        if (requeued) {
+          return NextResponse.json(
+            { localOcrJob: toLocalOcrSummary(requeued) },
+            { status: 202 },
+          );
+        }
+      }
+    }
 
-    while (triedThisRequest.size < activeKeys.length) {
-      const lease = pool.acquire({
-        modelName: payload.modelName,
-        excludeKeys: triedThisRequest,
-      });
-      if (!lease.key || !lease.release) {
-        const summary = pool.getStatusSummary(payload.modelName);
+    if (payload.translationPipeline === "local_ocr") {
+      if (!localRequestKey || !payload.seriesId || !payload.imageId) {
         return NextResponse.json(
           {
             error:
-              "All API keys are in cooldown or busy. Please retry shortly.",
-            retryAfterMs: Math.max(lease.waitMs, summary.earliestReadyInMs || 500),
+              "Local OCR is not configured or the image identifiers are missing.",
           },
-          { status: 429 },
+          { status: 503 },
         );
       }
+      const job = await enqueueLocalOcrJob({
+        requestKey: localRequestKey,
+        userId,
+        seriesId: payload.seriesId,
+        imageId: payload.imageId,
+        targetLanguage: payload.targetLanguage,
+        customInstructions: payload.customInstructions,
+        primaryModel,
+        fallbackModel,
+        initialUsage: combineUsage([], primaryModel, false),
+        requireVerifiedAdult: false,
+        pipeline: "local_ocr",
+      });
+      if (!job) {
+        return NextResponse.json(
+          { error: "The selected image is not available for local OCR." },
+          { status: 404 },
+        );
+      }
+      return NextResponse.json(
+        { localOcrJob: toLocalOcrSummary(job) },
+        { status: 202 },
+      );
+    }
 
-      const keyInUse = lease.key;
-      triedThisRequest.add(keyInUse);
+    if (!payload.base64Image) {
+      return NextResponse.json(
+        { error: "Image data is required for Gemini Vision." },
+        { status: 400 },
+      );
+    }
 
-      try {
-        const result = await translateWithKey({
-          apiKey: keyInUse,
-          modelName: payload.modelName,
-          base64Image: payload.base64Image,
-          prompt,
-        });
+    const prompt = buildTranslationPrompt(
+      payload.targetLanguage,
+      payload.customInstructions,
+    );
+    const pool = getGeminiApiKeyPool({
+      poolId: userId,
+      keys: activeKeys,
+    });
+    const usageEntries: UsageBreakdown[] = [];
 
-        pool.markSuccess(keyInUse, result.usage.totalTokenCount);
-        lease.release();
+    const runWithPool = async (modelName: string) => {
+      const triedKeys = new Set<string>();
+      let lastError: unknown = null;
 
-        return NextResponse.json(result);
-      } catch (error) {
-        lease.release();
-
-        if (isRetryableGeminiError(error)) {
-          pool.markRateLimited(keyInUse, payload.modelName);
-          continue;
+      while (triedKeys.size < activeKeys.length) {
+        const lease = pool.acquire({ modelName, excludeKeys: triedKeys });
+        if (!lease.key || !lease.release) {
+          const summary = pool.getStatusSummary(modelName);
+          const error = new Error(
+            "All API keys are in cooldown or busy. Please retry shortly.",
+          ) as Error & { status?: number; retryAfterMs?: number };
+          error.status = 429;
+          error.retryAfterMs = Math.max(
+            lease.waitMs,
+            summary.earliestReadyInMs || 500,
+          );
+          throw error;
         }
 
-        const statusCode = parseStatusCode(error);
-        const message = error instanceof Error ? error.message : String(error);
+        triedKeys.add(lease.key);
+        try {
+          const result = await generateTranslation({
+            apiKey: lease.key,
+            modelName,
+            base64Image: payload.base64Image,
+            mimeType: payload.mimeType,
+            prompt,
+          });
+          usageEntries.push(result.usage);
+          pool.markSuccess(lease.key, result.usage.totalTokenCount);
+          return result.parsed;
+        } catch (error) {
+          lastError = error;
+          const failedUsage = (error as TranslationAttemptError).usage;
+          if (failedUsage) {
+            usageEntries.push(failedUsage);
+            pool.markSuccess(lease.key, failedUsage.totalTokenCount);
+          }
+          if (isRetryableGeminiError(error)) {
+            pool.markRateLimited(lease.key, modelName);
+            continue;
+          }
+          throw error;
+        } finally {
+          lease.release();
+        }
+      }
 
-        return NextResponse.json(
-          {
-            error: message || "Gemini request failed",
-          },
-          {
-            status:
-              typeof statusCode === "number" && statusCode >= 400
-                ? statusCode
-                : 500,
-          },
+      throw lastError || new Error("All Gemini API keys failed");
+    };
+
+    let result: ParsedTranslation;
+    let modelUsed = primaryModel;
+    let fallbackUsed = false;
+
+    const queueEligibleSafetyFailure = async (error: unknown) => {
+      if (
+        !localRequestKey ||
+        !payload.seriesId ||
+        !payload.imageId ||
+        payload.translationPipeline === "gemini_vision" ||
+        !isEligibleAdultSafetyError(error)
+      ) {
+        return null;
+      }
+      const job = await enqueueLocalOcrJob({
+        requestKey: localRequestKey,
+        userId,
+        seriesId: payload.seriesId,
+        imageId: payload.imageId,
+        targetLanguage: payload.targetLanguage,
+        customInstructions: payload.customInstructions,
+        primaryModel,
+        fallbackModel,
+        initialUsage: combineUsage(
+          usageEntries,
+          usageEntries.at(-1)?.model || primaryModel,
+          fallbackUsed ||
+            usageEntries.some((entry) => entry.model !== primaryModel),
+        ),
+        pipeline: "auto",
+      });
+      return job
+        ? NextResponse.json(
+            { localOcrJob: toLocalOcrSummary(job) },
+            { status: 202 },
+          )
+        : null;
+    };
+
+    try {
+      result = await runWithPool(primaryModel);
+    } catch (primaryError) {
+      if (!fallbackEnabled || fallbackModel === primaryModel) {
+        const queued = await queueEligibleSafetyFailure(primaryError);
+        if (queued) return queued;
+        throw primaryError;
+      }
+      try {
+        result = await runWithPool(fallbackModel);
+        modelUsed = fallbackModel;
+        fallbackUsed = true;
+      } catch (fallbackError) {
+        fallbackUsed = true;
+        const safetyError = isEligibleAdultSafetyError(fallbackError)
+          ? fallbackError
+          : primaryError;
+        const queued = await queueEligibleSafetyFailure(safetyError);
+        if (queued) return queued;
+        throw fallbackError;
+      }
+    }
+
+    if (
+      fallbackEnabled &&
+      fallbackModel !== primaryModel &&
+      result.shouldFallback
+    ) {
+      try {
+        result = await runWithPool(fallbackModel);
+        modelUsed = fallbackModel;
+        fallbackUsed = true;
+      } catch (fallbackError) {
+        console.warn(
+          "Quality fallback failed; returning usable primary translation",
+          fallbackError,
         );
       }
     }
 
-    const summary = pool.getStatusSummary(payload.modelName);
+    const usage = combineUsage(usageEntries, modelUsed, fallbackUsed);
+    usage.processing = {
+      requestedPipeline: payload.translationPipeline,
+      actualPipeline: "gemini_vision",
+      detection: {
+        provider: "gemini",
+        model: modelUsed,
+        regions: result.bubbles.length,
+      },
+      translation: {
+        provider: "gemini",
+        model: modelUsed,
+        inputMode: "image",
+        fallbackUsed,
+      },
+      completedAt: new Date().toISOString(),
+    };
+
+    return NextResponse.json({ bubbles: result.bubbles, usage });
+  } catch (error) {
+    console.error("Gemini route error:", error);
+    const statusCode = parseGeminiStatusCode(error);
+    const retryAfterMs =
+      error && typeof error === "object" && "retryAfterMs" in error
+        ? Number((error as { retryAfterMs?: number }).retryAfterMs)
+        : undefined;
+
     return NextResponse.json(
       {
         error:
-          "All configured API keys are currently rate-limited. Please retry after cooldown.",
-        retryAfterMs: Math.max(summary.earliestReadyInMs || 0, 500),
+          (error as TranslationAttemptError)?.isSafetyBlocked === true
+            ? "Gemini blocked this page for safety. Local OCR fallback requires a configured worker and a verified-adult series."
+            : error instanceof Error
+              ? error.message
+              : "Unknown server error",
+        reason:
+          (error as TranslationAttemptError)?.blockReason ||
+          (error as TranslationAttemptError)?.finishReason,
+        retryAfterMs,
       },
-      { status: 429 },
-    );
-  } catch (error) {
-    console.error("Gemini route error:", error);
-    return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unknown server error",
+        status:
+          typeof statusCode === "number" && statusCode >= 400
+            ? statusCode
+            : 500,
       },
-      { status: 500 },
     );
   }
 }

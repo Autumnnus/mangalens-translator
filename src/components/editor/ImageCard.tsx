@@ -6,6 +6,7 @@ import {
 } from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useSeriesStore } from "../../stores/useSeriesStore";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
 import { ProcessedImage } from "../../types";
 import { resolveImageUrl } from "../../utils/url";
@@ -15,9 +16,18 @@ interface Props {
   index: number;
   total: number;
   onMove: (dir: "up" | "down" | "jump", targetPos?: number) => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
 }
 
-const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
+const ImageCard: React.FC<Props> = ({
+  image,
+  index,
+  total,
+  onMove,
+  isSelected = false,
+  onToggleSelect,
+}) => {
   const { activeSeriesId } = useSeriesStore();
   const { mutate: deleteImage } = useDeleteImageMutation();
   const { mutateAsync: setImageStatus, isPending: isStatusUpdating } =
@@ -25,6 +35,10 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   const { setSelectedImage, showToast } = useUIStore();
   const { confirm } = useConfirm();
   const { processImage, cancelProcessing } = useImageProcessor();
+  const developerMode = useSettingsStore(
+    (state) => state.settings.developerMode === true,
+  );
+  const processing = image.usage?.processing;
 
   const [isLoaded, setIsLoaded] = React.useState(false);
   const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
@@ -36,29 +50,21 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   const [sequenceInput, setSequenceInput] = React.useState(
     String(image.sequenceNumber),
   );
-  const [isUpdatingSequence, setIsUpdatingSequence] = React.useState(false);
 
   React.useEffect(() => {
     setSequenceInput(String(image.sequenceNumber));
   }, [image.sequenceNumber]);
 
-  React.useEffect(() => {
+  const commitSequence = () => {
     const val = parseInt(sequenceInput);
 
     if (isNaN(val) || val === image.sequenceNumber) {
-      setIsUpdatingSequence(false);
+      setSequenceInput(String(image.sequenceNumber));
       return;
     }
 
-    setIsUpdatingSequence(true);
-    const timer = setTimeout(() => {
-      moveImage("jump", val);
-
-      setIsUpdatingSequence(false);
-    }, 3000);
-
-    return () => clearTimeout(timer);
-  }, [sequenceInput, image.sequenceNumber]);
+    moveImage("jump", val);
+  };
 
   const handleRemove = () => {
     confirm({
@@ -98,7 +104,11 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
   };
 
   return (
-    <div className="glass-card rounded-[2rem] overflow-hidden group transition-all duration-500 hover:scale-[1.02] active:scale-[0.98]">
+    <div
+      className={`glass-card rounded-[2rem] overflow-hidden group transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] ${
+        isSelected ? "ring-2 ring-primary border-primary/70 shadow-glow" : ""
+      }`}
+    >
       <div
         className="relative aspect-[2/3] bg-black/40 group-hover:bg-black/20 transition-colors cursor-pointer overflow-hidden"
         onClick={() => setSelectedImage(image)}
@@ -116,8 +126,31 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
           onLoad={() => setIsLoaded(true)}
         />
 
+        {onToggleSelect && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onToggleSelect();
+            }}
+            aria-label={`${isSelected ? "Unselect" : "Select"} ${image.fileName}`}
+            aria-pressed={isSelected}
+            className={`absolute left-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-xl border backdrop-blur-md transition-all ${
+              isSelected
+                ? "border-primary bg-primary text-white shadow-glow"
+                : "border-border-muted bg-background/75 text-text-muted hover:border-primary/70 hover:text-primary"
+            }`}
+          >
+            <i className={`fas ${isSelected ? "fa-check" : "fa-square"} text-xs`} />
+          </button>
+        )}
+
         {/* Status Overlay */}
-        <div className="absolute top-4 left-4 flex flex-col gap-2">
+        <div
+          className={`absolute top-4 flex flex-col gap-2 ${
+            onToggleSelect ? "left-16" : "left-4"
+          }`}
+        >
           <div
             className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest backdrop-blur-md border shadow-lg transition-colors ${
               image.status === "completed"
@@ -191,6 +224,100 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
           </select>
         </div>
 
+        {developerMode && image.usage && (
+          <div className="mb-4 rounded-2xl border border-primary/20 bg-background/40 p-3">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="text-[9px] font-black uppercase tracking-[0.18em] text-primary">
+                Developer Metadata
+              </span>
+              <span className="text-[8px] font-mono text-text-dark">
+                {processing?.completedAt
+                  ? new Date(processing.completedAt).toLocaleTimeString()
+                  : "Legacy result"}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                {
+                  label: "Pipeline",
+                  value: processing
+                    ? `${processing.requestedPipeline} → ${processing.actualPipeline}`
+                    : "unknown",
+                },
+                {
+                  label: "Detection",
+                  value: processing
+                    ? `${processing.detection.provider} · ${processing.detection.model}`
+                    : image.usage.modelUsed || "unknown",
+                },
+                {
+                  label: "Translation",
+                  value: processing
+                    ? `${processing.translation.model} · ${processing.translation.inputMode}`
+                    : image.usage.modelUsed || "unknown",
+                },
+                {
+                  label: "Usage",
+                  value: `${image.usage.promptTokenCount.toLocaleString()} in · ${image.usage.candidatesTokenCount.toLocaleString()} out`,
+                },
+                {
+                  label: "OCR Runtime",
+                  value: processing?.detection.durationMs
+                    ? `${processing.detection.durationMs.toLocaleString()} ms · ${processing.detection.regions || 0} regions`
+                    : "Not applicable",
+                },
+                {
+                  label: "Fallback",
+                  value: processing?.translation.fallbackUsed
+                    ? "Used"
+                    : "Not used",
+                },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  className="min-w-0 rounded-xl border border-border-muted bg-surface-raised/60 p-2.5"
+                >
+                  <p className="text-[7px] font-black uppercase tracking-widest text-text-dark">
+                    {item.label}
+                  </p>
+                  <p
+                    className="mt-1 break-words text-[9px] font-bold leading-tight text-text-main"
+                    title={item.value}
+                  >
+                    {item.value}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {(image.usage.breakdown || []).length > 0 && (
+              <div className="mt-2 space-y-1.5">
+                <p className="text-[7px] font-black uppercase tracking-widest text-text-dark">
+                  Model Calls
+                </p>
+                {(image.usage.breakdown || []).map((call, callIndex) => (
+                  <div
+                    key={`${call.model}-${callIndex}`}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-border-muted bg-surface-raised/40 px-2 py-1.5 text-[8px]"
+                  >
+                    <span className="truncate font-bold text-text-main">
+                      {call.model}
+                    </span>
+                    <span className="shrink-0 font-mono text-text-dark">
+                      {call.billingMode} · {call.totalTokenCount.toLocaleString()} tok
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {processing?.detection.workerId && (
+              <p className="mt-2 truncate text-[8px] font-mono text-text-dark">
+                Worker: {processing.detection.workerId} · Device:{" "}
+                {processing.detection.device || "unknown"}
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -250,16 +377,21 @@ const ImageCard: React.FC<Props> = ({ image, index, total, onMove }) => {
               <div className="relative">
                 <input
                   type="number"
-                  className={`w-10 bg-transparent text-center text-xs font-black text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 rounded-lg py-1 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${isUpdatingSequence ? "opacity-50" : ""}`}
+                  min={1}
+                  max={total}
+                  className="w-10 bg-transparent text-center text-xs font-black text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 rounded-lg py-1 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   value={sequenceInput}
                   onChange={(e) => setSequenceInput(e.target.value)}
                   onFocus={(e) => e.target.select()}
+                  onBlur={commitSequence}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                    if (event.key === "Escape") {
+                      setSequenceInput(String(image.sequenceNumber));
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
-                {isUpdatingSequence && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <i className="fas fa-circle-notch fa-spin text-primary text-[10px]"></i>
-                  </div>
-                )}
               </div>
             </div>
 

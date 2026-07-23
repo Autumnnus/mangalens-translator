@@ -162,6 +162,7 @@ const translateWithKey = async ({
     usage: {
       promptTokenCount: result.usageMetadata?.promptTokenCount || 0,
       candidatesTokenCount: result.usageMetadata?.candidatesTokenCount || 0,
+      thoughtsTokenCount: result.usageMetadata?.thoughtsTokenCount || 0,
       totalTokenCount: result.usageMetadata?.totalTokenCount || 0,
     } as UsageMetadata,
   };
@@ -241,7 +242,7 @@ export async function processTranslateAll(seriesId: string, userId: string) {
       .where(eq(images.id, img.id));
 
     try {
-      const modelName = settings.model || "gemini-2.5-flash";
+      const modelName = settings.model || "gemini-2.5-flash-lite";
       const triedThisImage = new Set<string>();
       let translated = false;
 

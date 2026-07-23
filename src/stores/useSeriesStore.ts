@@ -158,6 +158,7 @@ export const useSeriesStore = create<SeriesState>((set, get) => ({
         originalTitle: s.originalTitle || undefined,
         imageCount: Number(s.imageCount) || 0,
         completedCount: Number(s.completedCount) || 0,
+        errorCount: Number(s.errorCount) || 0,
         previewImages: s.previewImages || [],
         images: [], // Images are now lazy loaded
       }));
