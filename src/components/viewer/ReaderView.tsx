@@ -50,6 +50,7 @@ const ReaderView: React.FC = () => {
   const thumbnailsPerPage = 20;
   const currentThumbPage = Math.floor(currentImageIndex / thumbnailsPerPage);
   const totalThumbPages = Math.ceil(images.length / thumbnailsPerPage);
+  const currentPageGroup = currentThumbPage + 1;
 
   const currentThumbSet = useMemo(() => {
     const start = currentThumbPage * thumbnailsPerPage;
@@ -140,6 +141,10 @@ const ReaderView: React.FC = () => {
           imageCount={images.length}
           toggleViewOnly={toggleViewOnly}
           setCurrentImageIndex={setCurrentImageIndex}
+          currentPageGroup={currentPageGroup}
+          totalPageGroups={totalThumbPages}
+          pageGroupSize={thumbnailsPerPage}
+          onPageGroupChange={handleThumbPageChange}
           comparisonMode={comparisonMode}
           setComparisonMode={setComparisonMode}
         >

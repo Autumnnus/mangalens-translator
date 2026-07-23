@@ -7,6 +7,10 @@ interface ReaderHeaderProps {
   imageCount: number;
   toggleViewOnly: () => void;
   setCurrentImageIndex: (index: number) => void;
+  currentPageGroup: number;
+  totalPageGroups: number;
+  pageGroupSize: number;
+  onPageGroupChange: (group: number) => void;
   comparisonMode: string;
   setComparisonMode: (
     mode: "grid" | "slider" | "side-by-side" | "toggle",
@@ -20,6 +24,10 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
   imageCount,
   toggleViewOnly,
   setCurrentImageIndex,
+  currentPageGroup,
+  totalPageGroups,
+  pageGroupSize,
+  onPageGroupChange,
   comparisonMode,
   setComparisonMode,
   children,
@@ -124,6 +132,37 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
             <i className="fas fa-step-forward text-[10px] sm:text-xs"></i>
           </button>
         </div>
+
+        {totalPageGroups > 1 && (
+          <div className="flex items-center gap-1 rounded-2xl border border-border-muted bg-surface-raised/50 p-1.5 glass">
+            <button
+              type="button"
+              onClick={() => onPageGroupChange(currentPageGroup - 1)}
+              disabled={currentPageGroup === 1}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-text-muted transition-all hover:bg-surface-elevated hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
+              title="Previous page group"
+              aria-label="Previous page group"
+            >
+              <i className="fas fa-angle-double-left text-xs" />
+            </button>
+            <span
+              className="min-w-14 px-1 text-center text-[9px] font-black uppercase tracking-wider text-text-muted"
+              title={`Pages ${(currentPageGroup - 1) * pageGroupSize + 1}–${Math.min(currentPageGroup * pageGroupSize, imageCount)}`}
+            >
+              Set {currentPageGroup}/{totalPageGroups}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPageGroupChange(currentPageGroup + 1)}
+              disabled={currentPageGroup === totalPageGroups}
+              className="flex h-8 w-8 items-center justify-center rounded-xl text-text-muted transition-all hover:bg-surface-elevated hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
+              title="Next page group"
+              aria-label="Next page group"
+            >
+              <i className="fas fa-angle-double-right text-xs" />
+            </button>
+          </div>
+        )}
 
         <div className="flex items-center bg-surface-raised/50 rounded-2xl p-1.5 border border-border-muted glass gap-1.5">
           <button
