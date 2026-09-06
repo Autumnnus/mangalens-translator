@@ -40,7 +40,7 @@ export interface ProcessingMetadata {
   requestedPipeline: "auto" | "gemini_vision" | "local_ocr";
   actualPipeline: "gemini_vision" | "local_ocr";
   detection: {
-    provider: "gemini" | "paddleocr";
+    provider: "gemini" | "paddleocr" | "legacy";
     model: string;
     workerId?: string;
     device?: string;
@@ -67,9 +67,12 @@ export interface LocalOcrRunMetadata {
 
 export interface BatchTranslationItemResult {
   imageId: string;
-  bubbles: TextBubble[];
   usage: UsageMetadata;
+  cost?: number;
   error?: string;
+  /** The page was translated, rendered and stored on the server. */
+  applied?: boolean;
+  translatedKey?: string;
 }
 
 export interface BatchTranslationJobSummary {
@@ -85,15 +88,42 @@ export interface LocalOcrBubble {
   box_2d: [number, number, number, number];
   original_text: string;
   confidence: number;
-  type?: TextBubble["type"];
+  type?: TextBubble["type"] | "thought";
 }
 
-export interface LocalOcrJobSummary {
+export type PageJobProvider = "gemini" | "gemini_batch" | "local_ocr" | "migration";
+export type PageJobStage =
+  | "queued"
+  | "detecting"
+  | "translating"
+  | "rendering"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+/** Per-job overrides of the user's stored settings. */
+export interface PageJobOptions {
+  targetLanguage?: string;
+  customInstructions?: string;
+  model?: string;
+  fallbackModel?: string;
+  enableQualityFallback?: boolean;
+}
+
+export interface PageJobSummary {
   id: string;
-  status: "queued" | "leased" | "translating" | "completed" | "failed";
-  bubbles?: TextBubble[];
-  usage?: UsageMetadata;
+  imageId: string;
+  seriesId: string;
+  provider: PageJobProvider;
+  stage: PageJobStage;
+  attempts: number;
   error?: string;
+  cost?: number;
+  /** Local OCR: nothing happens until the Mac worker claims the page. */
+  waitingForWorker: boolean;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
 }
 
 export interface ProcessedImage {
@@ -101,13 +131,20 @@ export interface ProcessedImage {
   originalUrl: string;
   translatedUrl: string | null;
   status: "idle" | "processing" | "completed" | "error";
-  bubbles: TextBubble[];
   fileName: string;
   originalKey?: string;
   translatedKey?: string;
   sequenceNumber: number;
   usage?: UsageMetadata;
   cost?: number;
+  /** 1 = legacy flattened render, 2 = rendered from a layout document. */
+  layoutVersion?: number;
+  legacyTranslatedKey?: string | null;
+  /** Presigned URL of the kept v1 render, for migration review. */
+  legacyTranslatedUrl?: string | null;
+  /** v1 page carries bubble data and can be migrated without a model call. */
+  hasLegacyBubbles?: boolean;
+  renderedAt?: string | Date | null;
 }
 
 export interface GeminiModel {
@@ -154,16 +191,11 @@ export interface TranslationSettings {
   targetLanguage: string;
   translationPipeline?: "auto" | "gemini_vision" | "local_ocr";
   developerMode?: boolean;
-  fontSize: number;
-  fontColor: string;
-  backgroundColor: string;
-  strokeColor: string;
   customInstructions?: string;
   model: string;
   fallbackModel?: string;
   enableQualityFallback?: boolean;
   useGeminiBatch?: boolean;
-  refineBubbles?: boolean;
   batchSize: number;
   batchDelay: number;
   useCustomApiKey?: boolean;

@@ -6,6 +6,8 @@ import { useUIStore } from "../stores/useUIStore";
 import { SeriesInput, ViewMode } from "../types";
 import CategoryManagerModal from "./CategoryManagerModal";
 import ConfirmModal from "./ConfirmModal";
+import LayoutEditorModal from "./layout-editor/LayoutEditorModal";
+import MigrationModal from "./MigrationModal";
 import NewSeriesModal from "./NewSeriesModal";
 import SettingsModal from "./SettingsModal";
 import ToastViewport from "./ToastViewport";
@@ -40,6 +42,7 @@ const GlobalModals: React.FC = () => {
     setDefaultCategoryId,
     selectedImage,
     setSelectedImage,
+    openLayoutEditor,
   } = useUIStore();
 
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
@@ -220,6 +223,9 @@ const GlobalModals: React.FC = () => {
         onSettingsChange={updateSettings}
       />
 
+      <MigrationModal />
+      <LayoutEditorModal />
+
       {selectedImage && (
         <div
           className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 md:p-10"
@@ -242,23 +248,35 @@ const GlobalModals: React.FC = () => {
                 />
               </div>
 
-              {selectedImage.translatedUrl && modalUIVisible && (
+              {modalUIVisible && (
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[110] bg-slate-900/80 backdrop-blur-md p-1.5 rounded-2xl flex gap-1.5 border border-white/10 shadow-2xl">
-                  {(["slider", "side-by-side", "toggle"] as ViewMode[]).map(
-                    (mode) => (
-                      <button
-                        key={mode}
-                        onClick={() => setModalCompareMode(mode)}
-                        className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                          modalCompareMode === mode
-                            ? "bg-primary text-white shadow-glow"
-                            : "text-slate-400 hover:text-white hover:bg-white/5"
-                        }`}
-                      >
-                        {mode.replace(/-/g, " ")}
-                      </button>
-                    ),
-                  )}
+                  {selectedImage.translatedUrl &&
+                    (["slider", "side-by-side", "toggle"] as ViewMode[]).map(
+                      (mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => setModalCompareMode(mode)}
+                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
+                            modalCompareMode === mode
+                              ? "bg-primary text-white shadow-glow"
+                              : "text-slate-400 hover:text-white hover:bg-white/5"
+                          }`}
+                        >
+                          {mode.replace(/-/g, " ")}
+                        </button>
+                      ),
+                    )}
+                  <button
+                    onClick={() => {
+                      const current = images[selectedIndex] || selectedImage;
+                      openLayoutEditor(current);
+                    }}
+                    className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all text-amber-300 hover:text-white hover:bg-white/5 border-l border-white/10"
+                    title="Baloncukları ve metinleri düzenle"
+                  >
+                    <i className="fas fa-pen-nib mr-1.5" />
+                    Düzenle
+                  </button>
                 </div>
               )}
             </div>

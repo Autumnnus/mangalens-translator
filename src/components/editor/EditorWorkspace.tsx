@@ -45,6 +45,7 @@ const EditorWorkspace: React.FC = () => {
   const { confirm } = useConfirm();
   const { handleFileUpload, isUploading } = useImageUpload();
   const { processAll, processImage, isProcessingAll } = useImageProcessor();
+  const openMigration = useUIStore((state) => state.openMigration);
   const { mutate: reorderImages } = useReorderImagesMutation();
   const {
     mutateAsync: bulkDeleteImages,
@@ -81,6 +82,15 @@ const EditorWorkspace: React.FC = () => {
   );
 
   const images = useMemo(() => imagesData || [], [imagesData]);
+  const migrationCount = useMemo(
+    () =>
+      images.filter(
+        (image) =>
+          (image.layoutVersion === 1 && !!image.translatedUrl) ||
+          (image.layoutVersion === 2 && !!image.legacyTranslatedUrl),
+      ).length,
+    [images],
+  );
 
   const totalStats = useMemo(() => {
     return images.reduce(
@@ -388,6 +398,8 @@ const EditorWorkspace: React.FC = () => {
         isViewOnly={isViewOnly}
         onUpload={handleFileUpload}
         onWipe={clearAll}
+        migrationCount={migrationCount}
+        onOpenMigration={() => activeSeriesId && openMigration(activeSeriesId)}
       />
 
       {!isViewOnly && (

@@ -14,6 +14,10 @@ interface UIState {
   currentImageIndex: number;
   editorPage: number;
   selectedImage: ProcessedImage | null; // For modal view
+  /** Page whose layout is open in the editor. */
+  layoutEditorImage: ProcessedImage | null;
+  /** Series whose migration panel is open. */
+  migrationSeriesId: string | null;
   categoryInitialParentId: string | null;
   toasts: ToastMessage[];
 
@@ -34,6 +38,10 @@ interface UIState {
   setCurrentImageIndex: (index: number) => void;
   setEditorPage: (page: number) => void;
   setSelectedImage: (image: ProcessedImage | null) => void;
+  openLayoutEditor: (image: ProcessedImage) => void;
+  closeLayoutEditor: () => void;
+  openMigration: (seriesId: string) => void;
+  closeMigration: () => void;
 
   openConfirmModal: (config: ConfirmConfig) => void;
   closeConfirmModal: () => void;
@@ -62,6 +70,8 @@ export const useUIStore = create<UIState>((set) => ({
   currentImageIndex: 0,
   editorPage: 1,
   selectedImage: null,
+  layoutEditorImage: null,
+  migrationSeriesId: null,
   categoryInitialParentId: null,
   toasts: [],
 
@@ -93,6 +103,10 @@ export const useUIStore = create<UIState>((set) => ({
   setCurrentImageIndex: (index) => set({ currentImageIndex: index }),
   setEditorPage: (page) => set({ editorPage: page }),
   setSelectedImage: (image) => set({ selectedImage: image }),
+  openLayoutEditor: (image) => set({ layoutEditorImage: image }),
+  closeLayoutEditor: () => set({ layoutEditorImage: null }),
+  openMigration: (seriesId) => set({ migrationSeriesId: seriesId }),
+  closeMigration: () => set({ migrationSeriesId: null }),
 
   openConfirmModal: (config) =>
     set({ confirmConfig: { ...config, isOpen: true } }),

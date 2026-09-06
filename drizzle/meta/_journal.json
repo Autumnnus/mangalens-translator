@@ -50,6 +50,20 @@
       "when": 1784743423301,
       "tag": "0006_calm_magma",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788685333003,
+      "tag": "0007_layout_v2",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788689376517,
+      "tag": "0008_page_jobs",
+      "breakpoints": true
     }
   ]
 }

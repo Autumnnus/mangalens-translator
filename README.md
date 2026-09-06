@@ -4,7 +4,8 @@ MangaLens Translator is an advanced, AI-powered web application designed to tran
 
 ## 🚀 Features
 
-- **AI Translation**: Powered by Google Gemini AI to detect and translate text bubbles while preserving context.
+- **AI Translation**: Gemini Vision (or a local OCR worker) detects and transcribes text; a separate text-only Gemini call translates the whole page with series context.
+- **Server-side Typesetting**: Bubbles are cleaned and re-lettered on the server from an editable per-page layout document, with bundled Turkish-capable fonts, so results are identical for every viewer and can be corrected later.
 - **Smart Editor**:
   - Visual editor with zoom, pan, and comparison tools.
   - "Translate All" batch processing with queue management.
@@ -98,13 +99,66 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+## Translation Jobs
+
+Every translation request becomes a row in `page_jobs` (stages: queued,
+detecting, translating, rendering, completed, failed, cancelled) whichever
+provider performs detection: interactive Gemini, Gemini Batch or the local OCR
+worker. Interactive jobs are executed by an in-process runner (two at a time,
+rate-limit retries on the server) that also resumes queued jobs after a
+restart, so "Translate All" keeps running when the browser tab is closed. The
+UI polls `GET /api/jobs?seriesId=` and can cancel a job with
+`POST /api/jobs/:id/cancel`. The runner is started from
+`src/instrumentation.ts`; it requires a long-running Node server (`next start`),
+not a serverless deployment.
+
+## Migrating Old Pages
+
+Pages translated before the layout system keep their flattened render
+(`layout_version = 1`) and their old bubble data. The editor header shows a
+"Taşıma" button for series that still have such pages. From there:
+
+- **Tümünü taşı** re-typesets every old page from its stored bubbles on the
+  server. No model call, no cost. The old render is kept aside.
+- **Gemini ile yeniden tespit** runs the full pipeline for pages whose old
+  boxes are poor or that have no bubble data (costs tokens).
+- The review panel compares old and new renders page by page; each page can be
+  reverted, opened in the editor, or accepted (old file deleted). "Eski
+  render'ları sil" drops all kept old files of the series at once.
+
+For large libraries the same free migration runs from the command line:
+
+```bash
+npx tsx scripts/migrate-legacy.ts --series all --dry-run
+npx tsx scripts/migrate-legacy.ts --series <seriesId> --concurrency 2
+```
+
+## Page Layout Editor
+
+Every translated page stores an editable layout document (regions, masks,
+text, styles). Open it from an image card's pen button or the reader's
+"Düzenle" button: move and resize text areas and source boxes, edit text,
+change fonts and cleaning masks, re-translate single regions, preview on the
+server and apply. Manual edits can be locked so automatic re-translation keeps
+them.
+
+For development without a database, `/dev/layout-editor` drives the same
+canvas and inspector from URLs (disabled in production builds):
+
+```
+/dev/layout-editor?image=http://localhost:4177/page.jpg&bubbles=http://localhost:4177/page.bubbles.json
+```
+
+`scripts/fixtures/make-test-page.mjs` generates a synthetic page and its
+legacy bubbles for this purpose.
+
 ## Local OCR Worker
 
 When Gemini returns an adjustable sexually-explicit safety block for a series
 explicitly marked `adult_verified`, a Mac can perform OCR without exposing a
 local port. The worker polls this server over outbound HTTPS and returns only
-the detected text regions; text-only translation and image rendering remain in
-the existing application flow.
+the detected text regions. The server then runs the same text translation,
+bubble cleaning and typesetting pipeline that Gemini Vision pages go through.
 
 See [local-worker/README.md](local-worker/README.md) for installation and token
 configuration. The fallback remains disabled when `LOCAL_OCR_WORKER_TOKEN` is

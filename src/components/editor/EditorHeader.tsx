@@ -13,6 +13,9 @@ interface EditorHeaderProps {
   isViewOnly: boolean;
   onUpload: (files: FileList | null) => void;
   onWipe: () => void;
+  /** v1 pages plus migrated pages awaiting review. */
+  migrationCount?: number;
+  onOpenMigration?: () => void;
 }
 
 const EditorHeader: React.FC<EditorHeaderProps> = ({
@@ -26,6 +29,8 @@ const EditorHeader: React.FC<EditorHeaderProps> = ({
   isViewOnly,
   onUpload,
   onWipe,
+  migrationCount = 0,
+  onOpenMigration,
 }) => {
   const settings = useSettingsStore((state) => state.settings);
   const updateSettings = useSettingsStore((state) => state.updateSettings);
@@ -149,6 +154,15 @@ const EditorHeader: React.FC<EditorHeaderProps> = ({
               </div>
             </div>
           </div>
+          {migrationCount > 0 && onOpenMigration && (
+            <button
+              onClick={onOpenMigration}
+              className="flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-amber-300 transition-all hover:bg-amber-500/20"
+              title="Eski render'ları yeni sisteme taşı ve incele"
+            >
+              <i className="fas fa-arrow-up-right-dots"></i> Taşıma ({migrationCount})
+            </button>
+          )}
           <div className="flex bg-surface-raised/50 rounded-xl p-1 border border-border-subtle">
             <button
               onClick={() => setViewMode("grid")}

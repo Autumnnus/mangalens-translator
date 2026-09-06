@@ -5,6 +5,7 @@ import {
   useSetImageStatusMutation,
 } from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
+import { describeJob, isActiveJob, usePageJobs } from "../../hooks/usePageJobs";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
@@ -32,9 +33,12 @@ const ImageCard: React.FC<Props> = ({
   const { mutate: deleteImage } = useDeleteImageMutation();
   const { mutateAsync: setImageStatus, isPending: isStatusUpdating } =
     useSetImageStatusMutation();
-  const { setSelectedImage, showToast } = useUIStore();
+  const { setSelectedImage, openLayoutEditor, showToast } = useUIStore();
   const { confirm } = useConfirm();
   const { processImage, cancelProcessing } = useImageProcessor();
+  const { byImage } = usePageJobs(activeSeriesId);
+  const job = byImage.get(image.id);
+  const activeJob = job && isActiveJob(job) ? job : null;
   const developerMode = useSettingsStore(
     (state) => state.settings.developerMode === true,
   );
@@ -165,12 +169,28 @@ const ImageCard: React.FC<Props> = ({
             {image.status === "processing" ? (
               <span className="flex items-center gap-2">
                 <i className="fas fa-circle-notch fa-spin"></i>
-                Processing
+                {activeJob ? describeJob(activeJob) : "Processing"}
               </span>
             ) : (
               image.status
             )}
           </div>
+          {job && !activeJob && job.stage === "failed" && job.error && (
+            <div
+              className="max-w-[14rem] truncate rounded-xl border border-red-500/30 bg-red-500/15 px-3 py-1.5 text-[9px] font-bold text-red-300 backdrop-blur-md"
+              title={job.error}
+            >
+              {job.error}
+            </div>
+          )}
+          {activeJob?.error && (
+            <div
+              className="max-w-[14rem] truncate rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-[9px] font-bold text-amber-300 backdrop-blur-md"
+              title={activeJob.error}
+            >
+              {activeJob.error}
+            </div>
+          )}
         </div>
 
         {/* Cost Badge */}
@@ -348,7 +368,16 @@ const ImageCard: React.FC<Props> = ({
             </span>
           </button>
 
-          {image.status === "processing" && (
+          <button
+            onClick={() => openLayoutEditor(image)}
+            disabled={image.status === "processing"}
+            className="bg-surface-raised/60 hover:bg-primary/15 text-text-muted hover:text-primary p-2.5 rounded-xl text-xs transition-all border border-border-muted disabled:opacity-40"
+            title="Edit bubbles and text"
+          >
+            <i className="fas fa-pen-nib"></i>
+          </button>
+
+          {activeJob && (
             <button
               onClick={() => cancelProcessing(image.id)}
               className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white p-2.5 rounded-xl text-xs transition-all border border-red-500/20"

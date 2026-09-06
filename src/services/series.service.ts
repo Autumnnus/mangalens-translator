@@ -47,10 +47,14 @@ export const seriesService = {
       translatedUrl: img.translatedUrl,
       status: img.status as ProcessedImage["status"],
       sequenceNumber: img.sequenceNumber || 0,
-      bubbles: (img.bubbles as unknown as import("@/types").TextBubble[]) || [], // Jsonb to TextBubble[]
       usage:
         (img.usage as unknown as import("@/types").UsageMetadata) || undefined,
       cost: img.cost || 0,
+      layoutVersion: img.layoutVersion,
+      legacyTranslatedKey: img.legacyTranslatedKey,
+      legacyTranslatedUrl: img.legacyTranslatedUrl,
+      hasLegacyBubbles: !!img.hasLegacyBubbles,
+      renderedAt: img.renderedAt,
     }));
   },
 

@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  index,
   integer,
   jsonb,
   pgTable,
@@ -8,11 +9,12 @@ import {
   timestamp,
   uuid,
 } from "drizzle-orm/pg-core";
+import { PageLayout } from "../layout/types";
 import {
   BatchTranslationItemResult,
   LocalOcrBubble,
   LocalOcrRunMetadata,
-  TextBubble,
+  PageJobOptions,
   TranslationSettings,
   UsageMetadata,
 } from "../types";
@@ -90,9 +92,16 @@ export const images = pgTable("images", {
   translatedKey: text("translated_key"),
   status: text("status").default("idle"), // idle, processing, completed, error
   sequenceNumber: integer("sequence_number").default(0),
-  bubbles: jsonb("bubbles"), // Array of TextBubble
+  bubbles: jsonb("bubbles"), // Legacy Array of TextBubble (layout v1)
   usage: jsonb("usage"), // UsageMetadata
   cost: real("cost").default(0),
+  /** Layout v2 document. Null for pages that only have a legacy render. */
+  layout: jsonb("layout").$type<PageLayout>(),
+  /** 1 = flattened legacy render, 2 = rendered from `layout`. */
+  layoutVersion: integer("layout_version").default(1).notNull(),
+  /** The v1 render kept aside when a v2 render replaces it. */
+  legacyTranslatedKey: text("legacy_translated_key"),
+  renderedAt: timestamp("rendered_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -141,7 +150,6 @@ export const localOcrJobs = pgTable("local_ocr_jobs", {
   leaseExpiresAt: timestamp("lease_expires_at"),
   attempts: integer("attempts").default(0).notNull(),
   ocrBubbles: jsonb("ocr_bubbles").$type<LocalOcrBubble[]>(),
-  translatedBubbles: jsonb("translated_bubbles").$type<TextBubble[]>(),
   usage: jsonb("usage").$type<UsageMetadata>(),
   initialUsage: jsonb("initial_usage").$type<UsageMetadata>(),
   pipeline: text("pipeline").default("auto").notNull(),
@@ -150,6 +158,45 @@ export const localOcrJobs = pgTable("local_ocr_jobs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+/**
+ * One row per page translation attempt, whichever provider performs the
+ * detection. This is what the UI polls; provider tables only hold bookkeeping.
+ */
+export const pageJobs = pgTable(
+  "page_jobs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    seriesId: uuid("series_id")
+      .notNull()
+      .references(() => series.id, { onDelete: "cascade" }),
+    imageId: uuid("image_id")
+      .notNull()
+      .references(() => images.id, { onDelete: "cascade" }),
+    /** gemini | gemini_batch | local_ocr */
+    provider: text("provider").notNull(),
+    requestedPipeline: text("requested_pipeline").default("auto").notNull(),
+    /** queued | detecting | translating | rendering | completed | failed | cancelled */
+    stage: text("stage").default("queued").notNull(),
+    /** translation_jobs.id or local_ocr_jobs.id */
+    providerRef: text("provider_ref"),
+    options: jsonb("options").$type<PageJobOptions>(),
+    attempts: integer("attempts").default(0).notNull(),
+    error: text("error"),
+    usage: jsonb("usage").$type<UsageMetadata>(),
+    cost: real("cost"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    completedAt: timestamp("completed_at"),
+  },
+  (table) => [
+    index("page_jobs_image_idx").on(table.imageId),
+    index("page_jobs_series_stage_idx").on(table.seriesId, table.stage),
+  ],
+);
 
 export const localOcrWorkers = pgTable("local_ocr_workers", {
   workerId: text("worker_id").primaryKey(),
@@ -220,4 +267,10 @@ export const localOcrJobsRelations = relations(localOcrJobs, ({ one }) => ({
     fields: [localOcrJobs.imageId],
     references: [images.id],
   }),
+}));
+
+export const pageJobsRelations = relations(pageJobs, ({ one }) => ({
+  user: one(users, { fields: [pageJobs.userId], references: [users.id] }),
+  series: one(series, { fields: [pageJobs.seriesId], references: [series.id] }),
+  image: one(images, { fields: [pageJobs.imageId], references: [images.id] }),
 }));

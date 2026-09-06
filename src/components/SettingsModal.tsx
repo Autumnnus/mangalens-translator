@@ -1,15 +1,12 @@
 import {
   ArrowDown,
   ArrowUp,
-  Baseline,
   Cpu,
   DollarSign,
   Languages,
   Lock,
-  Palette,
   Sliders,
   Sparkles,
-  Square,
   Text,
   Trash2,
   X,
@@ -615,12 +612,6 @@ const SettingsModal: React.FC<Props> = ({
                     "Uncertain Flash-Lite pages are retried with Gemini 2.5 Flash.",
                 },
                 {
-                  key: "refineBubbles" as const,
-                  title: "Local Bubble Refinement",
-                  description:
-                    "Detect the light bubble interior locally before covering and typesetting.",
-                },
-                {
                   key: "developerMode" as const,
                   title: "Developer Mode",
                   description:
@@ -801,123 +792,20 @@ const SettingsModal: React.FC<Props> = ({
 
           <div className="h-px bg-white/5"></div>
 
-          {/* Font Size */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-primary">
-                <Text className="w-4 h-4" />
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                  Max Font Size
-                </label>
-              </div>
-              <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
-                {localSettings.fontSize}px
-              </span>
-            </div>
-            <div className="px-2">
-              <input
-                type="range"
-                min="10"
-                max="60"
-                value={localSettings.fontSize}
-                onChange={(e) =>
-                  handleChange("fontSize", parseInt(e.target.value))
-                }
-                className="w-full h-2 bg-surface-raised rounded-lg appearance-none cursor-pointer accent-primary"
-              />
-              <div className="flex justify-between mt-2 text-[10px] font-bold text-text-dark uppercase tracking-widest">
-                <span>Small</span>
-                <span>Large</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-px bg-white/5"></div>
-
-          {/* Appearance / Colors */}
-          <div className="space-y-4">
+          {/* Typesetting moved to the page layout */}
+          <div className="space-y-3 rounded-[2rem] border border-border-muted bg-surface-raised/30 p-5">
             <div className="flex items-center gap-2 text-primary">
-              <Palette className="w-4 h-4" />
+              <Text className="w-4 h-4" />
               <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                Appearance
+                Typesetting
               </label>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Font Color */}
-              <div className="bg-surface-raised/50 p-4 rounded-2xl border border-border-muted hover:border-primary/30 transition-all group">
-                <div className="flex items-center gap-3 mb-3">
-                  <Baseline className="w-4 h-4 text-text-dark group-hover:text-primary transition-colors" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-text-dark/80">
-                    Font
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={localSettings.fontColor}
-                    onChange={(e) => handleChange("fontColor", e.target.value)}
-                    className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
-                  />
-                  <span className="text-xs font-mono text-text-dark uppercase">
-                    {localSettings.fontColor}
-                  </span>
-                </div>
-              </div>
-
-              {/* Stroke Color */}
-              <div className="bg-surface-raised/50 p-4 rounded-2xl border border-border-muted hover:border-primary/30 transition-all group">
-                <div className="flex items-center gap-3 mb-3">
-                  <Baseline className="w-4 h-4 text-text-dark group-hover:text-primary transition-colors" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-text-dark/80">
-                    Stroke
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={
-                      localSettings.strokeColor === "transparent"
-                        ? "#000000"
-                        : localSettings.strokeColor
-                    }
-                    onChange={(e) =>
-                      handleChange("strokeColor", e.target.value)
-                    }
-                    className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
-                  />
-                  <span className="text-xs font-mono text-text-dark uppercase">
-                    {localSettings.strokeColor}
-                  </span>
-                </div>
-              </div>
-
-              {/* Bubble Color */}
-              <div className="bg-surface-raised/50 p-4 rounded-2xl border border-border-muted hover:border-primary/30 transition-all group">
-                <div className="flex items-center gap-3 mb-3">
-                  <Square className="w-4 h-4 text-text-dark group-hover:text-primary transition-colors" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-text-dark/80">
-                    Bubble
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={
-                      localSettings.backgroundColor === "transparent"
-                        ? "#000000"
-                        : localSettings.backgroundColor
-                    }
-                    onChange={(e) =>
-                      handleChange("backgroundColor", e.target.value)
-                    }
-                    className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
-                  />
-                  <span className="text-xs font-mono text-text-dark uppercase">
-                    {localSettings.backgroundColor}
-                  </span>
-                </div>
-              </div>
-            </div>
+            <p className="text-[10px] font-bold leading-relaxed text-text-dark/70">
+              Fonts, sizes, colours and bubble cleaning are now decided per
+              balloon by the server renderer and stored with each page, so they
+              can be corrected individually in the page editor instead of one
+              global setting.
+            </p>
           </div>
 
           <div className="h-px bg-white/5"></div>

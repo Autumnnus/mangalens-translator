@@ -34,7 +34,6 @@ export const useImageUpload = () => {
                 image: {
                   fileName: img.name,
                   status: "idle",
-                  bubbles: [],
                   sequenceNumber: nextSequenceNumber++,
                 },
                 file: blob,
@@ -48,7 +47,6 @@ export const useImageUpload = () => {
             image: {
               fileName: file.name,
               status: "idle",
-              bubbles: [],
               sequenceNumber: nextSequenceNumber++,
             },
             file: file,
