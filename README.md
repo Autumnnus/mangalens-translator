@@ -4,7 +4,7 @@ MangaLens Translator is an advanced, AI-powered web application designed to tran
 
 ## 🚀 Features
 
-- **AI Translation**: Gemini Vision (or a local OCR worker) detects and transcribes text; a separate text-only Gemini call translates the whole page with series context.
+- **Text detection on the server**: a PaddleOCR detection model (ONNX, WebAssembly) finds every text line pixel-accurately; Gemini then reads, classifies and translates the numbered boxes, so the model never has to output coordinates. A local OCR worker can do the detection instead.
 - **Server-side Typesetting**: Bubbles are cleaned and re-lettered on the server from an editable per-page layout document, with bundled Turkish-capable fonts, so results are identical for every viewer and can be corrected later.
 - **Smart Editor**:
   - Visual editor with zoom, pan, and comparison tools.
@@ -98,6 +98,15 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Text Detection Model
+
+`models/ppocr-v4-det.onnx` (PaddleOCR PP-OCRv4 mobile detector, Apache-2.0)
+runs through `onnxruntime-web` on the server. Detection takes well under a
+second per page and costs nothing. If the model or runtime is unavailable the
+pipeline falls back to Gemini's own boxes, which are far less accurate on real
+scans. `scripts/pipeline-preview.ts --debug` writes the numbered overlay that
+Gemini reads next to the output image.
 
 ## Translation Jobs
 

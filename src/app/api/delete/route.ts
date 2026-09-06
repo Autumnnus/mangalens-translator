@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { deleteByPrefix, deleteObject } from "@/lib/storage";
 import { NextRequest, NextResponse } from "next/server";
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     console.error("Delete error:", error);
     const message =
-      error instanceof Error ? error.message : "Internal Server Error";
+      describeError(error, "Internal Server Error");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

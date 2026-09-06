@@ -76,13 +76,20 @@ export const defaultPlacementForKind = (kind: RegionKind): Region["placement"] =
 
 /** Auto font-size bounds scale with the page so results are resolution independent. */
 export const fontSizeBounds = (
-  region: Pick<Region, "kind" | "style" | "placement">,
+  region: Pick<Region, "kind" | "style" | "placement" | "sourceLineHeight">,
   pageWidth: number,
 ) => {
   const isLabel = region.placement !== "inside";
   const min = region.style.minFontSize ?? Math.max(8, pageWidth * 0.011);
+  // When the source lettering size is known, the translation should match it
+  // rather than fill the balloon with oversized text.
+  const matched =
+    region.sourceLineHeight && !isLabel
+      ? Math.max(min, region.sourceLineHeight * 1.15)
+      : undefined;
   const max =
     region.style.maxFontSize ??
+    matched ??
     Math.max(min + 1, pageWidth * (isLabel ? 0.028 : 0.042));
   return { min, max: Math.max(min, max) };
 };
@@ -107,6 +114,8 @@ export interface CreateRegionInput {
   source: RegionSource;
   confidence?: number;
   style?: Partial<RegionStyle>;
+  textBoxPrecise?: boolean;
+  sourceLineHeight?: number;
 }
 
 export const createRegion = (input: CreateRegionInput): Region => ({
@@ -124,6 +133,8 @@ export const createRegion = (input: CreateRegionInput): Region => ({
   style: { ...defaultStyleForKind(input.kind), ...input.style },
   source: input.source,
   confidence: input.confidence,
+  textBoxPrecise: input.textBoxPrecise,
+  sourceLineHeight: input.sourceLineHeight,
 });
 
 export const createLayout = (
@@ -180,6 +191,7 @@ export const scaleLayout = (
     regions: layout.regions.map((region) => ({
       ...region,
       textBox: box(region.textBox),
+      detectorBox: region.detectorBox ? box(region.detectorBox) : undefined,
       bubbleBox: region.bubbleBox ? box(region.bubbleBox) : undefined,
       textArea: region.textArea ? box(region.textArea) : undefined,
       mask: mask(region.mask),

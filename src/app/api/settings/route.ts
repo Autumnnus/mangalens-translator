@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -58,7 +59,7 @@ export async function GET() {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Unknown server error",
+          describeError(error, "Unknown server error"),
       },
       { status: 500 },
     );
@@ -102,7 +103,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Unknown server error",
+          describeError(error, "Unknown server error"),
       },
       { status: 500 },
     );

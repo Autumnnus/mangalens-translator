@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { db } from "@/db";
 import { images, localOcrJobs, series, users } from "@/db/schema";
 import { resolveActiveGeminiKeys } from "@/server/gemini/keys";
@@ -178,7 +179,7 @@ export async function POST(
         return NextResponse.json({ completed: false, cancelled: true });
       }
       const message =
-        error instanceof Error ? error.message : "Page completion failed";
+        describeError(error, "Page completion failed");
       await db
         .update(localOcrJobs)
         .set({
@@ -201,7 +202,7 @@ export async function POST(
   } catch (error) {
     console.error("Local OCR completion failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "OCR completion failed" },
+      { error: describeError(error, "OCR completion failed") },
       { status: 500 },
     );
   }

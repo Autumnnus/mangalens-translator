@@ -28,6 +28,10 @@ export interface DetectedRegion {
   sourceText: string;
   confidence: number;
   order: number;
+  /** Box comes from the local detector (pixel accurate). */
+  precise?: boolean;
+  /** Median source line height in px, when known. */
+  lineHeight?: number;
 }
 
 export interface ParsedDetection {

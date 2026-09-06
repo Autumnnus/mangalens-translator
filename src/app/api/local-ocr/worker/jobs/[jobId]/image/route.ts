@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { db } from "@/db";
 import { localOcrJobs } from "@/db/schema";
 import { getObjectData } from "@/lib/storage";
@@ -40,7 +41,7 @@ export async function GET(
   } catch (error) {
     console.error("Local OCR image download failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Image download failed" },
+      { error: describeError(error, "Image download failed") },
       { status: 500 },
     );
   }

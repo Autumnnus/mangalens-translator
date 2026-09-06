@@ -4,7 +4,14 @@ import { createLayout, createRegion } from "@/layout/defaults";
 import { legacyBoxToPixels } from "@/layout/legacy";
 import { PageLayout, pageLayoutSchema, Region, RegionKind } from "@/layout/types";
 import { combineUsage, GeminiCallError } from "@/server/gemini/common";
+import { detectTextBlocks, TextBlock } from "@/server/detect/textDetector";
 import { DetectedRegion, detectRegions, ParsedDetection } from "@/server/gemini/detect";
+import {
+  buildNumberedOverlay,
+  NumberedOverlay,
+  readRegions,
+} from "@/server/gemini/readRegions";
+import { refineRegions } from "@/server/gemini/refine";
 import { isRetryableGeminiError } from "@/server/gemini/keys";
 import { runWithKeyPool } from "@/server/gemini/runWithKeys";
 import {
@@ -117,6 +124,8 @@ export const regionsFromDetection = (
       translatedText: "",
       source,
       confidence: item.confidence,
+      textBoxPrecise: item.precise,
+      sourceLineHeight: item.lineHeight,
     }),
   );
 
@@ -402,6 +411,152 @@ export const detectWithGemini = async ({
   return { parsed, modelUsed: settings.model, fallbackUsed: false };
 };
 
+/**
+ * Second pass over the detector's boxes: one call with a zoomed crop per
+ * region. Failures here are not fatal; the page continues with the coarse
+ * boxes and the pixel-level snapping.
+ */
+export const refineDetectedRegions = async ({
+  userId,
+  keys,
+  modelName,
+  original,
+  width,
+  height,
+  regions,
+  usageEntries,
+}: {
+  userId: string;
+  keys: string[];
+  modelName: string;
+  original: Buffer;
+  width: number;
+  height: number;
+  regions: DetectedRegion[];
+  usageEntries: UsageBreakdown[];
+}): Promise<DetectedRegion[]> => {
+  if (regions.length === 0) return regions;
+  try {
+    return await runWithKeyPool({
+      userId,
+      keys,
+      modelName,
+      usageEntries,
+      run: async (apiKey) => {
+        const result = await refineRegions({ apiKey, modelName, original, width, height, regions });
+        return { value: result.regions, usage: result.usage };
+      },
+    });
+  } catch (error) {
+    console.warn("Box refinement failed; using detector boxes", error);
+    return regions;
+  }
+};
+
+export interface DetectionOutcome {
+  regions: DetectedRegion[];
+  modelUsed: string;
+  fallbackUsed: boolean;
+  /** How the boxes were obtained. */
+  detector: "ppocr+gemini" | "gemini";
+  sourceLanguage?: string;
+  blocks?: TextBlock[];
+  overlay?: NumberedOverlay;
+}
+
+/**
+ * Detection for a page. Preferred path: the local text detector finds every
+ * line, Gemini reads the numbered boxes. If the detector finds nothing (or is
+ * unavailable) the model's own full-page boxes are used, refined by crops.
+ */
+export const detectPage = async ({
+  userId,
+  keys,
+  settings,
+  original,
+  width,
+  height,
+  usageEntries,
+}: {
+  userId: string;
+  keys: string[];
+  settings: PipelineSettings;
+  original: Buffer;
+  width: number;
+  height: number;
+  usageEntries: UsageBreakdown[];
+}): Promise<DetectionOutcome> => {
+  let blocks: TextBlock[] = [];
+  try {
+    blocks = (await detectTextBlocks(original)).blocks;
+  } catch (error) {
+    console.warn("Text detector failed; falling back to model boxes", error);
+  }
+
+  if (blocks.length > 0) {
+    const overlay = await buildNumberedOverlay(original, width, height, blocks);
+    const attempt = (modelName: string) =>
+      runWithKeyPool({
+        userId,
+        keys,
+        modelName,
+        usageEntries,
+        run: async (apiKey) => {
+          const result = await readRegions({ apiKey, modelName, overlay, blocks });
+          return { value: result.result, usage: result.usage };
+        },
+      });
+    const fallbackAllowed =
+      settings.enableQualityFallback && settings.fallbackModel !== settings.model;
+    try {
+      const read = await attempt(settings.model);
+      return {
+        regions: read.regions,
+        modelUsed: settings.model,
+        fallbackUsed: false,
+        detector: "ppocr+gemini",
+        sourceLanguage: read.sourceLanguage,
+        blocks,
+        overlay,
+      };
+    } catch (error) {
+      if (!fallbackAllowed || isRetryableGeminiError(error) || (error as GeminiCallError).isSafetyBlocked) {
+        throw error;
+      }
+      const read = await attempt(settings.fallbackModel);
+      return {
+        regions: read.regions,
+        modelUsed: settings.fallbackModel,
+        fallbackUsed: true,
+        detector: "ppocr+gemini",
+        sourceLanguage: read.sourceLanguage,
+        blocks,
+        overlay,
+      };
+    }
+  }
+
+  const modelImage = await prepareModelImage(original);
+  const detection = await detectWithGemini({ userId, keys, settings, modelImage, usageEntries });
+  const refined = await refineDetectedRegions({
+    userId,
+    keys,
+    modelName: detection.modelUsed,
+    original,
+    width,
+    height,
+    regions: detection.parsed.regions,
+    usageEntries,
+  });
+  return {
+    regions: refined,
+    modelUsed: detection.modelUsed,
+    fallbackUsed: detection.fallbackUsed,
+    detector: "gemini",
+    sourceLanguage: detection.parsed.sourceLanguage,
+  };
+};
+
 export const translatePageWithGemini = async ({
   image,
   userId,
@@ -421,13 +576,15 @@ export const translatePageWithGemini = async ({
 }): Promise<CompletedPage> => {
   await checkpoint(hooks, "detecting");
   const original = await loadOriginal(image);
-  const modelImage = await prepareModelImage(original);
+  const { width, height } = await readDimensions(original);
   const usageEntries: UsageBreakdown[] = [];
-  const detection = await detectWithGemini({
+  const detection = await detectPage({
     userId,
     keys,
     settings,
-    modelImage,
+    original,
+    width,
+    height,
     usageEntries,
   });
   return completeDetectedPage({
@@ -436,16 +593,16 @@ export const translatePageWithGemini = async ({
     keys,
     settings,
     requestedPipeline,
-    detected: detection.parsed.regions,
+    detected: detection.regions,
     detector: {
       provider: "gemini",
-      model: detection.modelUsed,
+      model: `${detection.detector === "ppocr+gemini" ? "ppocr-det+" : ""}${detection.modelUsed}`,
       usageEntries,
       fallbackUsed: detection.fallbackUsed,
     },
     context,
     original,
-    sourceLanguage: detection.parsed.sourceLanguage,
+    sourceLanguage: detection.sourceLanguage,
     hooks,
   });
 };

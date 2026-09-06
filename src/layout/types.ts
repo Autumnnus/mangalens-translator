@@ -119,8 +119,14 @@ export const regionSchema = z.object({
   kind: z.enum(REGION_KINDS),
   /** Reading order, ascending. */
   order: z.number().int().min(0).max(10_000),
-  /** Where the source text sits. Produced by the detector or OCR. */
+  /** Where the source text sits. Produced by the detector or OCR, then snapped to the ink. */
   textBox: boxSchema,
+  /** The detector's raw box, kept when `textBox` was snapped to the pixels. */
+  detectorBox: boxSchema.optional(),
+  /** textBox came from a pixel-accurate detector; do not move it. */
+  textBoxPrecise: z.boolean().optional(),
+  /** Height of one source text line in px; guides the translated font size. */
+  sourceLineHeight: finite.min(1).max(5000).optional(),
   /** Container bounds when the detector knows them. */
   bubbleBox: boxSchema.optional(),
   /** Manual override of the typesetting area. */

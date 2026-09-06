@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { series, translationJobs } from "@/db/schema";
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Gemini batch create error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Batch creation failed" },
+      { error: describeError(error, "Batch creation failed") },
       { status: 500 },
     );
   }
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Gemini batch status error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Batch status failed" },
+      { error: describeError(error, "Batch status failed") },
       { status: 500 },
     );
   }

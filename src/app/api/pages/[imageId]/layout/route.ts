@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { pageLayoutSchema } from "@/layout/types";
 import {
@@ -37,7 +38,7 @@ export async function GET(_request: Request, context: Context) {
   } catch (error) {
     console.error("Layout read failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Layout read failed" },
+      { error: describeError(error, "Layout read failed") },
       { status: 500 },
     );
   }
@@ -77,7 +78,7 @@ export async function PUT(request: Request, context: Context) {
   } catch (error) {
     console.error("Layout save failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Layout save failed" },
+      { error: describeError(error, "Layout save failed") },
       { status: 500 },
     );
   }

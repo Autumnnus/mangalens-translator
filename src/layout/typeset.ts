@@ -488,7 +488,12 @@ export const typesetText = (options: TypesetOptions): TypesetResult | null => {
   // Hyphenation is ugly, so it only wins when it buys clearly larger text
   // (a single very long word in a narrow balloon).
   const unsplit = search(false);
-  const split = search(true);
+  const longestWord = paragraphs.reduce(
+    (max, paragraph) => paragraph.reduce((inner, word) => Math.max(inner, Array.from(word).length), max),
+    0,
+  );
+  // Short words never get hyphenated: "TEŞ-EKK-ÜR" is worse than a smaller size.
+  const split = longestWord >= 10 ? search(true) : null;
   if (split && (!unsplit || split.fontSize > unsplit.fontSize * 1.35)) {
     return split;
   }

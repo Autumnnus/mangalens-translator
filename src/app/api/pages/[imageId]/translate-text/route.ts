@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { images, series, users } from "@/db/schema";
@@ -115,7 +116,7 @@ export async function POST(request: Request, context: Context) {
     console.error("Text translation failed", image.id, error);
     const statusCode = parseGeminiStatusCode(error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Translation failed" },
+      { error: describeError(error, "Translation failed") },
       { status: typeof statusCode === "number" && statusCode >= 400 ? statusCode : 500 },
     );
   }

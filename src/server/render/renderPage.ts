@@ -1,5 +1,6 @@
 import sharp from "sharp";
 import { scaleLayout } from "@/layout/defaults";
+import { polygonShape } from "@/layout/typeset";
 import { FontSet } from "@/layout/fontEngine";
 import { planRegion, RegionPlan, ResolvedRegionFacts } from "@/layout/plan";
 import { buildOverlaySvg } from "@/layout/svg";
@@ -8,6 +9,7 @@ import {
   isContainerKind,
   Mask,
   PageLayout,
+  Point,
   Region,
 } from "@/layout/types";
 import {
@@ -18,6 +20,7 @@ import {
   RawImage,
   sampleBoxColor,
   sampleRingColor,
+  snapTextBoxToInk,
 } from "./mask";
 
 /**
@@ -84,34 +87,67 @@ export const resolveRegionMask = (
 
   if (region.mask.type === "auto") {
     const diagnostics: string[] = [];
+    // Detector boxes drift on real scans: align the box with the glyphs first.
+    // Boxes the user placed by hand (manual source, or already snapped once)
+    // are left alone.
+    let working = region;
+    if (
+      region.source !== "manual" &&
+      !region.detectorBox &&
+      !region.textBoxPrecise &&
+      !region.locked &&
+      (isContainerKind(region.kind) || region.kind === "label")
+    ) {
+      const snapped = snapTextBoxToInk(raw, region.textBox, diagnostics);
+      if (snapped) {
+        working = { ...region, textBox: snapped.box, detectorBox: region.textBox };
+        diagnostics.push(
+          `text box snapped to ink (${Math.round(snapped.box.x - region.textBox.x)}, ${Math.round(snapped.box.y - region.textBox.y)} px, conf ${snapped.confidence.toFixed(2)})`,
+        );
+      }
+    }
     const detected =
-      isContainerKind(region.kind) || region.kind === "label"
-        ? detectBubbleInterior(raw, region.textBox, {
-            hint: region.bubbleBox,
+      isContainerKind(working.kind) || working.kind === "label"
+        ? detectBubbleInterior(raw, working.textBox, {
+            hint: working.bubbleBox,
             diagnostics,
           })
         : null;
     if (detected) {
       const fillColor =
-        region.fill.mode === "color" && region.fill.color
-          ? region.fill.color
+        working.fill.mode === "color" && working.fill.color
+          ? working.fill.color
           : detected.fillColor;
       return {
-        region: { ...region, mask: { type: "polygon", points: detected.polygon } },
+        region: { ...working, mask: { type: "polygon", points: detected.polygon } },
         facts: {
           fillColor,
           surfaceLuma: detected.luma,
           maskConfidence: detected.confidence,
+          maskDiagnostics: diagnostics,
         },
       };
     }
-    const ring = sampleRingColor(raw, region.textBox);
+    const ring = sampleRingColor(raw, working.textBox);
+    // Only paint a geometric fallback on paper-like, uniform surroundings.
+    // Anything else (artwork, tone) is left untouched and the text is drawn
+    // with a contrasting stroke instead of a coloured block.
+    const paperLike = ring.luma >= 200 && ring.brightFraction >= 0.65;
+    if (!paperLike) {
+      diagnostics.push(
+        `no fallback paint: surroundings are not paper (luma ${ring.luma.toFixed(0)}, bright ${(ring.brightFraction * 100).toFixed(0)}%)`,
+      );
+      return {
+        region: { ...working, mask: { type: "none" }, maskSource: "fallback" },
+        facts: { surfaceLuma: ring.luma, maskConfidence: 0, maskDiagnostics: diagnostics },
+      };
+    }
     const fillColor =
-      region.fill.mode === "color" && region.fill.color
-        ? region.fill.color
+      working.fill.mode === "color" && working.fill.color
+        ? working.fill.color
         : ring.color;
     return {
-      region: { ...region, mask: fallbackMask(region), maskSource: "fallback" },
+      region: { ...working, mask: fallbackMask(working), maskSource: "fallback" },
       facts: {
         fillColor,
         surfaceLuma: ring.luma,
@@ -130,6 +166,20 @@ export const resolveRegionMask = (
     region,
     facts: { fillColor, surfaceLuma: ring.luma },
   };
+};
+
+/** True when the polygon's rows span the whole box (no glyph fragments left outside). */
+const polygonCoversBox = (points: Point[], box: Box) => {
+  const shape = polygonShape(points);
+  const samples = 6;
+  for (let i = 0; i <= samples; i += 1) {
+    const y = box.y + (box.h * i) / samples;
+    const chord = shape.chordAt(y);
+    if (!chord || chord.left > box.x + box.w * 0.05 || chord.right < box.x + box.w * 0.95) {
+      return false;
+    }
+  }
+  return true;
 };
 
 const applyFill = (raw: RawImage, mask: Mask, color: string) => {
@@ -180,7 +230,14 @@ export const renderPage = async (
   });
   for (const region of resolved) {
     const fill = facts.get(region.id)?.fillColor;
-    if (shouldClean(region) && fill) applyFill(raw, region.mask, fill);
+    if (!shouldClean(region) || !fill) continue;
+    applyFill(raw, region.mask, fill);
+    // A found interior that stops short of the text box (leaky outline, tail)
+    // would leave glyph fragments; the text box itself is always safe to paint.
+    if (region.mask.type === "polygon" && !polygonCoversBox(region.mask.points, region.textBox)) {
+      fillRoundedRect(raw, expandBox(region.textBox, 0.06, 0.1), 0.25, fill);
+      facts.get(region.id)?.maskDiagnostics?.push("interior did not cover the text box; text box painted too");
+    }
   }
 
   // Pass 2: typeset.

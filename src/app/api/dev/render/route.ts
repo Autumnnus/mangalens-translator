@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { pageLayoutSchema } from "@/layout/types";
 import { loadServerFonts } from "@/server/render/fonts";
 import { renderPage } from "@/server/render/renderPage";
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Render failed" },
+      { error: describeError(error, "Render failed") },
       { status: 500 },
     );
   }

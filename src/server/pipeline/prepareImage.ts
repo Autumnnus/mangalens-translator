@@ -2,6 +2,8 @@ import sharp from "sharp";
 
 /** Longest edge sent to the model. Detection does not improve beyond this. */
 export const MODEL_IMAGE_MAX_EDGE = 1568;
+/** Small scans are upscaled to this; the model places boxes better on larger text. */
+export const MODEL_IMAGE_MIN_EDGE = 1400;
 
 export interface ModelImage {
   base64: string;
@@ -22,6 +24,8 @@ export interface ModelImage {
 export const prepareModelImage = async (
   original: Buffer,
   maxEdge = MODEL_IMAGE_MAX_EDGE,
+  /** Small scans are upscaled so the long edge reaches at least this size. */
+  minEdge = MODEL_IMAGE_MIN_EDGE,
 ): Promise<ModelImage> => {
   const source = sharp(original, { limitInputPixels: 120_000_000 }).rotate();
   const metadata = await source.metadata();
@@ -29,12 +33,15 @@ export const prepareModelImage = async (
   const height = metadata.height || 0;
   if (!width || !height) throw new Error("Image dimensions could not be read");
 
+  const longEdge = Math.max(width, height);
+  const target = longEdge < minEdge ? minEdge : Math.min(longEdge, maxEdge);
   const { data, info } = await source
     .resize({
-      width: maxEdge,
-      height: maxEdge,
+      width: target,
+      height: target,
       fit: "inside",
-      withoutEnlargement: true,
+      withoutEnlargement: longEdge >= minEdge,
+      kernel: "lanczos3",
     })
     .flatten({ background: "#ffffff" })
     .jpeg({ quality: 88, mozjpeg: true })

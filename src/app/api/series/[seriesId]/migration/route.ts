@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import {
   dropSeriesLegacyRenders,
@@ -47,7 +48,7 @@ export async function POST(request: Request, context: Context) {
   } catch (error) {
     console.error("Series migration start failed", seriesId, error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Migration could not be started" },
+      { error: describeError(error, "Migration could not be started") },
       { status: 500 },
     );
   }
@@ -64,7 +65,7 @@ export async function DELETE(_request: Request, context: Context) {
   } catch (error) {
     console.error("Legacy cleanup failed", seriesId, error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Cleanup failed" },
+      { error: describeError(error, "Cleanup failed") },
       { status: 500 },
     );
   }

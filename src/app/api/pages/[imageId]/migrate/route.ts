@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import {
   dropLegacyRender,
@@ -52,7 +53,7 @@ export async function POST(request: Request, context: { params: Promise<{ imageI
   } catch (error) {
     console.error("Page migration action failed", image.id, error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Migration failed" },
+      { error: describeError(error, "Migration failed") },
       { status: 500 },
     );
   }

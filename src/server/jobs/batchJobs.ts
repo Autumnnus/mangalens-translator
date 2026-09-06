@@ -1,6 +1,13 @@
 import { db } from "@/db";
 import { images, series, translationJobs, users } from "@/db/schema";
 import { getObjectData } from "@/lib/storage";
+import { detectTextBlocks, TextBlock } from "@/server/detect/textDetector";
+import {
+  buildNumberedOverlay,
+  buildReadConfig,
+  buildReadPrompt,
+  parseReadResponse,
+} from "@/server/gemini/readRegions";
 import { combineUsage, GeminiCallError, usageFromResponse } from "@/server/gemini/common";
 import {
   buildDetectionConfig,
@@ -12,10 +19,12 @@ import {
 import { resolveActiveGeminiKeys } from "@/server/gemini/keys";
 import { runWithKeyPool } from "@/server/gemini/runWithKeys";
 import { getOwnedImage, readDimensions } from "@/server/pages/layoutService";
+import { DetectedRegion } from "@/server/gemini/detect";
 import { prepareModelImage } from "@/server/pipeline/prepareImage";
 import {
   completeDetectedPage,
   PipelineCancelledError,
+  refineDetectedRegions,
   resolvePipelineSettings,
 } from "@/server/pipeline/translatePage";
 import {
@@ -100,12 +109,60 @@ export const createBatchJobs = async ({
   const itemLimit = Math.min(MAX_BATCH_ITEMS, Math.max(1, settings.batchSize || MAX_BATCH_ITEMS));
 
   const chunks: { imageIds: string[]; requests: InlinedRequest[]; bytes: number }[] = [];
+  const detections = new Map<string, { mode: "read" | "detect"; blocks?: TextBlock[] }>();
   let current = { imageIds: [] as string[], requests: [] as InlinedRequest[], bytes: 0 };
   for (const image of orderedImages) {
     const object = await getObjectData(image.originalKey);
     if (!object.bytes || object.bytes.length === 0) continue;
-    const modelImage = await prepareModelImage(Buffer.from(object.bytes));
-    const estimatedBytes = modelImage.base64.length + prompt.length + 2048;
+    const original = Buffer.from(object.bytes);
+
+    // Preferred: local detector boxes + numbered overlay for the model to read.
+    let blocks: TextBlock[] = [];
+    try {
+      blocks = (await detectTextBlocks(original)).blocks;
+    } catch (error) {
+      console.warn("Text detector failed for batch item; using model boxes", image.id, error);
+    }
+    let request: InlinedRequest;
+    let estimatedBytes: number;
+    if (blocks.length > 0) {
+      const { width, height } = await readDimensions(original);
+      const overlay = await buildNumberedOverlay(original, width, height, blocks);
+      const readPrompt = buildReadPrompt(blocks.length);
+      estimatedBytes = overlay.base64.length + readPrompt.length + 2048;
+      request = {
+        metadata: { imageId: image.id },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: readPrompt },
+              { inlineData: { mimeType: overlay.mimeType, data: overlay.base64 } },
+            ],
+          },
+        ],
+        config: buildReadConfig(model),
+      };
+      detections.set(image.id, { mode: "read", blocks });
+    } else {
+      const modelImage = await prepareModelImage(original);
+      estimatedBytes = modelImage.base64.length + prompt.length + 2048;
+      request = {
+        metadata: { imageId: image.id },
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: prompt },
+              { inlineData: { mimeType: modelImage.mimeType, data: modelImage.base64 } },
+            ],
+          },
+        ],
+        config: buildDetectionConfig(model),
+      };
+      detections.set(image.id, { mode: "detect" });
+    }
+
     if (
       current.requests.length > 0 &&
       (current.bytes + estimatedBytes > MAX_INLINE_BYTES || current.requests.length >= itemLimit)
@@ -116,19 +173,7 @@ export const createBatchJobs = async ({
     if (estimatedBytes > MAX_INLINE_BYTES) continue;
     current.imageIds.push(image.id);
     current.bytes += estimatedBytes;
-    current.requests.push({
-      metadata: { imageId: image.id },
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: prompt },
-            { inlineData: { mimeType: modelImage.mimeType, data: modelImage.base64 } },
-          ],
-        },
-      ],
-      config: buildDetectionConfig(model),
-    });
+    current.requests.push(request);
   }
   if (current.requests.length > 0) chunks.push(current);
 
@@ -182,6 +227,7 @@ export const createBatchJobs = async ({
         requestedPipeline: settings.translationPipeline === "gemini_vision" ? "gemini_vision" : "auto",
         providerRef: job.id,
         stage: "detecting",
+        options: { detection: detections.get(imageId) },
       });
       createdPageJobs.push(toPageJobSummary(pageJob));
       submitted.add(imageId);
@@ -302,11 +348,26 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
       const original = Buffer.from(object.bytes);
       const { width, height } = await readDimensions(original);
 
+      const stored = pageJob?.options?.detection;
+      const blocks: TextBlock[] = stored?.mode === "read" && stored.blocks ? stored.blocks : [];
+      let readRegionsResult: DetectedRegion[] | null = null;
       try {
         if (!inline?.response) throw new Error(inline?.error?.message || "Empty Batch response");
         usageEntries.push(usageFromResponse(inline.response, storedJob.model, "batch"));
         if (!inline.response.text) throw new Error(inline?.error?.message || "Empty Batch response");
-        detection = parseDetectionResponse(inline.response.text, width, height);
+        if (blocks.length > 0) {
+          const read = parseReadResponse(inline.response.text, blocks);
+          readRegionsResult = read.regions;
+          detection = {
+            regions: read.regions,
+            hasText: read.hasText,
+            pageConfidence: read.pageConfidence,
+            sourceLanguage: read.sourceLanguage,
+            shouldFallback: read.hasText && read.regions.length === 0,
+          };
+        } else {
+          detection = parseDetectionResponse(inline.response.text, width, height);
+        }
       } catch (error) {
         failure = error instanceof Error ? error.message : String(error);
       }
@@ -347,6 +408,18 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
         }
       }
       if (!detection) throw new Error(failure || "Detection failed");
+      const refined = readRegionsResult
+        ? readRegionsResult
+        : await refineDetectedRegions({
+            userId: storedJob.userId,
+            keys,
+            modelName: detectionModel,
+            original,
+            width,
+            height,
+            regions: detection.regions,
+            usageEntries,
+          });
 
       const completed = await completeDetectedPage({
         image,
@@ -354,8 +427,13 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
         keys,
         settings: pipelineSettings,
         requestedPipeline: storedJob.pipeline === "gemini_vision" ? "gemini_vision" : "auto",
-        detected: detection.regions,
-        detector: { provider: "gemini", model: detectionModel, usageEntries, fallbackUsed },
+        detected: refined,
+        detector: {
+          provider: "gemini",
+          model: `${readRegionsResult ? "ppocr-det+" : ""}${detectionModel}`,
+          usageEntries,
+          fallbackUsed,
+        },
         context,
         original,
         sourceLanguage: detection.sourceLanguage,

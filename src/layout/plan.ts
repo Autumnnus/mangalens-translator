@@ -74,7 +74,8 @@ const shapeFor = (region: Region, base: Box): Shape => {
   if (
     style.shape === "auto" &&
     region.placement === "inside" &&
-    region.maskSource !== "fallback"
+    region.maskSource !== "fallback" &&
+    !region.textBoxPrecise
   ) {
     if (mask.type === "polygon") return polygonShape(mask.points);
     if (mask.type === "ellipse") return ellipseShape(mask.box);
@@ -86,10 +87,36 @@ const shapeFor = (region: Region, base: Box): Shape => {
 /** The box text is fitted into before padding. */
 export const baseAreaFor = (region: Region, layout: PageLayout): Box => {
   if (region.placement === "inside") {
+    if (region.textArea) return clampBox(region.textArea, layout.width, layout.height);
+    // A pixel-accurate source box: keep the translation where the letterer put
+    // the text, with some room to grow, but never past the cleaned interior.
+    if (region.textBoxPrecise) {
+      const grown = {
+        x: region.textBox.x - region.textBox.w * 0.3,
+        y: region.textBox.y - region.textBox.h * 0.3,
+        w: region.textBox.w * 1.6,
+        h: region.textBox.h * 1.6,
+      };
+      const bounds = maskBounds(region.mask);
+      const limited = bounds
+        ? {
+            x: Math.max(grown.x, bounds.x),
+            y: Math.max(grown.y, bounds.y),
+            w: Math.min(grown.x + grown.w, bounds.x + bounds.w) - Math.max(grown.x, bounds.x),
+            h: Math.min(grown.y + grown.h, bounds.y + bounds.h) - Math.max(grown.y, bounds.y),
+          }
+        : grown;
+      // A found interior that is smaller than the text itself is not the
+      // balloon (a letter counter, a stray white patch): ignore it.
+      const usable =
+        limited.w > 4 &&
+        limited.h > 4 &&
+        limited.w * limited.h >= region.textBox.w * region.textBox.h * 0.6;
+      return clampBox(usable ? limited : grown, layout.width, layout.height);
+    }
     // A geometric fallback mask only covers the source text; the detector's
     // balloon bounds are a better estimate of the room the translation has.
     const area =
-      region.textArea ||
       (region.maskSource === "fallback" && region.bubbleBox
         ? insetBox(region.bubbleBox, region.bubbleBox.w * 0.06, region.bubbleBox.h * 0.08)
         : null) ||

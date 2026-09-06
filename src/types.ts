@@ -108,6 +108,11 @@ export interface PageJobOptions {
   model?: string;
   fallbackModel?: string;
   enableQualityFallback?: boolean;
+  /** Batch jobs: detector blocks the numbered overlay was built from. */
+  detection?: {
+    mode: "read" | "detect";
+    blocks?: Array<{ box: { x: number; y: number; w: number; h: number }; lines: Array<{ box: { x: number; y: number; w: number; h: number }; score: number }>; score: number }>;
+  };
 }
 
 export interface PageJobSummary {

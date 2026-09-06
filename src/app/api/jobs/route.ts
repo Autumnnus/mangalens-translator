@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { listPageJobs, pumpPageJobs, toPageJobSummary } from "@/server/jobs/pageJobs";
 import { NextRequest, NextResponse } from "next/server";
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("Job listing failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Job listing failed" },
+      { error: describeError(error, "Job listing failed") },
       { status: 500 },
     );
   }

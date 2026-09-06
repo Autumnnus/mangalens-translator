@@ -114,11 +114,23 @@ export const sampleRingColor = (image: RawImage, box: Box, ratio = 0.18) => {
       bs.push(image.data[offset + 2]);
     }
   }
-  if (rs.length === 0) return sampleBoxColor(image, box);
+  if (rs.length === 0) return { ...sampleBoxColor(image, box), spread: 0, brightFraction: 1 };
   const r = median(rs);
   const g = median(gs);
   const b = median(bs);
-  return { color: toHex(r, g, b), luma: luminance(r, g, b), rgb: [r, g, b] as const };
+  const lumas = rs.map((_, index) => luminance(rs[index], gs[index], bs[index])).sort((a, b2) => a - b2);
+  const spread =
+    lumas[Math.floor(lumas.length * 0.9)] - lumas[Math.floor(lumas.length * 0.1)];
+  const brightFraction = lumas.filter((value) => value >= 200).length / lumas.length;
+  return {
+    color: toHex(r, g, b),
+    luma: luminance(r, g, b),
+    rgb: [r, g, b] as const,
+    /** Luminance spread (p90 - p10) of the ring; small on paper, large on artwork. */
+    spread,
+    /** Share of near-white pixels; paper stays high even when an outline crosses the ring. */
+    brightFraction,
+  };
 };
 
 /** Ramer–Douglas–Peucker simplification. */
@@ -176,7 +188,7 @@ export const detectBubbleInterior = (
   textBox: Box,
   options: InteriorOptions = {},
 ): InteriorResult | null => {
-  const steps = options.expandSteps ?? [0.45, 0.95, 1.7];
+  const steps = options.expandSteps ?? [0.45, 0.95, 1.7, 3.0];
   let last: InteriorResult | null = null;
   for (const expand of steps) {
     const attempt = detectInteriorOnce(image, textBox, expand, options);
@@ -474,7 +486,7 @@ const detectInteriorOnce = (
     if (dilatedCount / (width * height) > 0.9) reason = "fills the whole window";
     else if (touchedEdges >= 3) reason = `touches ${touchedEdges} window edges`;
     else if (rows.length < 3) reason = "degenerate";
-    else if (compactness < 0.72) reason = `not compact (${compactness.toFixed(2)})`;
+    else if (compactness < 0.6) reason = `not compact (${compactness.toFixed(2)})`;
     else if (coverage < 0.7) reason = `covers only ${(coverage * 100).toFixed(0)}% of the text box rows`;
     else if (options.hint) {
       const interiorArea = dilatedCount * scaleX * scaleY;
@@ -558,6 +570,224 @@ const detectInteriorOnce = (
     },
     touchedEdges,
   };
+};
+
+// ---------------------------------------------------------------------------
+// Text box snapping
+
+export interface SnapResult {
+  box: Box;
+  /** 0-1: how well the ink blob matched the detector's box. */
+  confidence: number;
+}
+
+/**
+ * Detector boxes drift by a noticeable fraction of the page on real scans.
+ * This looks for the cluster of dark glyphs nearest to the given box and
+ * moves the box onto it, so cleaning and typesetting start from where the
+ * text really is. Returns null when no plausible text blob is found.
+ */
+export const snapTextBoxToInk = (
+  image: RawImage,
+  box: Box,
+  diagnostics?: string[],
+): SnapResult | null => {
+  const expandX = Math.max(20, box.w * 1.0);
+  const expandY = Math.max(20, box.h * 1.0);
+  const left = Math.floor(clamp(box.x - expandX, 0, image.width));
+  const top = Math.floor(clamp(box.y - expandY, 0, image.height));
+  const right = Math.ceil(clamp(box.x + box.w + expandX, 0, image.width));
+  const bottom = Math.ceil(clamp(box.y + box.h + expandY, 0, image.height));
+  const searchWidth = right - left;
+  const searchHeight = bottom - top;
+  if (searchWidth < 8 || searchHeight < 8) return null;
+
+  const scale = Math.min(1, 420 / Math.max(searchWidth, searchHeight));
+  const width = Math.max(8, Math.round(searchWidth * scale));
+  const height = Math.max(8, Math.round(searchHeight * scale));
+  const scaleX = searchWidth / width;
+  const scaleY = searchHeight / height;
+
+  // Ink = clearly dark pixels. (White-on-black lettering is handled by the
+  // dark-balloon path; it is rare enough not to snap.)
+  const ink = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    const sy = Math.min(image.height - 1, top + Math.floor((y + 0.5) * scaleY));
+    for (let x = 0; x < width; x += 1) {
+      const sx = Math.min(image.width - 1, left + Math.floor((x + 0.5) * scaleX));
+      const offset = (sy * image.width + sx) * image.channels;
+      const luma = luminance(image.data[offset], image.data[offset + 1], image.data[offset + 2]);
+      if (luma < 105) ink[y * width + x] = 1;
+    }
+  }
+
+  const relativeW = box.w / scaleX;
+  const relativeH = box.h / scaleY;
+
+  // Keep only glyph-sized ink components. Balloon outlines, panel borders and
+  // hair are far larger than a letter, and they would otherwise absorb the
+  // lettering into one huge blob.
+  const componentLabels = new Int32Array(width * height);
+  const componentQueue = new Int32Array(width * height);
+  const maxGlyphW = Math.max(3, relativeW * 0.6);
+  const maxGlyphH = Math.max(3, relativeH * 0.95);
+  const glyphHeights: number[] = [];
+  let dropped = 0;
+  for (let start = 0; start < componentLabels.length; start += 1) {
+    if (!ink[start] || componentLabels[start]) continue;
+    let head = 0;
+    let tail = 0;
+    componentQueue[tail++] = start;
+    componentLabels[start] = 1;
+    let minX = width;
+    let maxX = -1;
+    let minY = height;
+    let maxY = -1;
+    while (head < tail) {
+      const index = componentQueue[head++];
+      const x = index % width;
+      const y = (index - x) / width;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+      const neighbours = [x > 0 ? index - 1 : -1, x < width - 1 ? index + 1 : -1, y > 0 ? index - width : -1, y < height - 1 ? index + width : -1];
+      for (const next of neighbours) {
+        if (next >= 0 && ink[next] && !componentLabels[next]) {
+          componentLabels[next] = 1;
+          componentQueue[tail++] = next;
+        }
+      }
+    }
+    if (maxX - minX + 1 > maxGlyphW || maxY - minY + 1 > maxGlyphH) {
+      // Not a letter: erase the whole component from the ink mask.
+      for (let i = 0; i < tail; i += 1) ink[componentQueue[i]] = 0;
+      dropped += 1;
+    } else if (tail >= 3) {
+      glyphHeights.push(maxY - minY + 1);
+    }
+  }
+  diagnostics?.push(`snap: dropped ${dropped} oversized ink component(s)`);
+  if (glyphHeights.length === 0) {
+    diagnostics?.push("snap: no glyph-sized ink");
+    return null;
+  }
+
+  // Merge glyphs into text blobs. Letters in a word sit closer than a glyph
+  // height apart and lines of one balloon are stacked within about half a
+  // glyph height, so the dilation radii follow the measured glyph size.
+  const glyphHeight = median(glyphHeights);
+  const rx = Math.round(clamp(glyphHeight * 0.9, 2, 14));
+  const ry = Math.round(clamp(glyphHeight * 0.8, 2, 12));
+  diagnostics?.push(`snap: glyph height ${(glyphHeight * scaleY).toFixed(0)} px, merge radii ${rx}x${ry}`);
+  const dilated = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!ink[y * width + x]) continue;
+      for (let dy = -ry; dy <= ry; dy += 1) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -rx; dx <= rx; dx += 1) {
+          const nx = x + dx;
+          if (nx < 0 || nx >= width) continue;
+          dilated[ny * width + nx] = 1;
+        }
+      }
+    }
+  }
+
+  // Connected components of the dilated mask.
+  const labels = new Int32Array(width * height);
+  const queue = new Int32Array(width * height);
+  type Blob = { minX: number; minY: number; maxX: number; maxY: number; area: number; inkCount: number; touchesEdge: boolean };
+  const blobs: Blob[] = [];
+  for (let start = 0; start < labels.length; start += 1) {
+    if (!dilated[start] || labels[start]) continue;
+    const label = blobs.length + 1;
+    let head = 0;
+    let tail = 0;
+    queue[tail++] = start;
+    labels[start] = label;
+    const blob: Blob = { minX: width, minY: height, maxX: -1, maxY: -1, area: 0, inkCount: 0, touchesEdge: false };
+    while (head < tail) {
+      const index = queue[head++];
+      const x = index % width;
+      const y = (index - x) / width;
+      blob.area += 1;
+      if (ink[index]) blob.inkCount += 1;
+      if (x < blob.minX) blob.minX = x;
+      if (x > blob.maxX) blob.maxX = x;
+      if (y < blob.minY) blob.minY = y;
+      if (y > blob.maxY) blob.maxY = y;
+      if (x === 0 || y === 0 || x === width - 1 || y === height - 1) blob.touchesEdge = true;
+      const neighbours = [x > 0 ? index - 1 : -1, x < width - 1 ? index + 1 : -1, y > 0 ? index - width : -1, y < height - 1 ? index + width : -1];
+      for (const next of neighbours) {
+        if (next >= 0 && dilated[next] && !labels[next]) {
+          labels[next] = label;
+          queue[tail++] = next;
+        }
+      }
+    }
+    blobs.push(blob);
+  }
+
+  const relative = { x: (box.x - left) / scaleX, y: (box.y - top) / scaleY, w: relativeW, h: relativeH };
+  const cx = relative.x + relative.w / 2;
+  const cy = relative.y + relative.h / 2;
+  let best: { blob: Blob; score: number } | null = null;
+  const note = (message: string) => diagnostics?.push(`snap: ${message}`);
+  for (const blob of blobs) {
+    const bw = blob.maxX - blob.minX + 1;
+    const bh = blob.maxY - blob.minY + 1;
+    if (blob.area < 12) continue;
+    const describe = () => `blob ${Math.round(bw * scaleX)}x${Math.round(bh * scaleY)} at ${Math.round(left + blob.minX * scaleX)},${Math.round(top + blob.minY * scaleY)}`;
+    if (blob.touchesEdge) {
+      note(`${describe()} touches window edge`);
+      continue;
+    }
+    // Lettering blobs are moderately dense; outlines and hair are sparse or solid.
+    const density = blob.inkCount / Math.max(1, bw * bh);
+    if (density < 0.06 || density > 0.7) {
+      note(`${describe()} density ${density.toFixed(2)} out of range`);
+      continue;
+    }
+    // Size within a sane range of the detector's box.
+    if (bw < relative.w * 0.3 || bw > relative.w * 2.6 || bh < relative.h * 0.25 || bh > relative.h * 2.6) {
+      note(`${describe()} size mismatch vs box ${Math.round(box.w)}x${Math.round(box.h)}`);
+      continue;
+    }
+    const iw = Math.max(0, Math.min(blob.maxX + 1, relative.x + relative.w) - Math.max(blob.minX, relative.x));
+    const ih = Math.max(0, Math.min(blob.maxY + 1, relative.y + relative.h) - Math.max(blob.minY, relative.y));
+    const intersection = iw * ih;
+    const iou = intersection / Math.max(1, bw * bh + relative.w * relative.h - intersection);
+    const bcx = (blob.minX + blob.maxX + 1) / 2;
+    const bcy = (blob.minY + blob.maxY + 1) / 2;
+    const distance = Math.hypot((bcx - cx) / Math.max(1, relative.w), (bcy - cy) / Math.max(1, relative.h));
+    const sizeMatch = 1 - Math.min(1, Math.abs(Math.log((bw * bh) / Math.max(1, relative.w * relative.h))) / 1.5);
+    if (distance > 1.4) {
+      note(`${describe()} too far (${distance.toFixed(2)} box widths)`);
+      continue;
+    }
+    const score = iou * 2 + sizeMatch * 0.5 - distance * 0.4;
+    note(`${describe()} iou ${iou.toFixed(2)} dist ${distance.toFixed(2)} score ${score.toFixed(2)}`);
+    if (!best || score > best.score) best = { blob, score };
+  }
+  if (!best) {
+    note("no candidate blob");
+    return null;
+  }
+
+  const { blob } = best;
+  // Undo the dilation so the box hugs the glyphs, plus a hair of padding.
+  const padX = Math.max(1, rx * 0.5) * scaleX;
+  const padY = Math.max(1, ry * 0.5) * scaleY;
+  const snapped: Box = {
+    x: left + (blob.minX + rx) * scaleX - padX,
+    y: top + (blob.minY + ry) * scaleY - padY,
+    w: Math.max(4, (blob.maxX - blob.minX + 1 - 2 * rx) * scaleX + padX * 2),
+    h: Math.max(4, (blob.maxY - blob.minY + 1 - 2 * ry) * scaleY + padY * 2),
+  };
+  return { box: snapped, confidence: clamp(0.5 + best.score / 3, 0, 1) };
 };
 
 // ---------------------------------------------------------------------------

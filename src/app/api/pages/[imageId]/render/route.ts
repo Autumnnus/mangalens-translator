@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { pageLayoutSchema } from "@/layout/types";
 import { getOwnedImage, renderImage } from "@/server/pages/layoutService";
@@ -53,7 +54,7 @@ export async function POST(request: Request, context: Context) {
   } catch (error) {
     console.error("Page render failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Render failed" },
+      { error: describeError(error, "Render failed") },
       { status: 500 },
     );
   }

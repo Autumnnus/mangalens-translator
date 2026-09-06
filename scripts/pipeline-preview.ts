@@ -11,7 +11,10 @@ import sharp from "sharp";
 import { createLayout, createRegion } from "../src/layout/defaults";
 import { maskToSvgPath } from "../src/layout/svg";
 import { PageLayout } from "../src/layout/types";
-import { detectRegions } from "../src/server/gemini/detect";
+import { detectTextBlocks } from "../src/server/detect/textDetector";
+import { DetectedRegion, detectRegions } from "../src/server/gemini/detect";
+import { buildNumberedOverlay, readRegions } from "../src/server/gemini/readRegions";
+import { refineRegions } from "../src/server/gemini/refine";
 import { translateItems } from "../src/server/gemini/translateText";
 import { prepareModelImage } from "../src/server/pipeline/prepareImage";
 import { loadServerFonts } from "../src/server/render/fonts";
@@ -65,29 +68,69 @@ const main = async () => {
 
   const original = await readFile(imagePath);
   const started = Date.now();
-  const modelImage = await prepareModelImage(original);
+  const upscale = args.get("upscale") === undefined ? undefined : Number(args.get("upscale")) || 0;
+  const modelImage = await prepareModelImage(original, undefined, upscale);
   console.log(
     `Model input: ${modelImage.modelWidth}x${modelImage.modelHeight} (${Math.round(modelImage.bytes / 1024)} KB) from ${modelImage.width}x${modelImage.height}`,
   );
 
-  const detection = await detectRegions({
-    apiKey,
-    modelName,
-    base64Image: modelImage.base64,
-    mimeType: modelImage.mimeType,
-    width: modelImage.width,
-    height: modelImage.height,
-  });
-  console.log(
-    `Detection (${modelName}): ${detection.parsed.regions.length} regions, has_text=${detection.parsed.hasText}, page_confidence=${detection.parsed.pageConfidence.toFixed(2)}, language=${detection.parsed.sourceLanguage ?? "?"}, tokens=${detection.usage.totalTokenCount}, ${Date.now() - started}ms`,
-  );
-  for (const region of detection.parsed.regions) {
+  const stageUsage: import("../src/types").UsageBreakdown[] = [];
+  let detectedRegions: DetectedRegion[] = [];
+  let sourceLanguage: string | undefined;
+  const detected = args.get("no-detector") ? { blocks: [], durationMs: 0 } : await detectTextBlocks(original);
+  console.log(`Local detector: ${detected.blocks.length} blocks in ${detected.durationMs}ms`);
+  if (detected.blocks.length > 0) {
+    const overlay = await buildNumberedOverlay(original, modelImage.width, modelImage.height, detected.blocks);
+    if (args.get("debug")) {
+      await writeFile(outPath.replace(/\.[a-z0-9]+$/i, "") + "_overlay.jpg", Buffer.from(overlay.base64, "base64"));
+    }
+    const readStarted = Date.now();
+    const read = await readRegions({ apiKey, modelName, overlay, blocks: detected.blocks });
+    stageUsage.push(read.usage);
+    detectedRegions = read.result.regions;
+    sourceLanguage = read.result.sourceLanguage;
     console.log(
-      `  [${region.kind}] ${JSON.stringify(region.sourceText)} box=${[region.textBox.x, region.textBox.y, region.textBox.w, region.textBox.h].map(Math.round).join(",")}${region.bubbleBox ? " bubble=" + [region.bubbleBox.x, region.bubbleBox.y, region.bubbleBox.w, region.bubbleBox.h].map(Math.round).join(",") : ""} c=${region.confidence.toFixed(2)}`,
+      `Reading (${modelName}): ${read.result.regions.length} regions from ${detected.blocks.length} boxes, language=${sourceLanguage ?? "?"}, tokens=${read.usage.totalTokenCount}, ${Date.now() - readStarted}ms`,
     );
+    for (const region of read.result.regions) {
+      console.log(
+        `  [${region.kind}] ${JSON.stringify(region.sourceText)} box=${[region.textBox.x, region.textBox.y, region.textBox.w, region.textBox.h].map(Math.round).join(",")} c=${region.confidence.toFixed(2)}`,
+      );
+    }
+  } else {
+    const detection = await detectRegions({
+      apiKey,
+      modelName,
+      base64Image: modelImage.base64,
+      mimeType: modelImage.mimeType,
+      width: modelImage.width,
+      height: modelImage.height,
+    });
+    stageUsage.push(detection.usage);
+    sourceLanguage = detection.parsed.sourceLanguage;
+    console.log(
+      `Detection (${modelName}): ${detection.parsed.regions.length} regions, tokens=${detection.usage.totalTokenCount}, ${Date.now() - started}ms`,
+    );
+    const refinement = args.get("no-refine")
+      ? null
+      : await refineRegions({
+          apiKey,
+          modelName,
+          original,
+          width: modelImage.width,
+          height: modelImage.height,
+          regions: detection.parsed.regions,
+        });
+    if (refinement) stageUsage.push(refinement.usage);
+    detectedRegions = refinement ? refinement.regions : detection.parsed.regions;
+    for (const region of detectedRegions) {
+      console.log(
+        `  [${region.kind}] ${JSON.stringify(region.sourceText)} box=${[region.textBox.x, region.textBox.y, region.textBox.w, region.textBox.h].map(Math.round).join(",")} c=${region.confidence.toFixed(2)}`,
+      );
+    }
   }
 
-  const regions = detection.parsed.regions.map((item, index) =>
+  const regions = detectedRegions.map((item, index) =>
     createRegion({
       id: `g_${index + 1}`,
       kind: item.kind,
@@ -98,6 +141,8 @@ const main = async () => {
       translatedText: "",
       source: "gemini",
       confidence: item.confidence,
+      textBoxPrecise: item.precise,
+      sourceLineHeight: item.lineHeight,
     }),
   );
 
@@ -106,7 +151,7 @@ const main = async () => {
     apiKey,
     modelName,
     targetLanguage,
-    context: { sourceLanguage: detection.parsed.sourceLanguage },
+    context: { sourceLanguage },
     items: regions.map((region) => ({
       id: region.id,
       kind: region.kind,
@@ -142,7 +187,7 @@ const main = async () => {
     await writeFile(`${base}_debug.jpg`, debug);
   }
 
-  const usage = combineUsage([detection.usage, translation.usage], modelName, false);
+  const usage = combineUsage([...stageUsage, translation.usage], modelName, false);
   console.log(
     `Total: ${usage.totalTokenCount} tokens (prompt ${usage.promptTokenCount}, output ${usage.candidatesTokenCount}), estimated cost $${calculateGeminiCost(usage, modelName).toFixed(5)}, ${Date.now() - started}ms`,
   );

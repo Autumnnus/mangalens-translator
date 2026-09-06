@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
 import { uploadObject } from "@/lib/storage";
@@ -175,7 +176,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Import error detail:", error);
-    const message = error instanceof Error ? error.message : "Import failed";
+    const message = describeError(error, "Import failed");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
