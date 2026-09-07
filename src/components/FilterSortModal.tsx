@@ -1,5 +1,6 @@
-import { X } from "lucide-react";
-import React, { useState } from "react";
+import { SlidersHorizontal } from "lucide-react";
+import React, { useId, useState } from "react";
+import { Button, Checkbox, Field, Input, Modal, Select } from "./ui";
 
 export interface FilterSortOptions {
   search: string;
@@ -24,6 +25,18 @@ interface Props {
   onApply: (filters: FilterSortOptions) => void;
 }
 
+const SORT_OPTIONS: Array<{ value: FilterSortOptions["sortBy"]; label: string }> = [
+  { value: "sequence", label: "Sequence" },
+  { value: "name-asc", label: "Name (A–Z)" },
+  { value: "name-desc", label: "Name (Z–A)" },
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "most-images", label: "Most pages" },
+  { value: "least-images", label: "Least pages" },
+];
+
+const legendClass = "text-[13px] font-medium text-ink-2";
+
 const FilterSortModal: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -32,8 +45,10 @@ const FilterSortModal: React.FC<Props> = ({
   onApply,
 }) => {
   const [filters, setFilters] = useState<FilterSortOptions>(currentFilters);
+  const formId = useId();
 
-  const handleApply = () => {
+  const handleApply = (event?: React.FormEvent) => {
+    event?.preventDefault();
     onApply(filters);
     onClose();
   };
@@ -50,89 +65,70 @@ const FilterSortModal: React.FC<Props> = ({
     onApply(resetFilters);
   };
 
-  if (!isOpen) return null;
+  const toggleCategory = (id: string, checked: boolean) => {
+    setFilters((current) => ({
+      ...current,
+      categories: checked
+        ? [...current.categories, id]
+        : current.categories.filter((categoryId) => categoryId !== id),
+    }));
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-md p-4">
-      <div
-        className="bg-surface/40 backdrop-blur-2xl border border-border-muted rounded-[2.5rem] shadow-glow w-full max-w-md animate-in zoom-in-95 duration-200 glass-card overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-8 border-b border-border-muted">
-          <h3 className="text-2xl font-black text-text-main uppercase tracking-tighter text-glow">
-            Filter & Sort
-          </h3>
-          <button
-            onClick={onClose}
-            className="w-10 h-10 rounded-xl bg-surface-raised hover:bg-surface-elevated flex items-center justify-center transition-all border border-border-muted hover:border-border-accent group"
-          >
-            <X className="w-5 h-5 text-text-muted group-hover:text-text-main transition-colors" />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto">
-          {/* Search */}
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-text-dark mb-2.5 block ml-1">
-              Search
-            </label>
-            <input
-              type="text"
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="md"
+      title="Filter and sort"
+      icon={<SlidersHorizontal />}
+      footer={
+        <>
+          <Button variant="secondary" onClick={handleReset}>
+            Reset
+          </Button>
+          <Button variant="primary" type="submit" form={formId}>
+            Apply
+          </Button>
+        </>
+      }
+    >
+      <form id={formId} onSubmit={handleApply} className="flex flex-col gap-4">
+        <Field label="Search">
+          {({ id }) => (
+            <Input
+              id={id}
+              type="search"
               value={filters.search}
-              onChange={(e) =>
-                setFilters({ ...filters, search: e.target.value })
-              }
-              placeholder="Series name..."
-              className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-3 text-sm focus:ring-2 ring-primary outline-none transition-all placeholder:text-text-dark/50"
+              onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+              placeholder="Series name"
+              data-autofocus
             />
-          </div>
+          )}
+        </Field>
 
-          {/* Categories */}
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-text-dark mb-2.5 block ml-1">
-              Categories
-            </label>
-            <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar pr-2">
+        <fieldset className="flex flex-col gap-1.5">
+          <legend className={legendClass}>Categories</legend>
+          {availableCategories.length === 0 ? (
+            <p className="text-xs text-ink-3">No categories yet.</p>
+          ) : (
+            <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-control border border-line bg-page-2 p-2">
               {availableCategories.map((cat) => (
-                <label
+                <Checkbox
                   key={cat.id}
-                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-raised cursor-pointer transition-all border border-transparent hover:border-border-muted group"
-                >
-                  <input
-                    type="checkbox"
-                    checked={filters.categories.includes(cat.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setFilters({
-                          ...filters,
-                          categories: [...filters.categories, cat.id],
-                        });
-                      } else {
-                        setFilters({
-                          ...filters,
-                          categories: filters.categories.filter(
-                            (categoryId) => categoryId !== cat.id,
-                          ),
-                        });
-                      }
-                    }}
-                    className="w-4 h-4 rounded border-border-muted accent-primary cursor-pointer"
-                  />
-                  <span className="text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
-                    {cat.name}
-                  </span>
-                </label>
+                  label={cat.name}
+                  checked={filters.categories.includes(cat.id)}
+                  onChange={(e) => toggleCategory(cat.id, e.target.checked)}
+                  className="rounded-control px-1 py-1 hover:bg-page"
+                />
               ))}
             </div>
-          </div>
+          )}
+        </fieldset>
 
-          {/* Sort By */}
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-text-dark mb-2.5 block ml-1">
-              Sort By
-            </label>
-            <select
+        <Field label="Sort by">
+          {({ id }) => (
+            <Select
+              id={id}
               value={filters.sortBy}
               onChange={(e) =>
                 setFilters({
@@ -140,71 +136,35 @@ const FilterSortModal: React.FC<Props> = ({
                   sortBy: e.target.value as FilterSortOptions["sortBy"],
                 })
               }
-              className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-3 text-sm font-bold focus:ring-2 ring-primary outline-none transition-all appearance-none cursor-pointer"
             >
-              <option value="sequence">Sequence Order</option>
-              <option value="name-asc">Name (A-Z)</option>
-              <option value="name-desc">Name (Z-A)</option>
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-              <option value="most-images">Most Images</option>
-              <option value="least-images">Least Images</option>
-            </select>
-          </div>
+              {SORT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
 
-          {/* Status Filter */}
-          <div>
-            <label className="text-[10px] font-black uppercase tracking-widest text-text-dark mb-2.5 block ml-1">
-              Status
-            </label>
-            <div className="space-y-1.5">
-              <label className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-raised cursor-pointer transition-all border border-transparent hover:border-border-muted group">
-                <input
-                  type="checkbox"
-                  checked={filters.showCompleted}
-                  onChange={(e) =>
-                    setFilters({ ...filters, showCompleted: e.target.checked })
-                  }
-                  className="w-4 h-4 rounded border-border-muted accent-primary cursor-pointer"
-                />
-                <span className="text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
-                  Show Completed
-                </span>
-              </label>
-              <label className="flex items-center gap-3 p-3 rounded-xl hover:bg-surface-raised cursor-pointer transition-all border border-transparent hover:border-border-muted group">
-                <input
-                  type="checkbox"
-                  checked={filters.showInProgress}
-                  onChange={(e) =>
-                    setFilters({ ...filters, showInProgress: e.target.checked })
-                  }
-                  className="w-4 h-4 rounded border-border-muted accent-primary cursor-pointer"
-                />
-                <span className="text-sm font-bold text-text-muted group-hover:text-text-main transition-colors">
-                  Show In Progress
-                </span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="flex items-center gap-3 p-8 border-t border-border-muted bg-surface/20">
-          <button
-            onClick={handleReset}
-            className="flex-1 py-3.5 px-4 bg-surface-raised hover:bg-surface-elevated text-text-muted rounded-2xl font-black text-xs uppercase tracking-widest transition-all border border-border-muted hover:border-border-accent active:scale-[0.98]"
-          >
-            Reset
-          </button>
-          <button
-            onClick={handleApply}
-            className="flex-1 py-3.5 px-4 bg-primary hover:bg-primary-hover text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg shadow-primary/20 border border-primary/20 active:scale-[0.98]"
-          >
-            Apply
-          </button>
-        </div>
-      </div>
-    </div>
+        <fieldset className="flex flex-col gap-2">
+          <legend className={`${legendClass} mb-1.5`}>Status</legend>
+          <Checkbox
+            label="Show completed"
+            checked={filters.showCompleted}
+            onChange={(e) =>
+              setFilters({ ...filters, showCompleted: e.target.checked })
+            }
+          />
+          <Checkbox
+            label="Show in progress"
+            checked={filters.showInProgress}
+            onChange={(e) =>
+              setFilters({ ...filters, showInProgress: e.target.checked })
+            }
+          />
+        </fieldset>
+      </form>
+    </Modal>
   );
 };
 

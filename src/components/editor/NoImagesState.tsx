@@ -1,4 +1,9 @@
-import React, { useState } from "react";
+"use client";
+
+import { Upload } from "lucide-react";
+import React, { useRef, useState } from "react";
+import { cn } from "../../utils/cn";
+import { Button } from "../ui";
 
 interface NoImagesStateProps {
   seriesName: string | undefined;
@@ -6,12 +11,14 @@ interface NoImagesStateProps {
   isUploading?: boolean;
 }
 
+/** Drop zone shown when a series has no pages yet. */
 const NoImagesState: React.FC<NoImagesStateProps> = ({
   seriesName,
   onUpload,
   isUploading = false,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -39,40 +46,49 @@ const NoImagesState: React.FC<NoImagesStateProps> = ({
         if (event.currentTarget === event.target) setIsDragging(false);
       }}
       onDrop={handleDrop}
-      className={`flex flex-col items-center justify-center h-[65vh] rounded-[3rem] border-2 border-dashed bg-surface/30 group transition-all duration-300 glass ${
-        isDragging
-          ? "border-primary bg-primary/10 scale-[1.01] shadow-glow"
-          : "border-border-muted hover:border-primary/40"
-      }`}
+      className={cn(
+        "screentone flex flex-1 flex-col items-center justify-center rounded-panel border-2 border-dashed px-6 py-16 text-center transition-colors duration-120",
+        isDragging ? "border-action bg-npb" : "border-line",
+      )}
     >
-      <div className="mb-10 relative">
-        <div className={`absolute inset-0 blur-3xl rounded-full transition-all duration-300 ${isDragging ? "bg-primary/40" : "bg-primary/20 group-hover:bg-primary/30"}`}></div>
-        <i className={`fas fa-cloud-upload-alt text-7xl transition-all duration-300 relative z-10 ${isDragging ? "text-primary scale-110" : "text-text-dark group-hover:text-primary group-hover:scale-110"}`}></i>
-      </div>
-      <div className="text-center">
-        <h2 className="text-3xl font-black text-text-dark uppercase tracking-tighter mb-1 group-hover:text-text-muted transition-colors">
-          Add Pages to
-        </h2>
-        <div className="text-primary font-black italic text-xl uppercase tracking-tighter mb-4 text-glow">
-          {seriesName}
-        </div>
-      </div>
-      <p className="text-text-dark font-medium mb-8 max-w-md text-center leading-relaxed">
-        {isDragging
-          ? "Drop files to add them to this series."
-          : "Drag and drop your manga pages here or use the button below to add them to this series."}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "mb-4 flex h-12 w-12 items-center justify-center rounded-panel border bg-page [&_svg]:h-5 [&_svg]:w-5",
+          isDragging ? "border-action text-action" : "border-line text-ink-3",
+        )}
+      >
+        <Upload />
+      </span>
+      <h2 className="text-base font-semibold text-ink">
+        {isDragging ? "Drop to add pages" : `Add pages to ${seriesName}`}
+      </h2>
+      <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-ink-2">
+        Drag images or a PDF here. Pages keep the order you add them in; you can
+        reorder them afterwards.
       </p>
-      <label className={`cursor-pointer bg-surface-raised text-white px-10 py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-black/20 border border-border-muted ${isUploading ? "opacity-60 cursor-wait" : "hover:bg-primary hover:scale-105 active:scale-95 group-hover:shadow-primary/30 group-hover:border-primary/50"}`}>
-        <input
-          type="file"
-          multiple
-          accept="image/*,.pdf"
-          className="hidden"
-          disabled={isUploading}
-          onChange={(e) => onUpload(e.target.files)}
-        />
-        {isUploading ? "Adding files..." : "Upload Files"}
-      </label>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*,.pdf"
+        className="hidden"
+        disabled={isUploading}
+        onChange={(event) => {
+          onUpload(event.target.files);
+          event.target.value = "";
+        }}
+      />
+      <Button
+        variant="primary"
+        size="lg"
+        icon={<Upload />}
+        loading={isUploading}
+        onClick={() => fileInputRef.current?.click()}
+        className="mt-5"
+      >
+        {isUploading ? "Adding pages…" : "Choose files"}
+      </Button>
     </div>
   );
 };

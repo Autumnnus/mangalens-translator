@@ -1,59 +1,86 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+"use client";
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useConfirm } from "../../hooks/useConfirm";
 import {
   useBulkDeleteImagesMutation,
   useBulkSetImageStatusMutation,
+  useDeleteImageMutation,
   useReorderImagesMutation,
+  useSetImageStatusMutation,
 } from "../../hooks/useImageMutations";
 import { useImageProcessor } from "../../hooks/useImageProcessor";
 import { useImageUpload } from "../../hooks/useImageUpload";
+import { usePageJobs } from "../../hooks/usePageJobs";
+import {
+  useSeriesImagesQuery,
+  useSeriesQuery,
+} from "../../hooks/useSeriesQueries";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
-import EditorHeader from "./EditorHeader";
+import { ProcessedImage } from "../../types";
+import { describePageStatus } from "../../utils/stages";
+import { Skeleton } from "../ui";
 import EditorBulkActions from "./EditorBulkActions";
 import EditorPagination from "./EditorPagination";
+import EditorToolbar, { PageFilter, ViewMode } from "./EditorToolbar";
 import EmptyWorkspace from "./EmptyWorkspace";
 import ImageCard from "./ImageCard";
 import ListViewItem from "./ListViewItem";
 import NoImagesState from "./NoImagesState";
 
-import {
-  useSeriesImagesQuery,
-  useSeriesQuery,
-} from "../../hooks/useSeriesQueries";
+const PAGE_SIZE = 20;
+const VIEW_MODE_KEY = "mangalens_editor_viewmode";
+
+const readViewMode = (): ViewMode => {
+  if (typeof window === "undefined") return "grid";
+  const saved = localStorage.getItem(VIEW_MODE_KEY);
+  if (saved === "grid" || saved === "list" || saved === "large") return saved;
+  if (saved === "detail") return "large";
+  return "grid";
+};
 
 const EditorWorkspace: React.FC = () => {
-  // Selective store access for performance
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
 
   const editorPage = useUIStore((state) => state.editorPage);
   const setEditorPage = useUIStore((state) => state.setEditorPage);
+  const toggleNewSeriesModal = useUIStore((state) => state.toggleNewSeriesModal);
+  const setSelectedImage = useUIStore((state) => state.setSelectedImage);
+  const openLayoutEditor = useUIStore((state) => state.openLayoutEditor);
+  const openMigration = useUIStore((state) => state.openMigration);
+  const showToast = useUIStore((state) => state.showToast);
+
+  const isViewOnly = useSettingsStore((state) => state.isViewOnly);
+  const developerMode = useSettingsStore(
+    (state) => state.settings.developerMode === true,
+  );
+  const batchSize = useSettingsStore((state) => state.settings.batchSize ?? 10);
+  const updateSettings = useSettingsStore((state) => state.updateSettings);
 
   const { data: seriesListData } = useSeriesQuery();
   const { data: imagesData, isLoading: isImagesLoading } =
     useSeriesImagesQuery(activeSeriesId);
-
-  const toggleNewSeriesModal = useUIStore(
-    (state) => state.toggleNewSeriesModal,
-  );
-  const setSelectedImage = useUIStore((state) => state.setSelectedImage);
-  const showToast = useUIStore((state) => state.showToast);
-
-  const isViewOnly = useSettingsStore((state) => state.isViewOnly);
+  const { byImage } = usePageJobs(activeSeriesId);
 
   const { confirm } = useConfirm();
   const { handleFileUpload, isUploading } = useImageUpload();
-  const { processAll, processImage, isProcessingAll } = useImageProcessor();
+  const { processAll, processImage, cancelProcessing, isProcessingAll } =
+    useImageProcessor();
   const { mutate: reorderImages } = useReorderImagesMutation();
-  const {
-    mutateAsync: bulkDeleteImages,
-    isPending: isBulkDeleting,
-  } = useBulkDeleteImagesMutation();
-  const {
-    mutateAsync: bulkSetImageStatus,
-    isPending: isBulkStatusUpdating,
-  } = useBulkSetImageStatusMutation();
+  const { mutate: deleteImage } = useDeleteImageMutation();
+  const { mutateAsync: setImageStatus } = useSetImageStatusMutation();
+  const { mutateAsync: bulkDeleteImages, isPending: isBulkDeleting } =
+    useBulkDeleteImagesMutation();
+  const { mutateAsync: bulkSetImageStatus, isPending: isBulkStatusUpdating } =
+    useBulkSetImageStatusMutation();
 
   const workspaceRef = useRef<HTMLElement>(null);
   const previousSeriesIdRef = useRef(activeSeriesId);
@@ -61,18 +88,11 @@ const EditorWorkspace: React.FC = () => {
     new Set(),
   );
   const [isBulkTranslating, setIsBulkTranslating] = useState(false);
-
-  const [viewMode, setViewMode] = useState<"grid" | "list" | "detail">(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("mangalens_editor_viewmode");
-      if (saved === "grid" || saved === "list" || saved === "detail")
-        return saved;
-    }
-    return "grid";
-  });
+  const [filter, setFilter] = useState<PageFilter>("all");
+  const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
 
   useEffect(() => {
-    localStorage.setItem("mangalens_editor_viewmode", viewMode);
+    localStorage.setItem(VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
 
   const activeSeries = useMemo(
@@ -82,29 +102,72 @@ const EditorWorkspace: React.FC = () => {
 
   const images = useMemo(() => imagesData || [], [imagesData]);
 
-  const totalStats = useMemo(() => {
-    return images.reduce(
-      (acc, img) => ({
-        tokens: acc.tokens + (img.usage?.totalTokenCount || 0),
-        cost: acc.cost + (img.cost || 0),
-      }),
-      { tokens: 0, cost: 0 },
-    );
-  }, [images]);
+  const migrationCount = useMemo(
+    () =>
+      images.filter(
+        (image) =>
+          (image.layoutVersion === 1 && !!image.translatedUrl) ||
+          (image.layoutVersion === 2 && !!image.legacyTranslatedUrl),
+      ).length,
+    [images],
+  );
 
-  const editorPageSize = 20;
-  const totalEditorPages = Math.max(1, Math.ceil(images.length / editorPageSize));
+  // One status view per page, shared by filters, counts and rows.
+  const statusById = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof describePageStatus>>();
+    for (const image of images) {
+      map.set(image.id, describePageStatus(image, byImage.get(image.id)));
+    }
+    return map;
+  }, [images, byImage]);
+
+  const counts = useMemo(() => {
+    const result = { all: images.length, running: 0, failed: 0, done: 0, idle: 0 };
+    for (const image of images) {
+      const view = statusById.get(image.id);
+      if (!view) continue;
+      if (view.active) result.running += 1;
+      else if (view.tone === "danger") result.failed += 1;
+      else if (image.status === "completed") result.done += 1;
+      else result.idle += 1;
+    }
+    return result;
+  }, [images, statusById]);
+
+  const filteredImages = useMemo(() => {
+    if (filter === "all") return images;
+    return images.filter((image) => {
+      const view = statusById.get(image.id);
+      if (!view) return false;
+      switch (filter) {
+        case "running":
+          return view.active;
+        case "failed":
+          return !view.active && view.tone === "danger";
+        case "done":
+          return !view.active && image.status === "completed";
+        case "idle":
+          return !view.active && view.tone !== "danger" && image.status !== "completed";
+      }
+    });
+  }, [filter, images, statusById]);
+
+  const totalEditorPages = Math.max(
+    1,
+    Math.ceil(filteredImages.length / PAGE_SIZE),
+  );
 
   const paginatedImages = useMemo(() => {
-    const start = (editorPage - 1) * editorPageSize;
-    return images.slice(start, start + editorPageSize);
-  }, [images, editorPage]);
+    const start = (editorPage - 1) * PAGE_SIZE;
+    return filteredImages.slice(start, start + PAGE_SIZE);
+  }, [filteredImages, editorPage]);
 
   useEffect(() => {
     if (activeSeriesId === previousSeriesIdRef.current) return;
     previousSeriesIdRef.current = activeSeriesId;
     setEditorPage(1);
     setSelectedImageIds(new Set());
+    setFilter("all");
   }, [activeSeriesId, setEditorPage]);
 
   useEffect(() => {
@@ -120,6 +183,14 @@ const EditorWorkspace: React.FC = () => {
       return next.size === current.size ? current : next;
     });
   }, [images]);
+
+  const handleFilterChange = useCallback(
+    (next: PageFilter) => {
+      setFilter(next);
+      setEditorPage(1);
+    },
+    [setEditorPage],
+  );
 
   const handlePageChange = useCallback(
     (page: number) => {
@@ -166,13 +237,16 @@ const EditorWorkspace: React.FC = () => {
   }, [paginatedImages]);
 
   const selectAllImages = useCallback(() => {
-    setSelectedImageIds(new Set(images.map((image) => image.id)));
-  }, [images]);
+    setSelectedImageIds(new Set(filteredImages.map((image) => image.id)));
+  }, [filteredImages]);
+
+  const clearSelection = useCallback(() => setSelectedImageIds(new Set()), []);
 
   const clearAll = useCallback(() => {
     confirm({
-      title: "Wipe Series",
-      message: "This will remove ALL images from this series. Are you sure?",
+      title: "Delete all pages",
+      message:
+        "This removes every page in this series, including translations. This cannot be undone.",
       onConfirm: () => {
         if (!activeSeriesId || images.length === 0) return;
         void bulkDeleteImages({
@@ -181,7 +255,7 @@ const EditorWorkspace: React.FC = () => {
         })
           .then(() => {
             setSelectedImageIds(new Set());
-            showToast("All pages were deleted.", "success", 3500);
+            showToast("All pages deleted.", "success", 3500);
           })
           .catch((error: unknown) => {
             showToast(
@@ -195,26 +269,20 @@ const EditorWorkspace: React.FC = () => {
     });
   }, [activeSeriesId, bulkDeleteImages, confirm, images, showToast]);
 
-  const handleSelectImage = useCallback(
-    (image: import("../../types").ProcessedImage) => {
-      setSelectedImage(image);
-    },
+  const handleOpenImage = useCallback(
+    (image: ProcessedImage) => setSelectedImage(image),
     [setSelectedImage],
   );
 
   const handleMoveImage = useCallback(
     (imageId: string, dir: "up" | "down" | "jump", targetPos?: number) => {
-      if (!images) return;
-
       const currentIndex = images.findIndex((img) => img.id === imageId);
       if (currentIndex === -1) return;
 
       const newImages = [...images];
 
       if (dir === "jump" && targetPos !== undefined) {
-        // targetPos is 1-based sequence number
         const [item] = newImages.splice(currentIndex, 1);
-        // Convert to 0-based index, clamp
         const insertIdx = Math.max(
           0,
           Math.min(targetPos - 1, newImages.length),
@@ -238,8 +306,64 @@ const EditorWorkspace: React.FC = () => {
     [images, activeSeriesId, reorderImages],
   );
 
+  const handleTranslateImage = useCallback(
+    (image: ProcessedImage) => {
+      if (image.status === "completed") {
+        confirm({
+          title: "Translate again?",
+          message: `${image.fileName} already has a translation. Translating again replaces it and its usage data.`,
+          onConfirm: () => void processImage(image, 0, true),
+          type: "warning",
+        });
+      } else {
+        void processImage(image, 0, true);
+      }
+    },
+    [confirm, processImage],
+  );
+
+  const handleCancelImage = useCallback(
+    (image: ProcessedImage) => void cancelProcessing(image.id),
+    [cancelProcessing],
+  );
+
+  const handleDeleteImage = useCallback(
+    (image: ProcessedImage) => {
+      confirm({
+        title: "Delete page",
+        message: `Delete ${image.fileName}? This cannot be undone.`,
+        onConfirm: () => {
+          if (image.originalUrl.startsWith("blob:"))
+            URL.revokeObjectURL(image.originalUrl);
+          if (activeSeriesId) {
+            deleteImage({ seriesId: activeSeriesId, imageId: image.id });
+          }
+        },
+        type: "danger",
+      });
+    },
+    [activeSeriesId, confirm, deleteImage],
+  );
+
+  const handleSetStatus = useCallback(
+    async (image: ProcessedImage, status: ProcessedImage["status"]) => {
+      if (!activeSeriesId || status === image.status) return;
+      try {
+        await setImageStatus({ seriesId: activeSeriesId, imageId: image.id, status });
+        showToast(`${image.fileName}: marked ${status}.`, "success", 3000);
+      } catch (error) {
+        showToast(
+          error instanceof Error ? error.message : "Could not update the page.",
+          "error",
+          4500,
+        );
+      }
+    },
+    [activeSeriesId, setImageStatus, showToast],
+  );
+
   const handleBulkStatusChange = useCallback(
-    (status: import("../../types").ProcessedImage["status"]) => {
+    (status: ProcessedImage["status"]) => {
       const imageIds = [...selectedImageIds];
       if (!activeSeriesId || imageIds.length === 0) return;
 
@@ -273,7 +397,7 @@ const EditorWorkspace: React.FC = () => {
 
     setIsBulkTranslating(true);
     showToast(
-      `Translating ${selectedImages.length} selected page${selectedImages.length === 1 ? "" : "s"}.`,
+      `Queuing ${selectedImages.length} selected page${selectedImages.length === 1 ? "" : "s"}…`,
       "info",
       4000,
     );
@@ -284,7 +408,7 @@ const EditorWorkspace: React.FC = () => {
         if (await processImage(image, 0, true)) completed += 1;
       }
       showToast(
-        `Selected translation finished: ${completed}/${selectedImages.length}.`,
+        `${completed}/${selectedImages.length} selected pages queued.`,
         completed === selectedImages.length ? "success" : "info",
         5000,
       );
@@ -298,8 +422,8 @@ const EditorWorkspace: React.FC = () => {
     if (!activeSeriesId || imageIds.length === 0) return;
 
     confirm({
-      title: "Delete Selected Pages",
-      message: `This will permanently remove ${imageIds.length} selected page${imageIds.length === 1 ? "" : "s"}. Are you sure?`,
+      title: "Delete selected pages",
+      message: `Delete ${imageIds.length} selected page${imageIds.length === 1 ? "" : "s"}? This cannot be undone.`,
       onConfirm: () => {
         void bulkDeleteImages({ seriesId: activeSeriesId, imageIds })
           .then(() => {
@@ -322,9 +446,11 @@ const EditorWorkspace: React.FC = () => {
     });
   }, [activeSeriesId, bulkDeleteImages, confirm, selectedImageIds, showToast]);
 
+  const containerClass = "mx-auto w-full max-w-[1400px] px-4 py-4 sm:px-6";
+
   if (!activeSeries) {
     return (
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
+      <main className={`flex flex-1 flex-col ${containerClass}`}>
         <EmptyWorkspace onAddSeries={() => toggleNewSeriesModal(true)} />
       </main>
     );
@@ -332,15 +458,12 @@ const EditorWorkspace: React.FC = () => {
 
   if (isImagesLoading) {
     return (
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
-        <div className="flex flex-col gap-10">
-          <div className="h-32 bg-surface-muted/30 rounded-[3rem] animate-pulse" />
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {[...Array(8)].map((_, i) => (
-              <div
-                key={i}
-                className="aspect-[2/3] bg-surface-muted/30 rounded-[2rem] animate-pulse border border-border-muted"
-              />
+      <main className={containerClass} aria-busy="true">
+        <div className="flex flex-col gap-4">
+          <Skeleton className="h-10" />
+          <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+            {[...Array(10)].map((_, i) => (
+              <Skeleton key={i} className="aspect-[2/3]" />
             ))}
           </div>
         </div>
@@ -350,7 +473,7 @@ const EditorWorkspace: React.FC = () => {
 
   if (images.length === 0 && (activeSeries.imageCount || 0) === 0) {
     return (
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10">
+      <main className={`flex flex-1 flex-col ${containerClass}`}>
         <NoImagesState
           seriesName={activeSeries.name}
           onUpload={handleFileUpload}
@@ -361,54 +484,60 @@ const EditorWorkspace: React.FC = () => {
   }
 
   if (images.length === 0 && (activeSeries.imageCount || 0) > 0) {
-    // This case covers when imageCount is positive but images array is empty (should not happen with autozustand but good for safety)
+    // imageCount is positive but the page list is empty: still signing URLs.
     return (
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-          <p className="text-text-muted animate-pulse">Loading Images...</p>
+      <main className={containerClass} aria-busy="true">
+        <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {[...Array(Math.min(10, activeSeries.imageCount || 10))].map((_, i) => (
+            <Skeleton key={i} className="aspect-[2/3]" />
+          ))}
         </div>
       </main>
     );
   }
 
-  return (
-    <main
-      ref={workspaceRef}
-      className="flex-1 max-w-7xl mx-auto w-full p-4 sm:p-6 md:p-10"
-    >
-      <EditorHeader
-        activeSeries={activeSeries}
-        totalStats={totalStats}
-        imageCount={images.length}
-        isProcessingAll={isProcessingAll}
-        onProcessAll={processAll}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
-        isViewOnly={isViewOnly}
-        onUpload={handleFileUpload}
-        onWipe={clearAll}
-      />
+  const hasSelection = selectedImageIds.size > 0;
+  const bulkBusy =
+    isBulkDeleting || isBulkStatusUpdating || isBulkTranslating || isProcessingAll;
 
-      {!isViewOnly && (
-        <EditorBulkActions
-          selectedCount={selectedImageIds.size}
-          totalCount={images.length}
-          isPageSelected={isPageSelected}
-          isBusy={
-            isBulkDeleting ||
-            isBulkStatusUpdating ||
-            isBulkTranslating ||
-            isProcessingAll
-          }
-          onTogglePage={togglePageSelection}
-          onSelectAll={selectAllImages}
-          onClear={() => setSelectedImageIds(new Set())}
-          onStatusChange={handleBulkStatusChange}
-          onTranslate={() => void handleTranslateSelected()}
-          onDelete={handleDeleteSelected}
-        />
-      )}
+  return (
+    <main ref={workspaceRef} className={containerClass}>
+      <div className="sticky top-0 z-(--z-bar) -mx-4 mb-4 bg-paper px-4 pb-2 pt-1 sm:-mx-6 sm:px-6">
+        {hasSelection && !isViewOnly ? (
+          <EditorBulkActions
+            selectedCount={selectedImageIds.size}
+            totalCount={filteredImages.length}
+            isPageSelected={isPageSelected}
+            isBusy={bulkBusy}
+            onTogglePage={togglePageSelection}
+            onSelectAll={selectAllImages}
+            onClear={clearSelection}
+            onStatusChange={handleBulkStatusChange}
+            onTranslate={() => void handleTranslateSelected()}
+            onDelete={handleDeleteSelected}
+          />
+        ) : (
+          <EditorToolbar
+            counts={counts}
+            filter={filter}
+            onFilterChange={handleFilterChange}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            isProcessingAll={isProcessingAll}
+            canTranslateAll={counts.idle + counts.failed > 0}
+            onTranslateAll={() => void processAll()}
+            batchSize={batchSize}
+            onBatchSizeChange={(size) => updateSettings({ batchSize: size })}
+            onUpload={handleFileUpload}
+            isUploading={isUploading}
+            migrationCount={migrationCount}
+            onOpenMigration={() => activeSeriesId && openMigration(activeSeriesId)}
+            onWipe={clearAll}
+            onSelectPage={togglePageSelection}
+            isViewOnly={isViewOnly}
+          />
+        )}
+      </div>
 
       <EditorPagination
         currentPage={editorPage}
@@ -417,43 +546,64 @@ const EditorWorkspace: React.FC = () => {
         placement="top"
       />
 
-      <div
-        className={`pb-12 ${
-          viewMode === "grid"
-            ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
-            : viewMode === "list"
-              ? "space-y-2"
-              : "space-y-12 max-w-4xl mx-auto"
-        }`}
-      >
-        {paginatedImages.map((image, idx) => {
-          const globalIndex = (editorPage - 1) * editorPageSize + idx;
-          if (viewMode === "list") {
-            return (
-              <ListViewItem
-                key={image.id}
-                image={image}
-                onSelect={() => handleSelectImage(image)}
-                isSelected={selectedImageIds.has(image.id)}
-                onToggleSelect={() => toggleImageSelection(image.id)}
-              />
-            );
-          }
-          return (
-            <ImageCard
+      {paginatedImages.length === 0 ? (
+        <p className="py-16 text-center text-sm text-ink-3">
+          No pages match this filter.
+        </p>
+      ) : viewMode === "list" ? (
+        <ul className="flex flex-col gap-1 pb-8" aria-label="Pages">
+          {paginatedImages.map((image) => (
+            <ListViewItem
               key={image.id}
               image={image}
-              index={globalIndex}
-              total={images.length}
-              onMove={(dir, targetPos) =>
-                handleMoveImage(image.id, dir, targetPos)
-              }
+              status={statusById.get(image.id)!}
               isSelected={selectedImageIds.has(image.id)}
-              onToggleSelect={() => toggleImageSelection(image.id)}
+              onToggleSelect={isViewOnly ? undefined : () => toggleImageSelection(image.id)}
+              onOpen={() => handleOpenImage(image)}
+              onOpenEditor={() => openLayoutEditor(image)}
+              onTranslate={() => handleTranslateImage(image)}
+              onCancel={() => handleCancelImage(image)}
+              onDelete={() => handleDeleteImage(image)}
+              onSetStatus={(status) => void handleSetStatus(image, status)}
+              readOnly={isViewOnly}
             />
-          );
-        })}
-      </div>
+          ))}
+        </ul>
+      ) : (
+        <ul
+          aria-label="Pages"
+          className={
+            viewMode === "large"
+              ? "grid grid-cols-1 gap-4 pb-8 md:grid-cols-2 xl:grid-cols-3"
+              : "grid grid-cols-1 gap-3 pb-8 min-[480px]:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+          }
+        >
+          {paginatedImages.map((image) => {
+            const globalIndex = images.findIndex((item) => item.id === image.id);
+            return (
+              <ImageCard
+                key={image.id}
+                image={image}
+                index={globalIndex}
+                total={images.length}
+                status={statusById.get(image.id)!}
+                isSelected={selectedImageIds.has(image.id)}
+                onToggleSelect={isViewOnly ? undefined : () => toggleImageSelection(image.id)}
+                onOpen={() => handleOpenImage(image)}
+                onOpenEditor={() => openLayoutEditor(image)}
+                onTranslate={() => handleTranslateImage(image)}
+                onCancel={() => handleCancelImage(image)}
+                onDelete={() => handleDeleteImage(image)}
+                onSetStatus={(status) => void handleSetStatus(image, status)}
+                onMove={(dir, targetPos) => handleMoveImage(image.id, dir, targetPos)}
+                developerMode={developerMode}
+                readOnly={isViewOnly}
+                large={viewMode === "large"}
+              />
+            );
+          })}
+        </ul>
+      )}
 
       <EditorPagination
         currentPage={editorPage}

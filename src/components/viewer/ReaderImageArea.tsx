@@ -99,11 +99,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
   });
 
   return (
-    <div
-      className={`flex-1 w-full h-full min-h-0 flex flex-col relative bg-black transition-colors duration-500 ${
-        isUIVisible ? "bg-background/20" : "bg-black"
-      }`}
-    >
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col bg-theater text-theater-ink">
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -120,27 +116,27 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
                 justify-content: center;
             }
             .swiper-button-next, .swiper-button-prev {
-                color: rgba(255, 255, 255, 0.5);
-                transition: color 0.2s;
+                color: var(--c-theater-ink-2);
+                transition: color 120ms ease-out;
             }
             .swiper-button-next:hover, .swiper-button-prev:hover {
-                color: rgba(255, 255, 255, 1);
+                color: var(--c-theater-ink);
             }
-            
+
             /* Main Swiper - takes available space */
             .main-swiper {
                 flex: 1;
                 min-height: 0;
             }
-            
+
             /* Thumbs Swiper - fixed height at bottom */
             .thumbs-swiper {
                 height: 86px;
                 flex-shrink: 0;
-                background: rgba(0,0,0,0.5);
+                background: var(--c-theater);
                 padding: 8px 0;
-                transition: height 0.3s, opacity 0.3s, padding 0.3s;
-                border-top: 1px solid rgba(255,255,255,0.1);
+                transition: height 200ms ease-out, opacity 200ms ease-out, padding 200ms ease-out;
+                border-top: 1px solid var(--c-theater-line);
             }
 
             @media (min-width: 640px) {
@@ -149,7 +145,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
                     padding: 10px 0;
                 }
             }
-            
+
             .thumbs-swiper.hidden-thumbs {
                 height: 0;
                 padding: 0;
@@ -161,32 +157,37 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
             .thumbs-swiper .swiper-slide {
                 width: 25%;
                 height: 100%;
-                opacity: 0.4;
-                transition: opacity 0.3s;
+                opacity: 0.45;
+                transition: opacity 120ms ease-out;
                 cursor: pointer;
-                border-radius: 8px;
+                border-radius: 6px;
+                border: 2px solid transparent;
                 overflow: hidden;
                 box-sizing: border-box;
             }
-            
+
+            .thumbs-swiper .swiper-slide:hover {
+                opacity: 0.8;
+            }
+
             .thumbs-swiper .swiper-slide-thumb-active {
                 opacity: 1;
-                border: 2px solid var(--primary, #3b82f6);
+                border-color: var(--c-action);
             }
-            
+
             .thumbs-swiper .swiper-slide img {
                 width: 100%;
                 height: 100%;
                 object-fit: contain;
                 display: block;
-                background: rgba(0,0,0,0.8);
+                background: #000;
                 padding: 2px;
             }
         `,
         }}
       />
 
-      <div className="flex-1 min-h-0 w-full relative">
+      <div className="relative min-h-0 w-full flex-1">
         <Swiper
           ref={swiperRef}
           modules={[Zoom, Virtual, Navigation, Thumbs]}
@@ -217,9 +218,9 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
             const displayUrl = img.translatedUrl || img.originalUrl;
             return (
               <SwiperSlide key={img.id} virtualIndex={index}>
-                <div className="swiper-zoom-container w-full h-full flex items-center justify-center">
+                <div className="swiper-zoom-container flex h-full w-full items-center justify-center">
                   {showComparison && img.translatedUrl ? (
-                    <div className="w-full h-full max-w-5xl mx-auto p-4 md:p-8 flex items-center justify-center pointer-events-auto swiper-no-swiping">
+                    <div className="swiper-no-swiping pointer-events-auto mx-auto flex h-full w-full max-w-5xl items-center justify-center p-4 md:p-8">
                       <ComparisonView
                         pair={getPair(img)}
                         mode={comparisonMode}
@@ -230,7 +231,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
                     <img
                       src={displayUrl}
                       alt={img.fileName}
-                      className="max-w-full max-h-full object-contain select-none"
+                      className="max-h-full max-w-full select-none object-contain"
                       loading={Math.abs(index - currentIndex) <= 1 ? "eager" : "lazy"}
                       decoding="async"
                       /* @ts-expect-error - fetchpriority is a valid web standard but may not be in all TS versions */
@@ -270,10 +271,10 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
           <SwiperSlide key={`thumb-${img.id}`} virtualIndex={index}>
             <img
               src={getThumbnailUrl(img.originalKey, img.originalUrl, 220, 68)}
-              alt={`Thumb ${index + 1}`}
+              alt={`Page ${index + 1}`}
               loading="lazy"
               decoding="async"
-              className="w-full h-full object-contain bg-black/80 p-0.5"
+              className="h-full w-full bg-theater object-contain p-0.5"
             />
           </SwiperSlide>
         ))}

@@ -1,4 +1,4 @@
-import { MousePointer2, MoveHorizontal } from "lucide-react";
+import { MoveHorizontal } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { ImagePair, ViewMode } from "../types";
 
@@ -7,6 +7,14 @@ interface Props {
   mode: ViewMode;
   interactive?: boolean;
 }
+
+/** Small mono label pinned over an image. */
+const chipClass =
+  "rounded-chip border border-theater-line bg-theater px-1.5 py-0.5 font-mono text-xs text-theater-ink-2";
+
+/** Opaque image frame on the theater ground. */
+const frameClass =
+  "relative flex h-full w-full items-center justify-center overflow-hidden rounded-panel border border-theater-line bg-theater";
 
 const ComparisonView: React.FC<Props> = ({
   pair,
@@ -60,16 +68,16 @@ const ComparisonView: React.FC<Props> = ({
 
   if (!hasTranslation) {
     return (
-      <div className="relative w-full h-full overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass">
+      <div className={frameClass}>
         <img
           src={pair.sourceUrl}
           alt="Original"
-          className="max-w-full max-h-full object-contain"
+          className="max-h-full max-w-full object-contain"
           loading="lazy"
           decoding="async"
         />
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 bg-surface-raised/80 backdrop-blur-xl border border-border-muted rounded-2xl text-xs font-black text-text-muted uppercase tracking-widest shadow-premium">
-          NO TRANSLATION AVAILABLE
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+          <span className={chipClass}>No translation available</span>
         </div>
       </div>
     );
@@ -77,30 +85,26 @@ const ComparisonView: React.FC<Props> = ({
 
   if (mode === "side-by-side") {
     return (
-      <div className="grid grid-cols-2 gap-4 w-full h-full">
-        <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass flex items-center justify-center">
+      <div className="grid h-full w-full grid-cols-2 gap-3">
+        <div className={frameClass}>
           <img
             src={pair.sourceUrl}
-            alt="Source"
-            className="w-full h-full object-contain select-none"
+            alt="Original"
+            className="h-full w-full select-none object-contain"
             loading="lazy"
             decoding="async"
           />
-          <div className="absolute top-4 left-4 z-20 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium">
-            Source
-          </div>
+          <span className={`absolute left-2 top-2 ${chipClass}`}>Original</span>
         </div>
-        <div className="relative overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass flex items-center justify-center">
+        <div className={frameClass}>
           <img
             src={pair.convertedUrl}
-            alt="Converted"
-            className="w-full h-full object-contain select-none"
+            alt="Translated"
+            className="h-full w-full select-none object-contain"
             loading="lazy"
             decoding="async"
           />
-          <div className="absolute top-4 left-4 z-20 bg-primary/80 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-white border border-primary/20 uppercase tracking-widest shadow-glow">
-            Converted
-          </div>
+          <span className={`absolute left-2 top-2 ${chipClass}`}>Translated</span>
         </div>
       </div>
     );
@@ -109,38 +113,45 @@ const ComparisonView: React.FC<Props> = ({
   if (mode === "toggle") {
     return (
       <div
-        className="relative w-full h-full cursor-pointer overflow-hidden rounded-[2rem] border border-border-muted bg-background/40 glass group flex items-center justify-center"
+        className={`${frameClass} cursor-pointer`}
         onClick={() => setIsToggled(!isToggled)}
+        role="button"
+        tabIndex={0}
+        aria-pressed={isToggled}
+        aria-label={isToggled ? "Showing translated page. Press to show the original" : "Showing original page. Press to show the translation"}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setIsToggled(!isToggled);
+          }
+        }}
       >
         <img
           src={isToggled ? pair.convertedUrl : pair.sourceUrl}
-          alt="Comparison"
-          className="w-full h-full object-contain transition-opacity duration-300 select-none"
+          alt={isToggled ? "Translated" : "Original"}
+          className="h-full w-full select-none object-contain"
           loading="lazy"
           decoding="async"
         />
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-4">
-          <div
-            className={`px-5 py-2 rounded-2xl text-[10px] font-black tracking-widest transition-all shadow-premium border ${
-              !isToggled
-                ? "bg-text-main text-background scale-110 shadow-glow border-white/20"
-                : "bg-surface-raised/40 text-text-muted border-border-muted"
-            }`}
-          >
-            SOURCE
-          </div>
-          <div
-            className={`px-5 py-2 rounded-2xl text-[10px] font-black tracking-widest transition-all shadow-premium border ${
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center gap-1.5">
+          <span
+            className={
               isToggled
-                ? "bg-primary text-white scale-110 shadow-glow border-primary/20"
-                : "bg-surface-raised/40 text-text-muted border-border-muted"
-            }`}
+                ? chipClass
+                : "rounded-chip border border-transparent bg-action px-1.5 py-0.5 font-mono text-xs text-on-action"
+            }
           >
-            CONVERTED
-          </div>
-        </div>
-        <div className="absolute top-6 right-6 bg-surface-raised/80 backdrop-blur-md rounded-2xl p-3 text-text-main border border-border-muted shadow-premium group-hover:scale-110 transition-transform">
-          <MousePointer2 className="w-4 h-4" />
+            Original
+          </span>
+          <span
+            className={
+              isToggled
+                ? "rounded-chip border border-transparent bg-action px-1.5 py-0.5 font-mono text-xs text-on-action"
+                : chipClass
+            }
+          >
+            Translated
+          </span>
         </div>
       </div>
     );
@@ -149,48 +160,45 @@ const ComparisonView: React.FC<Props> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full select-none overflow-hidden rounded-[2.5rem] border border-border-muted cursor-col-resize group bg-background/40 glass-card"
+      className={`${frameClass} select-none ${interactive ? "cursor-col-resize" : ""}`}
       onMouseDown={handleMouseDown}
       onTouchMove={handleMove}
     >
-      {/* Background Image (Converted) */}
+      {/* Background image (translated) */}
       <img
         src={pair.convertedUrl}
-        alt="Converted"
-        className="absolute inset-0 w-full h-full object-contain"
+        alt="Translated"
+        className="absolute inset-0 h-full w-full object-contain"
         loading="lazy"
         decoding="async"
       />
 
-      {/* Foreground Container (Source) - Clipped via clip-path for perfect alignment */}
+      {/* Foreground (original), clipped with clip-path so both images stay aligned */}
       <div
-        className="absolute inset-0 w-full h-full z-10"
+        className="absolute inset-0 z-10 h-full w-full"
         style={{ clipPath: `inset(0 ${100 - sliderPos}% 0 0)` }}
       >
         <img
           src={pair.sourceUrl}
-          alt="Source"
-          className="absolute inset-0 w-full h-full object-contain"
+          alt="Original"
+          className="absolute inset-0 h-full w-full object-contain"
           draggable={false}
           loading="lazy"
           decoding="async"
         />
-        <div className="absolute top-4 left-4 bg-background/60 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-text-main border border-border-muted uppercase tracking-widest shadow-premium z-20">
-          Source
-        </div>
+        <span className={`absolute left-2 top-2 z-20 ${chipClass}`}>Original</span>
       </div>
 
-      <div className="absolute top-4 right-4 bg-primary/80 backdrop-blur-md px-3 py-1.5 text-[10px] font-black rounded-xl text-white border border-primary/20 uppercase tracking-widest shadow-glow z-20">
-        Converted
-      </div>
+      <span className={`absolute right-2 top-2 z-20 ${chipClass}`}>Translated</span>
 
-      {/* Slider Bar */}
+      {/* Divider and handle */}
       <div
-        className="absolute inset-y-0 w-0.5 bg-primary/50 shadow-glow z-30"
+        className="absolute inset-y-0 z-30 flex w-0.5 items-center justify-center bg-action"
         style={{ left: `${sliderPos}%`, transform: "translateX(-50%)" }}
+        aria-hidden="true"
       >
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-primary text-white rounded-2xl flex items-center justify-center shadow-glow border border-primary/50 group-hover:scale-110 transition-transform active:scale-95">
-          <MoveHorizontal className="w-5 h-5" />
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-action text-on-action">
+          <MoveHorizontal className="h-4 w-4" />
         </div>
       </div>
     </div>

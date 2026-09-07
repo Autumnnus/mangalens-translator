@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { db } from "@/db";
 import { localOcrWorkers } from "@/db/schema";
 import { authenticateLocalOcrWorker } from "@/server/local-ocr/auth";
@@ -23,7 +24,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Local OCR heartbeat failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Heartbeat failed" },
+      { error: describeError(error, "Heartbeat failed") },
       { status: 500 },
     );
   }

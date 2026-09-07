@@ -1,6 +1,21 @@
-import { Plus, X } from "lucide-react";
-import React, { useMemo, useState } from "react";
+import { Plus } from "lucide-react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Category } from "../types";
+import {
+  Button,
+  Checkbox,
+  Field,
+  IconButton,
+  Input,
+  Modal,
+  Select,
+} from "./ui";
 
 interface Props {
   isOpen: boolean;
@@ -27,6 +42,8 @@ interface Props {
   initialOriginalTitle?: string;
   initialContentMode?: "standard" | "adult_verified";
 }
+
+const FORM_ID = "series-form";
 
 const NewSeriesModal: React.FC<Props> = ({
   isOpen,
@@ -58,12 +75,20 @@ const NewSeriesModal: React.FC<Props> = ({
   const [newCategoryName, setNewCategoryName] = useState("");
   const [error, setError] = useState("");
 
+  // Parents pass an inline `onClose`; keep a stable identity for the dialog
+  // so its focus/escape effect does not re-run on every parent render.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  const handleClose = useCallback(() => onCloseRef.current(), []);
+
   // Sync state with props when opening for edit
   React.useEffect(() => {
     if (isOpen) {
       setName(initialName);
 
-      // Eğer initialCategoryId varsa o kategoriyi seç
+      // When initialCategoryId is given, select that category
       if (initialCategoryId) {
         const cat = categories.find((c) => c.id === initialCategoryId);
         if (cat) {
@@ -156,177 +181,166 @@ const NewSeriesModal: React.FC<Props> = ({
     return result;
   }, [categories]);
 
-  if (!isOpen) return null;
+  const editing = Boolean(initialName);
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div
-        className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-3xl border border-border-muted bg-surface shadow-2xl animate-in zoom-in-95 duration-200 glass-card"
-        onClick={(e) => e.stopPropagation()}
+    <Modal
+      open={isOpen}
+      onClose={handleClose}
+      size="md"
+      title={editing ? "Edit series" : "New series"}
+      footer={
+        <>
+          <Button variant="secondary" onClick={handleClose} data-dismiss>
+            Cancel
+          </Button>
+          <Button variant="primary" type="submit" form={FORM_ID}>
+            {editing ? "Save changes" : "Create series"}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id={FORM_ID}
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-4"
       >
-        <div className="p-6 border-b border-border-muted flex items-center justify-between bg-surface-raised/50">
-          <h2 className="text-xl font-black uppercase tracking-tight text-text-main italic">
-            {initialName ? "Edit" : "Create"}{" "}
-            <span className="text-primary text-glow">
-              {initialName ? "Series" : "New Series"}
-            </span>
-          </h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-text-dark hover:text-text-main transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
-              Series Title
-            </label>
-            <input
-              autoFocus
+        <Field label="Title" required error={error || undefined}>
+          {({ id, describedBy, invalid }) => (
+            <Input
+              id={id}
+              aria-describedby={describedBy}
+              invalid={invalid}
+              data-autofocus
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., One Piece - Chapter 1100"
-              className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
+              onChange={(e) => {
+                setName(e.target.value);
+                if (error) setError("");
+              }}
+              placeholder="e.g. One Piece, chapter 1100"
             />
-            {error && (
-              <p className="text-xs font-bold text-rose-500 mt-1">{error}</p>
-            )}
-          </div>
+          )}
+        </Field>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
-                Author
-              </label>
-              <input
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Author">
+            {({ id }) => (
+              <Input
+                id={id}
                 type="text"
                 value={author}
                 onChange={(e) => setAuthor(e.target.value)}
                 placeholder="Author name"
-                className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
               />
-            </div>
-            <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
-                Group
-              </label>
-              <input
+            )}
+          </Field>
+          <Field label="Group">
+            {({ id }) => (
+              <Input
+                id={id}
                 type="text"
                 value={group}
                 onChange={(e) => setGroup(e.target.value)}
                 placeholder="Scan group"
-                className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
               />
-            </div>
-          </div>
+            )}
+          </Field>
+        </div>
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
-              Original Title
-            </label>
-            <input
+        <Field label="Original title">
+          {({ id }) => (
+            <Input
+              id={id}
               type="text"
               value={originalTitle}
               onChange={(e) => setOriginalTitle(e.target.value)}
               placeholder="Original series title"
-              className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all text-text-main placeholder:text-text-dark/40"
             />
-          </div>
+          )}
+        </Field>
 
-          <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-border-muted bg-surface-raised/40 p-4">
-            <input
-              type="checkbox"
-              checked={adultVerified}
-              onChange={(event) => setAdultVerified(event.target.checked)}
-              className="mt-0.5 h-4 w-4 accent-primary"
-            />
-            <span>
-              <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-text-main">
-                Verified adult content
-              </span>
-              <span className="mt-1 block text-[9px] font-bold leading-relaxed text-text-dark/70">
-                I confirm that the sexual content in this series depicts adults
-                only. Local OCR safety fallback stays disabled for standard or
-                age-ambiguous content.
-              </span>
-            </span>
-          </label>
+        <Checkbox
+          checked={adultVerified}
+          onChange={(event) => setAdultVerified(event.target.checked)}
+          label="Verified adult content"
+          description="I confirm that the sexual content in this series depicts adults only. Local OCR safety fallback stays disabled for standard or age-ambiguous content."
+        />
 
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-dark">
-              Category
-            </label>
-            {!isAddingCategory ? (
-              <div className="flex gap-2">
-                <select
+        {!isAddingCategory ? (
+          <Field label="Category">
+            {({ id }) => (
+              <div className="flex items-start gap-2">
+                <Select
+                  id={id}
                   value={categoryName}
                   onChange={(e) => setCategoryName(e.target.value)}
-                  className="flex-1 bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary/30 outline-none transition-all appearance-none cursor-pointer text-text-main"
+                  className="min-w-0 flex-1"
                 >
-                  <option value="">Select or Uncategorized</option>
+                  <option value="">Uncategorized</option>
                   {flattenedCategories.map((cat) => (
-                    <option
-                      key={cat.id}
-                      value={cat.name}
-                      className="bg-surface text-text-main"
-                    >
-                      {"\u00A0\u00A0".repeat(cat.level) +
+                    <option key={cat.id} value={cat.name}>
+                      {"  ".repeat(cat.level) +
                         (cat.level > 0 ? "└ " : "") +
                         cat.name}
                     </option>
                   ))}
-                </select>
-                <button
-                  type="button"
+                </Select>
+                <IconButton
+                  label="Add category"
+                  variant="secondary"
                   onClick={() => setIsAddingCategory(true)}
-                  className="p-3 bg-surface-raised border border-border-muted rounded-xl text-text-dark hover:text-primary hover:border-primary/50 transition-all"
-                  title="Add new category"
                 >
-                  <Plus className="w-5 h-5" />
-                </button>
-              </div>
-            ) : (
-              <div className="flex gap-2 animate-in slide-in-from-right-2 duration-200">
-                <input
-                  type="text"
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="New Category..."
-                  className="flex-1 bg-surface-raised border border-primary/50 rounded-xl px-4 py-3 text-sm outline-none transition-all text-text-main"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddCategory}
-                  className="px-4 py-2 bg-primary text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-primary-hover transition-all shadow-glow shadow-primary/20"
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAddingCategory(false)}
-                  className="px-4 py-2 bg-surface-raised text-text-dark rounded-xl text-xs font-black uppercase tracking-widest hover:text-text-main transition-all border border-border-muted"
-                >
-                  Back
-                </button>
+                  <Plus />
+                </IconButton>
               </div>
             )}
-          </div>
-
-          <div className="pt-4">
-            <button
-              type="submit"
-              className="w-full py-4 bg-gradient-to-r from-primary to-primary-hover text-white rounded-2xl text-xs font-black uppercase tracking-[0.2em] shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 transition-all border border-white/10"
-            >
-              {initialName ? "Confirm Changes" : "Initialize Series"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+          </Field>
+        ) : (
+          <Field label="New category">
+            {({ id }) => (
+              <div className="flex items-start gap-2">
+                <Input
+                  id={id}
+                  type="text"
+                  autoFocus
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAddCategory();
+                    }
+                  }}
+                  placeholder="Category name"
+                  className="min-w-0 flex-1"
+                />
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="h-8"
+                  onClick={handleAddCategory}
+                  disabled={!newCategoryName.trim()}
+                >
+                  Add
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8"
+                  onClick={() => {
+                    setIsAddingCategory(false);
+                    setNewCategoryName("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            )}
+          </Field>
+        )}
+      </form>
+    </Modal>
   );
 };
 

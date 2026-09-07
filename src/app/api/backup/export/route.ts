@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import * as schema from "@/db/schema";
@@ -60,7 +61,7 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Export failed:", error);
-    const message = error instanceof Error ? error.message : "Export failed";
+    const message = describeError(error, "Export failed");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

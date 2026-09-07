@@ -1,68 +1,281 @@
 @import "tailwindcss";
 
-@theme {
-  --color-background: #050505;
-  --color-surface: #0a0a0a;
-  --color-surface-raised: #111111;
-  --color-surface-elevated: #1a1a1a;
+/* ---------------------------------------------------------------------------
+   MangaLens "Paper & Ink" tokens. Dark is the default theme; `data-theme="light"`
+   on <html> switches the palette. See design-system/mangalens/MASTER.md.
+   --------------------------------------------------------------------------- */
 
-  --color-primary: #8b5cf6;
-  --color-primary-hover: #7c3aed;
-  --color-primary-active: #6d28d9;
+:root {
+  color-scheme: dark;
 
-  --color-secondary: #ec4899;
-  --color-secondary-hover: #db2777;
+  --c-paper: #141518;
+  --c-page: #1c1d21;
+  --c-page-2: #24262b;
+  --c-ink: #ecebe6;
+  --c-ink-2: #a9aba6;
+  --c-ink-3: #7c7e7a;
+  --c-line: #2e3035;
+  --c-line-2: #26282c;
 
-  --color-border-subtle: #1a1a1a;
-  --color-border-muted: #262626;
-  --color-border-accent: rgba(139, 92, 246, 0.3);
+  --c-action: #6cc4dc;
+  --c-action-hover: #86d2e6;
+  --c-on-action: #0f1a1e;
+  --c-npb: rgba(108, 196, 220, 0.16);
 
-  --color-text-main: #fafafa;
-  --color-text-muted: #a1a1aa;
-  --color-text-dark: #71717a;
+  --c-shu: #e0655a;
+  --c-shu-soft: rgba(224, 101, 90, 0.14);
+  --c-ok: #63b983;
+  --c-ok-soft: rgba(99, 185, 131, 0.14);
+  --c-warn: #d9a441;
+  --c-warn-soft: rgba(217, 164, 65, 0.14);
 
-  --shadow-premium:
-    0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
-  --shadow-glow: 0 0 20px rgba(139, 92, 246, 0.15);
+  /* Reader / lightbox surfaces. Dark in the dark theme, dimmed paper in light. */
+  --c-theater: #0e0f11;
+  --c-theater-ink: #ecebe6;
+  --c-theater-ink-2: rgba(236, 235, 230, 0.62);
+  --c-theater-line: rgba(255, 255, 255, 0.1);
+  --c-theater-hover: rgba(255, 255, 255, 0.1);
+  --c-scrim: rgba(8, 9, 11, 0.72);
+
+  --shadow-pop-value:
+    0 12px 32px rgba(0, 0, 0, 0.45), 0 1px 2px rgba(0, 0, 0, 0.4);
+
+  --z-bar: 30;
+  --z-sidebar: 40;
+  --z-overlay: 100;
+  --z-lightbox: 110;
+  --z-fullscreen: 120;
+  --z-confirm: 130;
+  --z-toast: 200;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --c-paper: #f2f2ee;
+  --c-page: #ffffff;
+  --c-page-2: #f5f5f2;
+  --c-ink: #1a1b1e;
+  --c-ink-2: #5a5d64;
+  --c-ink-3: #8b8e95;
+  --c-line: #dad9d2;
+  --c-line-2: #e9e8e2;
+
+  --c-action: #0b7a9b;
+  --c-action-hover: #096a87;
+  --c-on-action: #ffffff;
+  --c-npb: rgba(167, 219, 234, 0.35);
+
+  --c-shu: #b8382a;
+  --c-shu-soft: rgba(184, 56, 42, 0.12);
+  --c-ok: #2f7d4f;
+  --c-ok-soft: rgba(47, 125, 79, 0.12);
+  --c-warn: #b07a12;
+  --c-warn-soft: rgba(176, 122, 18, 0.12);
+
+  --c-theater: #e2e1da;
+  --c-theater-ink: #1a1b1e;
+  --c-theater-ink-2: rgba(26, 27, 30, 0.62);
+  --c-theater-line: rgba(26, 27, 30, 0.14);
+  --c-theater-hover: rgba(26, 27, 30, 0.08);
+  --c-scrim: rgba(20, 21, 24, 0.55);
+
+  --shadow-pop-value:
+    0 12px 32px rgba(26, 27, 30, 0.14), 0 1px 2px rgba(26, 27, 30, 0.1);
+}
+
+@theme inline {
+  --color-*: initial;
+
+  --color-paper: var(--c-paper);
+  --color-page: var(--c-page);
+  --color-page-2: var(--c-page-2);
+  --color-ink: var(--c-ink);
+  --color-ink-2: var(--c-ink-2);
+  --color-ink-3: var(--c-ink-3);
+  --color-line: var(--c-line);
+  --color-line-2: var(--c-line-2);
+
+  --color-action: var(--c-action);
+  --color-action-hover: var(--c-action-hover);
+  --color-on-action: var(--c-on-action);
+  --color-npb: var(--c-npb);
+
+  --color-shu: var(--c-shu);
+  --color-shu-soft: var(--c-shu-soft);
+  --color-ok: var(--c-ok);
+  --color-ok-soft: var(--c-ok-soft);
+  --color-warn: var(--c-warn);
+  --color-warn-soft: var(--c-warn-soft);
+
+  --color-theater: var(--c-theater);
+  --color-theater-ink: var(--c-theater-ink);
+  --color-theater-ink-2: var(--c-theater-ink-2);
+  --color-theater-line: var(--c-theater-line);
+  --color-theater-hover: var(--c-theater-hover);
+  --color-scrim: var(--c-scrim);
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+
+  /* Legacy aliases. Kept only so untouched code keeps compiling; do not use. */
+  --color-background: var(--c-paper);
+  --color-surface: var(--c-page);
+  --color-surface-raised: var(--c-page-2);
+  --color-surface-elevated: var(--c-page-2);
+  --color-surface-muted: var(--c-line-2);
+  --color-primary: var(--c-action);
+  --color-primary-hover: var(--c-action-hover);
+  --color-text-main: var(--c-ink);
+  --color-text-muted: var(--c-ink-2);
+  --color-text-dark: var(--c-ink-3);
+  --color-border-muted: var(--c-line);
+  --color-border-subtle: var(--c-line-2);
+
+  --font-sans:
+    var(--font-plex-sans), "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --font-mono:
+    var(--font-plex-mono), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo,
+    monospace;
+
+  --radius-chip: 4px;
+  --radius-control: 6px;
+  --radius-panel: 8px;
+
+  --shadow-pop: var(--shadow-pop-value);
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @layer base {
+  html {
+    background: var(--c-paper);
+  }
+
   body {
-    @apply bg-background text-text-main antialiased;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background: var(--c-paper);
+    color: var(--c-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "cv02", "cv03", "ss01";
+  }
+
+  *,
+  ::before,
+  ::after {
+    border-color: var(--c-line);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--c-action);
+    outline-offset: 2px;
+  }
+
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  ::selection {
+    background: var(--c-npb);
+  }
+
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  select option {
+    background: var(--c-page);
+    color: var(--c-ink);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--c-line);
+    border-radius: 4px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--c-ink-3);
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer utilities {
-  .glass {
-    @apply bg-surface/80 backdrop-blur-md border border-border-muted;
+  /* Numbers that line up in columns. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 
-  .glass-card {
-    @apply bg-surface-raised/50 backdrop-blur-xl border border-border-muted shadow-premium;
+  /* Section label: mono, small caps feel without shouting. */
+  .label-mono {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--c-ink-3);
   }
 
-  .text-glow {
-    text-shadow: 0 0 10px rgba(139, 92, 246, 0.5);
+  /* Halftone dot texture for empty states (screentone). */
+  .screentone {
+    background-image: radial-gradient(var(--c-line) 0.8px, transparent 0.9px);
+    background-size: 7px 7px;
   }
 
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  /* Hide the number spinner. */
+  .no-spinner {
+    appearance: textfield;
+    -moz-appearance: textfield;
   }
-  .custom-scrollbar::-webkit-scrollbar-track {
-    @apply bg-transparent;
+  .no-spinner::-webkit-outer-spin-button,
+  .no-spinner::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
   }
-  .custom-scrollbar::-webkit-scrollbar-thumb {
-    @apply bg-border-muted rounded-full transition-colors;
+
+  .no-scrollbar {
+    scrollbar-width: none;
   }
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    @apply bg-primary/40;
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Kept for legacy call sites; the global scrollbar already looks like this. */
+  .custom-scrollbar {
+    scrollbar-width: thin;
   }
 }
 
-/* Base Animations */
-@keyframes fadeIn {
+/* Motion. Small, purposeful, and disabled under reduced motion (see base). */
+@keyframes fade-in {
   from {
     opacity: 0;
   }
@@ -71,21 +284,49 @@
   }
 }
 
-@keyframes slideUp {
+@keyframes pop-in {
   from {
-    transform: translateY(10px);
     opacity: 0;
+    transform: scale(0.98) translateY(4px);
   }
   to {
-    transform: translateY(0);
     opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.55;
   }
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.3s ease-out forwards;
+  animation: fade-in 160ms var(--ease-out) both;
 }
-
-.animate-slide-up {
-  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.animate-pop-in {
+  animation: pop-in 200ms var(--ease-out) both;
+}
+.animate-slide-in-right {
+  animation: slide-in-right 200ms var(--ease-out) both;
+}
+.animate-shimmer {
+  animation: shimmer 1.4s ease-in-out infinite;
 }

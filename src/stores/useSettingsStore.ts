@@ -2,9 +2,13 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { GEMINI_MODELS, TranslationSettings } from "../types";
 
+export type Theme = "dark" | "light";
+
 interface SettingsState {
   settings: TranslationSettings;
   isViewOnly: boolean;
+  /** UI theme. Dark is the default; persisted locally, not synced to the DB. */
+  theme: Theme;
 
   updateSettings: (
     settings: Partial<TranslationSettings>,
@@ -13,6 +17,7 @@ interface SettingsState {
   initializeSettings: (settings: TranslationSettings) => void;
   toggleViewOnly: () => void;
   setViewOnly: (value: boolean) => void;
+  setTheme: (theme: Theme) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -22,16 +27,11 @@ export const useSettingsStore = create<SettingsState>()(
         targetLanguage: "Turkish",
         translationPipeline: "auto",
         developerMode: false,
-        fontSize: 24,
-        fontColor: "#000000",
-        backgroundColor: "#ffffff",
-        strokeColor: "#ffffff",
         customInstructions: "",
         model: GEMINI_MODELS[0]?.id || "gemini-2.5-flash-lite",
         fallbackModel: "gemini-2.5-flash",
         enableQualityFallback: true,
         useGeminiBatch: true,
-        refineBubbles: true,
         batchSize: 10,
         batchDelay: 0,
         useCustomApiKey: false,
@@ -39,6 +39,7 @@ export const useSettingsStore = create<SettingsState>()(
         namedApiKeys: [],
       },
       isViewOnly: process.env.NODE_ENV === "production",
+      theme: "dark",
 
       updateSettings: (newSettings, syncWithDb = true) => {
         const validModelIds = new Set(GEMINI_MODELS.map((m) => m.id));
@@ -80,10 +81,14 @@ export const useSettingsStore = create<SettingsState>()(
       },
       toggleViewOnly: () => set((state) => ({ isViewOnly: !state.isViewOnly })),
       setViewOnly: (value) => set({ isViewOnly: value }),
+      setTheme: (theme) => set({ theme }),
     }),
     {
       name: "mangalens_settings",
-      partialize: (state) => ({ settings: state.settings }),
+      partialize: (state) => ({ settings: state.settings, theme: state.theme }),
+      // Rehydrated on mount by <ThemeApplier /> so server and client render
+      // the same defaults first (no hydration mismatch on persisted values).
+      skipHydration: true,
     },
   ),
 );

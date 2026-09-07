@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import { localOcrJobs } from "@/db/schema";
+import { failPageJob, findActivePageJobByRef } from "@/server/jobs/pageJobs";
 import { authenticateLocalOcrWorker } from "@/server/local-ocr/auth";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
@@ -43,5 +44,9 @@ export async function POST(
       updatedAt: new Date(),
     })
     .where(eq(localOcrJobs.id, current.id));
+  if (!retry) {
+    const pageJob = await findActivePageJobByRef(current.id);
+    if (pageJob) await failPageJob(pageJob.id, `Local OCR failed: ${parsed.data.error}`);
+  }
   return NextResponse.json({ retry });
 }

@@ -1,86 +1,160 @@
+"use client";
+
+import {
+  Check,
+  MoreHorizontal,
+  PencilRuler,
+  Square,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
 import React from "react";
 import { ProcessedImage } from "../../types";
+import { cn } from "../../utils/cn";
+import type { PageStatusView } from "../../utils/stages";
+import { getThumbnailUrl } from "../../utils/url";
+import { Button, IconButton, Menu, Mono, StageBar } from "../ui";
 
 interface ListViewItemProps {
   image: ProcessedImage;
-  onSelect: () => void;
+  status: PageStatusView;
   isSelected?: boolean;
   onToggleSelect?: () => void;
+  onOpen: () => void;
+  onOpenEditor: () => void;
+  onTranslate: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
+  onSetStatus: (status: ProcessedImage["status"]) => void;
+  readOnly?: boolean;
 }
 
+const toneText: Record<PageStatusView["tone"], string> = {
+  neutral: "text-ink-3",
+  accent: "text-action",
+  ok: "text-ok",
+  warn: "text-warn",
+  danger: "text-shu",
+};
+
+/** One page as a compact row. */
 const ListViewItem: React.FC<ListViewItemProps> = ({
   image,
-  onSelect,
+  status,
   isSelected = false,
   onToggleSelect,
-}) => {
-  return (
-    <div
-      onClick={onSelect}
-      className={`bg-surface-raised/50 p-2 rounded-xl flex items-center gap-4 border transition-all cursor-pointer group glass ${
-        isSelected
-          ? "border-primary ring-1 ring-primary/70 shadow-glow"
-          : "border-border-subtle hover:border-primary/30"
-      }`}
+  onOpen,
+  onOpenEditor,
+  onTranslate,
+  onCancel,
+  onDelete,
+  onSetStatus,
+  readOnly = false,
+}) => (
+  <li
+    className={cn(
+      "flex items-center gap-3 rounded-panel border bg-page px-2 py-1.5 transition-colors duration-120",
+      isSelected ? "border-action" : "border-line hover:border-ink-3",
+    )}
+  >
+    {onToggleSelect && (
+      <IconButton
+        label={`${isSelected ? "Unselect" : "Select"} ${image.fileName}`}
+        size="sm"
+        active={isSelected}
+        onClick={onToggleSelect}
+      >
+        {isSelected ? <Check /> : <Square />}
+      </IconButton>
+    )}
+
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Open ${image.fileName}`}
+      className="h-14 w-10 shrink-0 cursor-zoom-in overflow-hidden rounded-chip bg-page-2"
     >
-      {onToggleSelect && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleSelect();
-          }}
-          aria-label={`${isSelected ? "Unselect" : "Select"} ${image.fileName}`}
-          aria-pressed={isSelected}
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all ${
-            isSelected
-              ? "border-primary bg-primary text-white"
-              : "border-border-muted bg-surface text-text-muted hover:border-primary/70 hover:text-primary"
-          }`}
+      <img
+        src={getThumbnailUrl(image.originalKey, image.originalUrl, 120, 60)}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="h-full w-full object-cover"
+      />
+    </button>
+
+    <Mono className="w-12 shrink-0 text-xs text-ink-3">
+      p.{String(image.sequenceNumber).padStart(3, "0")}
+    </Mono>
+
+    <span className="min-w-0 flex-1 truncate text-sm text-ink" title={image.fileName}>
+      {image.fileName}
+    </span>
+
+    <StageBar stages={status.stages} size="sm" label={status.label} className="w-20 shrink-0" />
+
+    <span
+      className={cn("hidden w-32 shrink-0 truncate text-xs sm:block", toneText[status.tone])}
+      title={status.error || status.label}
+    >
+      {status.label}
+    </span>
+
+    <Mono className="hidden w-16 shrink-0 text-right text-xs text-ink-3 md:block">
+      {image.cost ? `$${image.cost.toFixed(4)}` : ""}
+    </Mono>
+
+    {!readOnly && (
+      <div className="flex shrink-0 items-center gap-1">
+        {status.active ? (
+          <Button size="sm" icon={<X />} onClick={onCancel}>
+            Cancel
+          </Button>
+        ) : (
+          <Button
+            size="sm"
+            variant={image.status === "completed" ? "ghost" : "primary"}
+            icon={<Zap />}
+            onClick={onTranslate}
+          >
+            {image.status === "completed"
+              ? "Re-translate"
+              : status.tone === "danger"
+                ? "Retry"
+                : "Translate"}
+          </Button>
+        )}
+        <IconButton
+          label="Open layout editor"
+          size="sm"
+          disabled={status.active}
+          onClick={onOpenEditor}
         >
-          <i className={`fas ${isSelected ? "fa-check" : "fa-square"} text-xs`} />
-        </button>
-      )}
-      <div className="w-12 h-16 bg-slate-900 rounded-md overflow-hidden shrink-0">
-        <img
-          src={image.originalUrl}
-          className="w-full h-full object-cover"
-          alt={image.fileName}
+          <PencilRuler />
+        </IconButton>
+        <Menu
+          items={[
+            { label: "Mark ready", onSelect: () => onSetStatus("completed") },
+            { label: "Mark not translated", onSelect: () => onSetStatus("idle") },
+            { label: "Mark failed", onSelect: () => onSetStatus("error") },
+            {
+              label: "Delete page",
+              icon: <Trash2 />,
+              onSelect: onDelete,
+              danger: true,
+              separator: true,
+            },
+          ]}
+          trigger={(props) => (
+            <IconButton label="More" size="sm" {...props}>
+              <MoreHorizontal />
+            </IconButton>
+          )}
         />
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="text-slate-500 text-[10px] font-mono">
-            #{image.sequenceNumber}
-          </span>
-          <h4
-            className="text-slate-200 font-bold text-xs truncate"
-            title={image.fileName}
-          >
-            {image.fileName}
-          </h4>
-        </div>
-        <div className="flex items-center gap-3">
-          <span
-            className={`text-[10px] font-bold uppercase tracking-wider ${
-              image.status === "completed"
-                ? "text-emerald-400"
-                : image.status === "processing"
-                  ? "text-amber-400"
-                  : "text-slate-500"
-            }`}
-          >
-            {image.status}
-          </span>
-          {image.cost && (
-            <span className="text-[10px] text-slate-500">
-              ${image.cost.toFixed(4)}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
+    )}
+  </li>
+);
 
 export default React.memo(ListViewItem);

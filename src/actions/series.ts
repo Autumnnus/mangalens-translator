@@ -105,14 +105,25 @@ export async function fetchSeriesImagesAction(seriesId: string) {
   const images = await db.query.images.findMany({
     where: eq(schema.images.seriesId, seriesId),
     orderBy: asc(schema.images.sequenceNumber),
+    // Layout and legacy bubbles can be large; they are fetched per page on demand.
+    columns: { layout: false, bubbles: false },
+    extras: {
+      hasLegacyBubbles:
+        sql<boolean>`(jsonb_typeof(${schema.images.bubbles}) = 'array' and jsonb_array_length(${schema.images.bubbles}) > 0)`.as(
+          "has_legacy_bubbles",
+        ),
+    },
   });
 
   const signedImages = await Promise.all(
     images.map(async (img) => {
-      const [originalUrl, translatedUrl] = await Promise.all([
+      const [originalUrl, translatedUrl, legacyTranslatedUrl] = await Promise.all([
         getPresignedViewUrl(img.originalKey),
         img.translatedKey
           ? getPresignedViewUrl(img.translatedKey)
+          : Promise.resolve(null),
+        img.legacyTranslatedKey && img.legacyTranslatedKey !== img.translatedKey
+          ? getPresignedViewUrl(img.legacyTranslatedKey)
           : Promise.resolve(null),
       ]);
 
@@ -120,6 +131,7 @@ export async function fetchSeriesImagesAction(seriesId: string) {
         ...img,
         originalUrl,
         translatedUrl,
+        legacyTranslatedUrl,
       };
     }),
   );

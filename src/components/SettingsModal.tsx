@@ -1,21 +1,23 @@
 import {
-  ArrowDown,
-  ArrowUp,
-  Baseline,
-  Cpu,
-  DollarSign,
-  Languages,
-  Lock,
-  Palette,
-  Sliders,
-  Sparkles,
-  Square,
-  Text,
-  Trash2,
-  X,
-} from "lucide-react";
+  Button,
+  Chip,
+  Field,
+  IconButton,
+  Input,
+  Modal,
+  Mono,
+  SectionLabel,
+  Select,
+  Switch,
+  Textarea,
+} from "@/components/ui";
+import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
 import React, { useState } from "react";
 import { GEMINI_MODELS, NamedApiKey, TranslationSettings } from "../types";
+
+/* ----------------------------------------------------------------------------
+   Account: password change
+   --------------------------------------------------------------------------- */
 
 const PasswordChangeForm = () => {
   const [password, setPassword] = useState("");
@@ -29,12 +31,12 @@ const PasswordChangeForm = () => {
   const handleChangePassword = async () => {
     if (!password) return;
     if (password !== confirm) {
-      setMessage({ text: "Passwords do not match", type: "error" });
+      setMessage({ text: "Passwords do not match.", type: "error" });
       return;
     }
     if (password.length < 6) {
       setMessage({
-        text: "Password must be at least 6 characters",
+        text: "Password must be at least 6 characters.",
         type: "error",
       });
       return;
@@ -54,12 +56,12 @@ const PasswordChangeForm = () => {
 
       if (!res.ok) throw new Error(data.error || "Failed to update password");
 
-      setMessage({ text: "Password updated successfully", type: "success" });
+      setMessage({ text: "Password updated.", type: "success" });
       setPassword("");
       setConfirm("");
     } catch (err: unknown) {
       setMessage({
-        text: err instanceof Error ? err.message : "Error",
+        text: err instanceof Error ? err.message : "Something went wrong.",
         type: "error",
       });
     } finally {
@@ -68,42 +70,149 @@ const PasswordChangeForm = () => {
   };
 
   return (
-    <div className="bg-surface-raised/50 p-4 rounded-2xl border border-border-muted space-y-3">
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void handleChangePassword();
+      }}
+    >
+      <Field label="New password">
+        {({ id }) => (
+          <Input
+            id={id}
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        )}
+      </Field>
+      <Field label="Confirm password">
+        {({ id }) => (
+          <Input
+            id={id}
+            type="password"
+            autoComplete="new-password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+          />
+        )}
+      </Field>
       {message && (
-        <div
-          className={`text-[10px] font-bold px-3 py-2 rounded-xl ${message.type === "success" ? "bg-emerald-500/10 text-emerald-500" : "bg-red-500/10 text-red-500"}`}
+        <p
+          role={message.type === "error" ? "alert" : "status"}
+          className={`text-xs ${message.type === "success" ? "text-ok" : "text-shu"}`}
         >
           {message.text}
-        </div>
+        </p>
       )}
-      <div className="space-y-1">
-        <input
-          type="password"
-          placeholder="New Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-xs font-medium focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-text-muted/50"
-        />
+      <div className="flex justify-end">
+        <Button type="submit" variant="secondary" loading={loading} disabled={!password}>
+          Update password
+        </Button>
       </div>
-      <div className="space-y-1">
-        <input
-          type="password"
-          placeholder="Confirm Password"
-          value={confirm}
-          onChange={(e) => setConfirm(e.target.value)}
-          className="w-full bg-surface-raised border border-border-muted rounded-xl px-4 py-3 text-xs font-medium focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-text-muted/50"
-        />
-      </div>
-      <button
-        onClick={handleChangePassword}
-        disabled={loading || !password}
-        className="w-full py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all"
-      >
-        {loading ? "Updating..." : "Update Password"}
-      </button>
-    </div>
+    </form>
   );
 };
+
+/* ----------------------------------------------------------------------------
+   Small layout helpers
+   --------------------------------------------------------------------------- */
+
+const Section: React.FC<{
+  label: string;
+  aside?: React.ReactNode;
+  first?: boolean;
+  children: React.ReactNode;
+}> = ({ label, aside, first = false, children }) => (
+  <section className={first ? "flex flex-col gap-3" : "flex flex-col gap-3 border-t border-line pt-4"}>
+    <div className="flex min-h-7 items-center justify-between gap-3">
+      <SectionLabel>{label}</SectionLabel>
+      {aside && <div className="flex items-center gap-2">{aside}</div>}
+    </div>
+    {children}
+  </section>
+);
+
+interface RadioCardProps {
+  selected: boolean;
+  onSelect: () => void;
+  title: string;
+  description: string;
+  trailing?: React.ReactNode;
+}
+
+const RadioCard: React.FC<RadioCardProps> = ({
+  selected,
+  onSelect,
+  title,
+  description,
+  trailing,
+}) => (
+  <button
+    type="button"
+    role="radio"
+    aria-checked={selected}
+    onClick={onSelect}
+    className={`w-full rounded-control border p-3 text-left transition-colors duration-120 ${
+      selected ? "border-action bg-npb" : "border-line hover:border-ink-3"
+    }`}
+  >
+    <span className="flex items-center justify-between gap-3">
+      <span className="text-sm font-medium text-ink">{title}</span>
+      {trailing}
+    </span>
+    <span className="mt-1 block text-xs leading-relaxed text-ink-2">{description}</span>
+  </button>
+);
+
+const RangeField: React.FC<{
+  label: string;
+  value: number;
+  display: string;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+  minLabel: string;
+  maxLabel: string;
+  hint: React.ReactNode;
+}> = ({ label, value, display, min, max, step, onChange, minLabel, maxLabel, hint }) => (
+  <Field
+    label={
+      <span className="flex items-center justify-between gap-3">
+        <span>{label}</span>
+        <Mono className="text-xs text-ink">{display}</Mono>
+      </span>
+    }
+    hint={hint}
+  >
+    {({ id, describedBy }) => (
+      <div className="flex flex-col gap-1">
+        <input
+          id={id}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          aria-describedby={describedBy}
+          onChange={(e) => onChange(parseInt(e.target.value, 10))}
+          className="w-full accent-action"
+        />
+        <div className="flex justify-between text-xs text-ink-3">
+          <span>{minLabel}</span>
+          <span>{maxLabel}</span>
+        </div>
+      </div>
+    )}
+  </Field>
+);
+
+/* ----------------------------------------------------------------------------
+   Settings modal
+   --------------------------------------------------------------------------- */
 
 interface Props {
   isOpen: boolean;
@@ -120,6 +229,33 @@ type LocalOcrStatus = {
   queuedJobs: number;
   activeJobs: number;
 };
+
+const PIPELINES: Array<{
+  id: NonNullable<TranslationSettings["translationPipeline"]>;
+  title: string;
+  description: string;
+}> = [
+  {
+    id: "auto",
+    title: "Automatic",
+    description:
+      "Use Gemini Vision first and switch to local OCR only for an eligible safety rejection.",
+  },
+  {
+    id: "gemini_vision",
+    title: "Gemini Vision",
+    description:
+      "Always send the page to Gemini for detection and translation; local OCR is disabled.",
+  },
+  {
+    id: "local_ocr",
+    title: "Local OCR + text translation",
+    description:
+      "Detect text on your Mac, then send only the OCR text to Gemini. Uses fewer input tokens but still needs a working Gemini key.",
+  },
+];
+
+const TARGET_LANGUAGES = ["Turkish", "English", "Spanish", "Japanese", "French", "German"];
 
 const SettingsModal: React.FC<Props> = ({
   isOpen,
@@ -182,8 +318,6 @@ const SettingsModal: React.FC<Props> = ({
       window.clearInterval(timer);
     };
   }, [isOpen]);
-
-  if (!isOpen) return null;
 
   const handleChange = (
     key: keyof TranslationSettings,
@@ -255,697 +389,285 @@ const SettingsModal: React.FC<Props> = ({
     });
   };
 
+  const namedKeys = localSettings.namedApiKeys || [];
+  const useCustomApiKey = localSettings.useCustomApiKey === true;
+  const batchSize = localSettings.batchSize || 10;
+  const batchDelay = localSettings.batchDelay || 0;
+
+  const ocrChip = ocrStatus?.online ? (
+    <Chip tone="ok">
+      Online · <Mono>{ocrStatus.workerId}</Mono>
+    </Chip>
+  ) : ocrStatus?.configured ? (
+    <Chip tone="warn">Worker offline</Chip>
+  ) : (
+    <Chip tone="neutral">No worker configured</Chip>
+  );
+
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
-      <div
-        className="w-full max-w-lg bg-surface border border-border-muted rounded-[2.5rem] shadow-glow overflow-hidden animate-in zoom-in-95 duration-300 glass-card"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="p-8 border-b border-border-subtle flex items-center justify-between bg-gradient-to-r from-primary/10 to-transparent">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
-              <Sliders className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black uppercase tracking-tight text-text-main italic line-clamp-1">
-                Translation{" "}
-                <span className="text-primary text-glow">Settings</span>
-              </h2>
-              <p className="text-xs font-bold text-text-dark uppercase tracking-widest mt-1">
-                Visual Appearance & Engine
-              </p>
-            </div>
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      size="lg"
+      title="Settings"
+      description="Translation engine, keys and account"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleSave}>
+            Save changes
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        {/* Translation */}
+        <Section label="Translation" first>
+          <Field label="Target language">
+            {({ id }) => (
+              <Select
+                id={id}
+                value={localSettings.targetLanguage}
+                onChange={(e) => handleChange("targetLanguage", e.target.value)}
+              >
+                {TARGET_LANGUAGES.map((language) => (
+                  <option key={language} value={language}>
+                    {language}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </Field>
+        </Section>
+
+        {/* Text detection */}
+        <Section
+          label="Text detection"
+          aside={
+            <>
+              {ocrStatus?.configured && (
+                <Mono className="text-xs text-ink-3">
+                  Queue {ocrStatus.queuedJobs} · Active {ocrStatus.activeJobs}
+                </Mono>
+              )}
+              {ocrChip}
+            </>
+          }
+        >
+          <div role="radiogroup" aria-label="Text detection pipeline" className="flex flex-col gap-2">
+            {PIPELINES.map((pipeline) => (
+              <RadioCard
+                key={pipeline.id}
+                selected={(localSettings.translationPipeline || "auto") === pipeline.id}
+                onSelect={() => handleChange("translationPipeline", pipeline.id)}
+                title={pipeline.title}
+                description={pipeline.description}
+              />
+            ))}
           </div>
-          <button
-            onClick={onClose}
-            className="w-10 h-10 rounded-xl bg-surface-raised hover:bg-surface-elevated text-text-dark hover:text-text-main transition-all flex items-center justify-center border border-border-muted"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+        </Section>
 
-        <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          {/* Target Language */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-primary">
-              <Languages className="w-4 h-4" />
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                Target Language
-              </label>
-            </div>
-            <select
-              value={localSettings.targetLanguage}
-              onChange={(e) => handleChange("targetLanguage", e.target.value)}
-              className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-4 text-sm font-bold focus:ring-2 ring-primary outline-none text-text-main transition-all hover:border-border-accent"
-            >
-              <option value="Turkish">Turkish</option>
-              <option value="English">English</option>
-              <option value="Spanish">Spanish</option>
-              <option value="Japanese">Japanese</option>
-              <option value="French">French</option>
-              <option value="German">German</option>
-            </select>
+        {/* Model */}
+        <Section label="Model">
+          <div role="radiogroup" aria-label="Gemini model" className="flex flex-col gap-2">
+            {GEMINI_MODELS.map((model) => (
+              <RadioCard
+                key={model.id}
+                selected={localSettings.model === model.id}
+                onSelect={() => handleChange("model", model.id)}
+                title={model.name}
+                description={model.description}
+                trailing={
+                  <Chip tone="neutral" className="font-mono tabular">
+                    {model.inputCostPer1k === 0 ? "Free" : `$${model.inputCostPer1k}/1k`}
+                  </Chip>
+                }
+              />
+            ))}
           </div>
+        </Section>
 
-          <div className="h-px bg-white/5"></div>
+        {/* Gemini API keys */}
+        <Section
+          label="Gemini API keys"
+          aside={
+            useCustomApiKey && (
+              <Button size="sm" variant="secondary" icon={<Plus />} onClick={addNamedKey}>
+                Add key
+              </Button>
+            )
+          }
+        >
+          <Switch
+            checked={useCustomApiKey}
+            onChange={(checked) => handleChange("useCustomApiKey", checked)}
+            label="Use my own keys"
+            description="Off: the server's default key is used. On: requests rotate through the keys below, in order."
+          />
 
-          {/* Translation pipeline */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2 text-primary">
-                <Cpu className="w-4 h-4" />
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                  Text Detection Pipeline
-                </label>
-              </div>
-              <div className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    ocrStatus?.online
-                      ? "bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]"
-                      : "bg-red-400"
-                  }`}
-                />
-                <span
-                  className={
-                    ocrStatus?.online ? "text-emerald-400" : "text-text-dark"
-                  }
-                >
-                  {ocrStatus?.online
-                    ? `OCR Online · ${ocrStatus.workerId}`
-                    : ocrStatus?.configured
-                      ? "OCR Offline"
-                      : "OCR Not Configured"}
-                </span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-3">
-              {[
-                {
-                  id: "auto" as const,
-                  title: "Automatic",
-                  description:
-                    "Use Gemini Vision first and switch to local OCR only for an eligible safety rejection.",
-                },
-                {
-                  id: "gemini_vision" as const,
-                  title: "Gemini Vision",
-                  description:
-                    "Always send the page to Gemini for detection and translation; local OCR is disabled.",
-                },
-                {
-                  id: "local_ocr" as const,
-                  title: "Local OCR + Text Translation",
-                  description:
-                    "Detect text on your Mac, then send only OCR text to Gemini. Uses fewer input tokens but still needs a working Gemini key.",
-                },
-              ].map((pipeline) => {
-                const selected =
-                  (localSettings.translationPipeline || "auto") === pipeline.id;
-                return (
-                  <button
-                    key={pipeline.id}
-                    type="button"
-                    onClick={() =>
-                      handleChange("translationPipeline", pipeline.id)
-                    }
-                    className={`rounded-2xl border p-4 text-left transition-all ${
-                      selected
-                        ? "border-primary bg-primary/10 ring-1 ring-primary"
-                        : "border-border-muted bg-surface-raised/50 hover:border-primary/30"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-[10px] font-black uppercase tracking-widest text-text-main">
-                        {pipeline.title}
-                      </p>
-                      {pipeline.id === "local_ocr" && (
-                        <span className="text-[9px] font-black uppercase text-text-dark">
-                          Queue {ocrStatus?.queuedJobs || 0} · Active {ocrStatus?.activeJobs || 0}
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-[9px] font-bold leading-relaxed text-text-dark/70">
-                      {pipeline.description}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="h-px bg-white/5"></div>
-
-          {/* Model Selection */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-primary">
-              <Cpu className="w-4 h-4" />
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                AI Intelligence Model
-              </label>
-            </div>
-            <div className="grid grid-cols-1 gap-3">
-              {GEMINI_MODELS.map((m) => (
-                <button
-                  key={m.id}
-                  onClick={() => handleChange("model", m.id)}
-                  className={`flex flex-col p-4 rounded-2xl border transition-all text-left group ${
-                    localSettings.model === m.id
-                      ? "bg-primary/10 border-primary shadow-glow ring-1 ring-primary"
-                      : "bg-surface-raised/50 border-border-muted hover:border-primary/30"
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <span
-                      className={`text-xs font-black uppercase tracking-wider ${localSettings.model === m.id ? "text-primary text-glow" : "text-text-main"}`}
-                    >
-                      {m.name}
-                    </span>
-                    <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-black/20 border border-white/5">
-                      <DollarSign className="w-3 h-3 text-emerald-500" />
-                      <span className="text-[9px] font-black text-emerald-500">
-                        {m.inputCostPer1k === 0
-                          ? "FREE"
-                          : `$${m.inputCostPer1k}/1k`}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="text-[10px] font-bold text-text-dark/60 leading-relaxed">
-                    {m.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="h-px bg-white/5"></div>
-
-          {/* Gemini API Key */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-primary">
-                <Lock className="w-4 h-4" />
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                  Gemini API Access
-                </label>
-              </div>
-              <div className="flex items-center gap-3">
-                <span
-                  className={`text-[10px] font-black uppercase tracking-widest transition-colors ${localSettings.useCustomApiKey ? "text-primary" : "text-text-dark"}`}
-                >
-                  {localSettings.useCustomApiKey ? "Pool Enabled" : "System Default"}
-                </span>
-                <button
-                  onClick={() =>
-                    handleChange(
-                      "useCustomApiKey",
-                      !localSettings.useCustomApiKey,
-                    )
-                  }
-                  className={`w-10 h-6 rounded-full p-1 transition-all duration-300 flex items-center ${
-                    localSettings.useCustomApiKey
-                      ? "bg-primary shadow-glow shadow-primary/40"
-                      : "bg-surface-raised border border-border-muted"
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded-full transition-all duration-300 ${
-                      localSettings.useCustomApiKey
-                        ? "translate-x-4 bg-white shadow-lg"
-                        : "translate-x-0 bg-text-dark"
-                    }`}
-                  />
-                </button>
-              </div>
-            </div>
-
-            <div
-              className={`transition-all duration-500 overflow-hidden ${
-                localSettings.useCustomApiKey
-                  ? "max-h-[36rem] opacity-100"
-                  : "max-h-0 opacity-0 pointer-events-none"
-              }`}
-            >
-              <div className="space-y-3">
-                <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-                  Add your pool keys below. Get your keys from{" "}
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-primary hover:underline"
-                  >
-                    Google AI Studio
-                  </a>
-                  . Keys are used in listed order.
+          {useCustomApiKey && (
+            <div className="flex flex-col gap-2">
+              {namedKeys.length === 0 ? (
+                <p className="rounded-control border border-dashed border-line px-3 py-4 text-center text-xs text-ink-3">
+                  No keys yet. Add a key to start the list.
                 </p>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                      API Key Pool (Named + Ordered)
-                    </label>
-                    <button
-                      type="button"
-                      onClick={addNamedKey}
-                      className="px-3 py-1.5 rounded-lg bg-primary/15 border border-primary/30 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary/20"
-                    >
-                      Add Key
-                    </button>
-                  </div>
-
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                    {(localSettings.namedApiKeys || []).map((item, index) => (
-                      <div
-                        key={item.id}
-                        className="bg-surface-raised/60 border border-border-muted rounded-xl p-3 space-y-2"
+              ) : (
+                <ul className="divide-y divide-line rounded-control border border-line">
+                  {namedKeys.map((item, index) => (
+                    <li key={item.id} className="flex items-center gap-2 p-2">
+                      <Mono className="w-5 shrink-0 text-center text-xs text-ink-3">
+                        {index + 1}
+                      </Mono>
+                      <Input
+                        inputSize="sm"
+                        aria-label={`Key ${index + 1} name`}
+                        placeholder="Name"
+                        value={item.name}
+                        onChange={(e) => updateNamedKey(item.id, "name", e.target.value)}
+                        className="w-32 shrink-0"
+                      />
+                      <Input
+                        inputSize="sm"
+                        mono
+                        type="password"
+                        autoComplete="off"
+                        aria-label={`Key ${index + 1} value`}
+                        placeholder="AIza…"
+                        value={item.key}
+                        onChange={(e) => updateNamedKey(item.id, "key", e.target.value)}
+                        className="min-w-0 flex-1"
+                      />
+                      <IconButton
+                        size="sm"
+                        label="Move up"
+                        disabled={index === 0}
+                        onClick={() => moveNamedKey(item.id, -1)}
                       >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">
-                            Priority {index + 1}
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={() => moveNamedKey(item.id, -1)}
-                              disabled={index === 0}
-                              className="w-7 h-7 rounded-lg border border-border-muted text-text-main disabled:opacity-40"
-                            >
-                              <ArrowUp className="w-3 h-3 mx-auto" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveNamedKey(item.id, 1)}
-                              disabled={
-                                index === (localSettings.namedApiKeys || []).length - 1
-                              }
-                              className="w-7 h-7 rounded-lg border border-border-muted text-text-main disabled:opacity-40"
-                            >
-                              <ArrowDown className="w-3 h-3 mx-auto" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeNamedKey(item.id)}
-                              className="w-7 h-7 rounded-lg border border-red-500/40 text-red-400"
-                            >
-                              <Trash2 className="w-3 h-3 mx-auto" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={(e) =>
-                            updateNamedKey(item.id, "name", e.target.value)
-                          }
-                          placeholder="Key Name (e.g. Main-01)"
-                          className="w-full bg-surface border border-border-muted rounded-lg px-3 py-2 text-[11px] font-semibold focus:ring-2 ring-primary outline-none"
-                        />
-                        <input
-                          type="password"
-                          value={item.key}
-                          onChange={(e) =>
-                            updateNamedKey(item.id, "key", e.target.value)
-                          }
-                          placeholder="AIza..."
-                          className="w-full bg-surface border border-border-muted rounded-lg px-3 py-2 text-[11px] font-mono focus:ring-2 ring-primary outline-none"
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  {(localSettings.namedApiKeys || []).length === 0 && (
-                    <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-                      No pool key yet. Click Add Key to create your ordered list.
-                    </p>
-                  )}
-
-                  <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-                    Priority is top-to-bottom. Rate-limited key is skipped and
-                    next key is used automatically.
-                  </p>
-                </div>
-
-                <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-                  Cooldown is automatic and managed by model limits (RPM/RPD/TPM).
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-px bg-white/5"></div>
-
-          {/* Batch Processing Controls */}
-          <div className="space-y-6 bg-surface-raised/30 p-5 rounded-[2rem] border border-border-muted">
-            <div className="grid grid-cols-1 gap-3">
-              {[
-                {
-                  key: "useGeminiBatch" as const,
-                  title: "Gemini Batch Pricing",
-                  description:
-                    "Paid Gemini tiers use 50%-priced asynchronous jobs; unsupported/free tiers fall back safely.",
-                },
-                {
-                  key: "enableQualityFallback" as const,
-                  title: "Quality Fallback",
-                  description:
-                    "Uncertain Flash-Lite pages are retried with Gemini 2.5 Flash.",
-                },
-                {
-                  key: "refineBubbles" as const,
-                  title: "Local Bubble Refinement",
-                  description:
-                    "Detect the light bubble interior locally before covering and typesetting.",
-                },
-                {
-                  key: "developerMode" as const,
-                  title: "Developer Mode",
-                  description:
-                    "Show per-image pipeline, OCR engine, translation model, timing, token, and fallback metadata cards.",
-                },
-              ].map((option) => {
-                const enabled =
-                  option.key === "developerMode"
-                    ? localSettings.developerMode === true
-                    : localSettings[option.key] !== false;
-                return (
-                  <button
-                    key={option.key}
-                    type="button"
-                    onClick={() => handleChange(option.key, !enabled)}
-                    className={`flex items-center justify-between gap-4 rounded-2xl border p-4 text-left transition-all ${
-                      enabled
-                        ? "border-primary/50 bg-primary/10"
-                        : "border-border-muted bg-surface-raised/40"
-                    }`}
-                  >
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-text-main">
-                        {option.title}
-                      </p>
-                      <p className="mt-1 text-[9px] font-bold leading-relaxed text-text-dark/70">
-                        {option.description}
-                      </p>
-                    </div>
-                    <span
-                      className={`shrink-0 rounded-lg px-2 py-1 text-[9px] font-black uppercase ${
-                        enabled
-                          ? "bg-primary text-white"
-                          : "bg-surface text-text-dark"
-                      }`}
-                    >
-                      {enabled ? "On" : "Off"}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="h-px bg-white/5"></div>
-
-            {/* Batch Size */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-primary">
-                  <Sliders className="w-4 h-4" />
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                    Parallel Processing (Batch Size)
-                  </label>
-                </div>
-                <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
-                  {localSettings.batchSize || 10} items
-                </span>
-              </div>
-              <div className="px-2">
-                <input
-                  type="range"
-                  min="1"
-                  max="10"
-                  step="1"
-                  value={localSettings.batchSize || 10}
-                  onChange={(e) =>
-                    handleChange("batchSize", parseInt(e.target.value))
-                  }
-                  className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary"
-                />
-                <div className="flex justify-between mt-2 text-[8px] font-black text-text-dark uppercase tracking-widest">
-                  <span
-                    className={
-                      localSettings.batchSize === 1 ? "text-primary" : ""
-                    }
-                  >
-                    Safety First (1)
-                  </span>
-                  <span
-                    className={
-                      localSettings.batchSize === 10 ? "text-primary" : ""
-                    }
-                  >
-                    Maximum Performance (10)
-                  </span>
-                </div>
-              </div>
-              <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-                Free Gemini tier supports ~15 RPM. Recommended for safety:{" "}
-                <span className="text-primary italic">1-3 items</span>.
+                        <ArrowUp />
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        label="Move down"
+                        disabled={index === namedKeys.length - 1}
+                        onClick={() => moveNamedKey(item.id, 1)}
+                      >
+                        <ArrowDown />
+                      </IconButton>
+                      <IconButton
+                        size="sm"
+                        variant="danger"
+                        label="Remove key"
+                        onClick={() => removeNamedKey(item.id)}
+                      >
+                        <Trash2 />
+                      </IconButton>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs leading-relaxed text-ink-3">
+                Keys are tried top to bottom. A rate-limited key is skipped and the next one is
+                used; cooldowns follow the model limits (RPM, RPD, TPM). Get keys from{" "}
+                <a
+                  href="https://aistudio.google.com/app/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-action underline-offset-2 hover:underline"
+                >
+                  Google AI Studio
+                </a>
+                .
               </p>
             </div>
+          )}
+        </Section>
 
-            <div className="h-px bg-white/5"></div>
-
-            {/* Batch Delay */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-primary">
-                  <Cpu className="w-4 h-4" />
-                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                    Inter-batch Delay
-                  </label>
-                </div>
-                <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
-                  {localSettings.batchDelay || 0} ms
-                </span>
-              </div>
-              <div className="px-2">
-                <input
-                  type="range"
-                  min="0"
-                  max="5000"
-                  step="500"
-                  value={localSettings.batchDelay || 0}
-                  onChange={(e) =>
-                    handleChange("batchDelay", parseInt(e.target.value))
-                  }
-                  className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-primary"
-                />
-                <div className="flex justify-between mt-2 text-[8px] font-black text-text-dark uppercase tracking-widest">
-                  <span
-                    className={
-                      localSettings.batchDelay === 0 ? "text-primary" : ""
-                    }
-                  >
-                    No Delay
-                  </span>
-                  <span
-                    className={
-                      localSettings.batchDelay === 5000 ? "text-primary" : ""
-                    }
-                  >
-                    5 Seconds (Safe)
-                  </span>
-                </div>
-              </div>
-              <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-                Adding delay helps prevent &quot;429 Too Many Requests&quot;
-                errors on free accounts.
-              </p>
-            </div>
+        {/* Batching */}
+        <Section label="Batching">
+          <div className="flex flex-col gap-3">
+            <Switch
+              checked={localSettings.useGeminiBatch !== false}
+              onChange={(checked) => handleChange("useGeminiBatch", checked)}
+              label="Gemini batch pricing"
+              description="Paid Gemini tiers run asynchronous jobs at half price; unsupported and free tiers fall back to normal requests."
+            />
+            <Switch
+              checked={localSettings.enableQualityFallback !== false}
+              onChange={(checked) => handleChange("enableQualityFallback", checked)}
+              label="Quality fallback"
+              description="Uncertain Flash-Lite pages are retried with Gemini 2.5 Flash."
+            />
+            <Switch
+              checked={localSettings.developerMode === true}
+              onChange={(checked) => handleChange("developerMode", checked)}
+              label="Developer mode"
+              description="Show pipeline, OCR engine, model, timing, token and fallback details on each page."
+            />
           </div>
 
-          <div className="h-px bg-white/5"></div>
+          <RangeField
+            label="Batch size"
+            value={batchSize}
+            display={`${batchSize} ${batchSize === 1 ? "page" : "pages"}`}
+            min={1}
+            max={10}
+            step={1}
+            onChange={(value) => handleChange("batchSize", value)}
+            minLabel="1 · safest"
+            maxLabel="10 · fastest"
+            hint="Pages translated in parallel. The free Gemini tier allows about 15 requests per minute; 1 to 3 is safe there."
+          />
 
-          {/* AI Custom Instructions */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-primary">
-                <Sparkles className="w-4 h-4" />
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                  AI Prompt Guidelines
-                </label>
-              </div>
-              <span className="text-[9px] font-black text-primary/60 uppercase tracking-widest bg-primary/5 px-2 py-1 rounded border border-primary/10">
-                Extension
-              </span>
-            </div>
-            <div className="relative group">
-              <textarea
-                value={localSettings.customInstructions || ""}
-                onChange={(e) =>
-                  handleChange("customInstructions", e.target.value)
-                }
-                placeholder="Example: Keep sound effects in Japanese but add small Turkish translations below them..."
-                className="w-full bg-surface-raised border border-border-muted rounded-2xl px-5 py-4 text-xs font-medium focus:ring-2 ring-primary outline-none text-text-main transition-all min-h-[120px] resize-none placeholder:text-text-muted/30"
-              />
-              <div className="absolute bottom-4 right-4 text-[9px] font-bold text-text-dark/40 uppercase tracking-widest pointer-events-none">
-                Guideline #6+
-              </div>
-            </div>
-            <p className="text-[9px] font-bold text-text-dark/60 uppercase tracking-tighter leading-relaxed">
-              Every new line will be added as a strict guideline to the AI
-              engine (e.g. Rule #6, #7...).
-            </p>
-          </div>
+          <RangeField
+            label="Delay between batches"
+            value={batchDelay}
+            display={`${batchDelay} ms`}
+            min={0}
+            max={5000}
+            step={500}
+            onChange={(value) => handleChange("batchDelay", value)}
+            minLabel="0 ms"
+            maxLabel="5 s"
+            hint="A pause between batches helps avoid 429 rate-limit errors on free accounts."
+          />
+        </Section>
 
-          <div className="h-px bg-white/5"></div>
-
-          {/* Font Size */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-primary">
-                <Text className="w-4 h-4" />
-                <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                  Max Font Size
-                </label>
-              </div>
-              <span className="text-sm font-mono font-black text-primary bg-primary/10 px-3 py-1 rounded-lg border border-primary/20">
-                {localSettings.fontSize}px
-              </span>
-            </div>
-            <div className="px-2">
-              <input
-                type="range"
-                min="10"
-                max="60"
-                value={localSettings.fontSize}
-                onChange={(e) =>
-                  handleChange("fontSize", parseInt(e.target.value))
-                }
-                className="w-full h-2 bg-surface-raised rounded-lg appearance-none cursor-pointer accent-primary"
-              />
-              <div className="flex justify-between mt-2 text-[10px] font-bold text-text-dark uppercase tracking-widest">
-                <span>Small</span>
-                <span>Large</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-px bg-white/5"></div>
-
-          {/* Appearance / Colors */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-primary">
-              <Palette className="w-4 h-4" />
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                Appearance
-              </label>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Font Color */}
-              <div className="bg-surface-raised/50 p-4 rounded-2xl border border-border-muted hover:border-primary/30 transition-all group">
-                <div className="flex items-center gap-3 mb-3">
-                  <Baseline className="w-4 h-4 text-text-dark group-hover:text-primary transition-colors" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-text-dark/80">
-                    Font
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={localSettings.fontColor}
-                    onChange={(e) => handleChange("fontColor", e.target.value)}
-                    className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
-                  />
-                  <span className="text-xs font-mono text-text-dark uppercase">
-                    {localSettings.fontColor}
-                  </span>
-                </div>
-              </div>
-
-              {/* Stroke Color */}
-              <div className="bg-surface-raised/50 p-4 rounded-2xl border border-border-muted hover:border-primary/30 transition-all group">
-                <div className="flex items-center gap-3 mb-3">
-                  <Baseline className="w-4 h-4 text-text-dark group-hover:text-primary transition-colors" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-text-dark/80">
-                    Stroke
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={
-                      localSettings.strokeColor === "transparent"
-                        ? "#000000"
-                        : localSettings.strokeColor
-                    }
-                    onChange={(e) =>
-                      handleChange("strokeColor", e.target.value)
-                    }
-                    className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
-                  />
-                  <span className="text-xs font-mono text-text-dark uppercase">
-                    {localSettings.strokeColor}
-                  </span>
-                </div>
-              </div>
-
-              {/* Bubble Color */}
-              <div className="bg-surface-raised/50 p-4 rounded-2xl border border-border-muted hover:border-primary/30 transition-all group">
-                <div className="flex items-center gap-3 mb-3">
-                  <Square className="w-4 h-4 text-text-dark group-hover:text-primary transition-colors" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-text-dark/80">
-                    Bubble
-                  </span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={
-                      localSettings.backgroundColor === "transparent"
-                        ? "#000000"
-                        : localSettings.backgroundColor
-                    }
-                    onChange={(e) =>
-                      handleChange("backgroundColor", e.target.value)
-                    }
-                    className="w-10 h-10 rounded-xl border-2 border-border-muted bg-transparent cursor-pointer hover:scale-105 transition-transform"
-                  />
-                  <span className="text-xs font-mono text-text-dark uppercase">
-                    {localSettings.backgroundColor}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="h-px bg-white/5"></div>
-
-          {/* Account Security (Password Change) */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 text-primary">
-              <Lock className="w-4 h-4" />
-              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted">
-                Security
-              </label>
-            </div>
-
-            <PasswordChangeForm />
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-8 bg-surface-raised/30 border-t border-border-subtle">
-          <button
-            onClick={handleSave}
-            className="w-full py-4 bg-primary hover:bg-primary-hover text-white rounded-2xl font-black text-sm uppercase tracking-widest transition-all shadow-xl shadow-primary/20 active:scale-[0.98] border border-white/10"
+        {/* Prompt guidelines */}
+        <Section label="Prompt guidelines">
+          <Field
+            label="Extra rules for the model"
+            hint="Each line becomes a strict rule for the model."
           >
-            Save Changes
-          </button>
-        </div>
+            {({ id, describedBy }) => (
+              <Textarea
+                id={id}
+                aria-describedby={describedBy}
+                className="min-h-28"
+                value={localSettings.customInstructions || ""}
+                onChange={(e) => handleChange("customInstructions", e.target.value)}
+                placeholder="Example: keep sound effects in Japanese and add a small translation below them."
+              />
+            )}
+          </Field>
+        </Section>
+
+        {/* Typesetting */}
+        <Section label="Typesetting">
+          <p className="text-sm leading-relaxed text-ink-2">
+            Fonts, sizes, colours and bubble cleaning are decided per balloon by the server
+            renderer and stored with each page. Correct them in the layout editor instead of
+            through a global setting.
+          </p>
+        </Section>
+
+        {/* Account */}
+        <Section label="Account">
+          <PasswordChangeForm />
+        </Section>
       </div>
-    </div>
+    </Modal>
   );
 };
 

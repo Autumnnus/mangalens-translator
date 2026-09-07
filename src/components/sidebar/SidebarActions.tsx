@@ -1,5 +1,6 @@
-import { Filter, Plus, Search, X } from "lucide-react";
+import { Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import React from "react";
+import { Button, Chip, IconButton, Input } from "../ui";
 
 interface SidebarActionsProps {
   onAdd: () => void;
@@ -22,63 +23,81 @@ const SidebarActions: React.FC<SidebarActionsProps> = ({
   isSidebarCollapsed,
   isViewOnly = false,
 }) => {
-  return (
-    <div
-      className={`${isSidebarCollapsed ? "px-2" : "px-4"} py-3 space-y-2 border-b border-border-muted bg-surface/30`}
-    >
-      {!isViewOnly && (
-        <button
-          onClick={onAdd}
-          title="New Series"
-          className={`w-full bg-primary hover:bg-primary-hover text-white ${isSidebarCollapsed ? "px-2" : "px-4"} py-2.5 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all shadow-lg shadow-primary/25 hover:scale-[1.02] active:scale-[0.98]`}
-        >
-          <Plus className="w-4 h-4" />
-          {!isSidebarCollapsed && "New Series"}
-        </button>
-      )}
-      {!isSidebarCollapsed && (
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-dark" />
-          <input
-            value={search}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search series…"
-            className="w-full rounded-xl border border-border-muted bg-surface-raised/70 py-2.5 pl-9 pr-9 text-xs font-semibold text-text-main outline-none transition-all placeholder:text-text-dark focus:border-primary/60 focus:ring-1 focus:ring-primary/40"
-            aria-label="Search series"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => onSearchChange("")}
-              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-lg text-text-dark transition-colors hover:bg-surface-elevated hover:text-text-main"
-              aria-label="Clear search"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-      )}
-      <button
-        onClick={onOpenFilter}
-        title="Filter and sort series"
-        className={`relative w-full bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main ${isSidebarCollapsed ? "px-2" : "px-3"} py-2 rounded-xl font-black text-xs uppercase flex items-center justify-center gap-2 transition-all border border-border-muted`}
-      >
-        <Filter className="w-3.5 h-3.5" />
-        {!isSidebarCollapsed && "Filter & Sort"}
-        {activeFilterCount > 0 && (
-          <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-black text-white">
-            {activeFilterCount}
-          </span>
+  if (isSidebarCollapsed) {
+    return (
+      <div className="flex shrink-0 flex-col items-center gap-1 border-b border-line py-2">
+        {!isViewOnly && (
+          <IconButton label="New series" variant="primary" onClick={onAdd}>
+            <Plus />
+          </IconButton>
         )}
-      </button>
-      {!isSidebarCollapsed && activeFilterCount > 0 && (
-        <button
-          type="button"
-          onClick={onClearFilters}
-          className="w-full py-1 text-[9px] font-black uppercase tracking-wider text-text-dark transition-colors hover:text-text-main"
+        <IconButton
+          label={
+            activeFilterCount > 0
+              ? `Filter & sort (${activeFilterCount} active)`
+              : "Filter & sort"
+          }
+          variant="secondary"
+          active={activeFilterCount > 0}
+          onClick={onOpenFilter}
         >
+          <SlidersHorizontal />
+        </IconButton>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex shrink-0 flex-col gap-2 border-b border-line p-2">
+      {!isViewOnly && (
+        <Button variant="primary" full icon={<Plus />} onClick={onAdd}>
+          New series
+        </Button>
+      )}
+
+      <div className="relative">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 left-2.5 my-auto h-4 w-4 text-ink-3"
+        />
+        <Input
+          type="search"
+          value={search}
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search series"
+          aria-label="Search series"
+          className="pl-8 pr-8"
+        />
+        {search && (
+          <IconButton
+            label="Clear search"
+            size="sm"
+            className="absolute inset-y-0 right-0.5 my-auto"
+            onClick={() => onSearchChange("")}
+          >
+            <X />
+          </IconButton>
+        )}
+      </div>
+
+      <Button
+        variant="secondary"
+        full
+        icon={<SlidersHorizontal />}
+        onClick={onOpenFilter}
+      >
+        Filter & sort
+        {activeFilterCount > 0 && (
+          <Chip size="sm" tone="accent">
+            {activeFilterCount}
+          </Chip>
+        )}
+      </Button>
+
+      {activeFilterCount > 0 && (
+        <Button variant="ghost" size="sm" full icon={<X />} onClick={onClearFilters}>
           Clear filters
-        </button>
+        </Button>
       )}
     </div>
   );

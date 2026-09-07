@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { images } from "@/db/schema";
@@ -58,7 +59,7 @@ export async function PATCH(req: NextRequest) {
     console.error("image status update route error:", error);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Unknown server error",
+        error: describeError(error, "Unknown server error"),
       },
       { status: 500 },
     );

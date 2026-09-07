@@ -1,413 +1,363 @@
-import React from "react";
-import { useConfirm } from "../../hooks/useConfirm";
+"use client";
+
 import {
-  useDeleteImageMutation,
-  useSetImageStatusMutation,
-} from "../../hooks/useImageMutations";
-import { useImageProcessor } from "../../hooks/useImageProcessor";
-import { useSeriesStore } from "../../stores/useSeriesStore";
-import { useSettingsStore } from "../../stores/useSettingsStore";
-import { useUIStore } from "../../stores/useUIStore";
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ImageOff,
+  MoreHorizontal,
+  PencilRuler,
+  Square,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
+import React from "react";
 import { ProcessedImage } from "../../types";
+import { cn } from "../../utils/cn";
+import type { PageStatusView } from "../../utils/stages";
+import { formatInt } from "../../utils/format";
 import { resolveImageUrl } from "../../utils/url";
+import { Button, IconButton, Menu, Mono, StageBar } from "../ui";
 
 interface Props {
   image: ProcessedImage;
+  /** Position in the whole series (0-based). */
   index: number;
   total: number;
-  onMove: (dir: "up" | "down" | "jump", targetPos?: number) => void;
+  status: PageStatusView;
   isSelected?: boolean;
   onToggleSelect?: () => void;
+  onOpen: () => void;
+  onOpenEditor: () => void;
+  onTranslate: () => void;
+  onCancel: () => void;
+  onDelete: () => void;
+  onSetStatus: (status: ProcessedImage["status"]) => void;
+  onMove: (dir: "up" | "down" | "jump", targetPos?: number) => void;
+  developerMode?: boolean;
+  readOnly?: boolean;
+  large?: boolean;
 }
 
+const toneText: Record<PageStatusView["tone"], string> = {
+  neutral: "text-ink-3",
+  accent: "text-action",
+  ok: "text-ok",
+  warn: "text-warn",
+  danger: "text-shu",
+};
+
+const DeveloperMeta: React.FC<{ image: ProcessedImage }> = ({ image }) => {
+  const usage = image.usage;
+  if (!usage) return null;
+  const processing = usage.processing;
+  const rows: Array<[string, string]> = [
+    [
+      "Pipeline",
+      processing ? `${processing.requestedPipeline} → ${processing.actualPipeline}` : "unknown",
+    ],
+    [
+      "Detection",
+      processing
+        ? `${processing.detection.provider} · ${processing.detection.model}`
+        : usage.modelUsed || "unknown",
+    ],
+    [
+      "Translation",
+      processing
+        ? `${processing.translation.model} · ${processing.translation.inputMode}`
+        : usage.modelUsed || "unknown",
+    ],
+    [
+      "Tokens",
+      `${formatInt(usage.promptTokenCount)} in · ${formatInt(usage.candidatesTokenCount)} out`,
+    ],
+    [
+      "OCR",
+      processing?.detection.durationMs
+        ? `${formatInt(processing.detection.durationMs)} ms · ${processing.detection.regions || 0} regions`
+        : "n/a",
+    ],
+    ["Fallback", processing?.translation.fallbackUsed ? "used" : "not used"],
+  ];
+  return (
+    <details className="group rounded-control border border-line bg-page-2 text-xs">
+      <summary className="cursor-pointer select-none px-2 py-1.5 text-ink-2 hover:text-ink">
+        Developer details
+        <Mono className="ml-2 text-ink-3" suppressHydrationWarning>
+          {processing?.completedAt
+            ? new Date(processing.completedAt).toLocaleTimeString()
+            : "legacy"}
+        </Mono>
+      </summary>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 border-t border-line px-2 py-2">
+        {rows.map(([key, value]) => (
+          <React.Fragment key={key}>
+            <dt className="text-ink-3">{key}</dt>
+            <dd className="min-w-0 break-words font-mono text-ink" title={value}>
+              {value}
+            </dd>
+          </React.Fragment>
+        ))}
+        {(usage.breakdown || []).map((call, callIndex) => (
+          <React.Fragment key={`${call.model}-${callIndex}`}>
+            <dt className="text-ink-3">Call {callIndex + 1}</dt>
+            <dd className="min-w-0 truncate font-mono text-ink" title={call.model}>
+              {call.model} · {call.billingMode} · {formatInt(call.totalTokenCount)} tok
+            </dd>
+          </React.Fragment>
+        ))}
+        {processing?.detection.workerId && (
+          <>
+            <dt className="text-ink-3">Worker</dt>
+            <dd className="min-w-0 truncate font-mono text-ink">
+              {processing.detection.workerId} · {processing.detection.device || "unknown"}
+            </dd>
+          </>
+        )}
+      </dl>
+    </details>
+  );
+};
+
+/** One page in the editor grid. */
 const ImageCard: React.FC<Props> = ({
   image,
   index,
   total,
-  onMove,
+  status,
   isSelected = false,
   onToggleSelect,
+  onOpen,
+  onOpenEditor,
+  onTranslate,
+  onCancel,
+  onDelete,
+  onSetStatus,
+  onMove,
+  developerMode = false,
+  readOnly = false,
+  large = false,
 }) => {
-  const { activeSeriesId } = useSeriesStore();
-  const { mutate: deleteImage } = useDeleteImageMutation();
-  const { mutateAsync: setImageStatus, isPending: isStatusUpdating } =
-    useSetImageStatusMutation();
-  const { setSelectedImage, showToast } = useUIStore();
-  const { confirm } = useConfirm();
-  const { processImage, cancelProcessing } = useImageProcessor();
-  const developerMode = useSettingsStore(
-    (state) => state.settings.developerMode === true,
-  );
-  const processing = image.usage?.processing;
-
-  const [isLoaded, setIsLoaded] = React.useState(false);
-  const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
-
-  const moveImage = (dir: "up" | "down" | "jump", targetPos?: number) => {
-    onMove(dir, targetPos);
-  };
-
+  const [loadState, setLoadState] = React.useState<"loading" | "ready" | "error">("loading");
+  const imgRef = React.useRef<HTMLImageElement>(null);
   const [sequenceInput, setSequenceInput] = React.useState(
     String(image.sequenceNumber),
   );
+
+  const displayUrl = resolveImageUrl(image.translatedUrl || image.originalUrl);
+
+  // A cached image can finish before React attaches onLoad; check it directly.
+  React.useEffect(() => {
+    const element = imgRef.current;
+    if (!element) return;
+    if (element.complete) {
+      setLoadState(element.naturalWidth > 0 ? "ready" : "error");
+    } else {
+      setLoadState("loading");
+    }
+  }, [displayUrl]);
 
   React.useEffect(() => {
     setSequenceInput(String(image.sequenceNumber));
   }, [image.sequenceNumber]);
 
   const commitSequence = () => {
-    const val = parseInt(sequenceInput);
-
-    if (isNaN(val) || val === image.sequenceNumber) {
+    const value = parseInt(sequenceInput, 10);
+    if (Number.isNaN(value) || value === image.sequenceNumber) {
       setSequenceInput(String(image.sequenceNumber));
       return;
     }
-
-    moveImage("jump", val);
+    onMove("jump", value);
   };
 
-  const handleRemove = () => {
-    confirm({
-      title: "Remove Image",
-      message:
-        "Are you sure you want to remove this image? This action cannot be undone.",
-      onConfirm: () => {
-        if (image.originalUrl.startsWith("blob:"))
-          URL.revokeObjectURL(image.originalUrl);
-        if (activeSeriesId) {
-          deleteImage({ seriesId: activeSeriesId, imageId: image.id });
-        }
-      },
-      type: "danger",
-    });
-  };
-
-  const handleStatusChange = async (
-    e: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
-    if (!activeSeriesId) return;
-
-    const nextStatus = e.target.value as ProcessedImage["status"];
-    if (nextStatus === image.status) return;
-
-    try {
-      await setImageStatus({
-        seriesId: activeSeriesId,
-        imageId: image.id,
-        status: nextStatus,
-      });
-      showToast(`${image.fileName}: status set to ${nextStatus}`, "success", 3500);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      showToast(`Status update failed: ${message}`, "error", 4500);
-    }
-  };
+  const translateLabel =
+    image.status === "completed"
+      ? "Re-translate"
+      : status.tone === "danger"
+        ? "Retry"
+        : "Translate";
 
   return (
-    <div
-      className={`glass-card rounded-[2rem] overflow-hidden group transition-all duration-500 hover:scale-[1.02] active:scale-[0.98] ${
-        isSelected ? "ring-2 ring-primary border-primary/70 shadow-glow" : ""
-      }`}
+    <li
+      className={cn(
+        "group/card flex flex-col overflow-hidden rounded-panel border bg-page transition-colors duration-120",
+        isSelected ? "border-action" : "border-line hover:border-ink-3",
+      )}
     >
-      <div
-        className="relative aspect-[2/3] bg-black/40 group-hover:bg-black/20 transition-colors cursor-pointer overflow-hidden"
-        onClick={() => setSelectedImage(image)}
-      >
-        {!isLoaded && (
-          <div className="absolute inset-0 bg-surface-muted/30 animate-pulse flex items-center justify-center">
-            <i className="fas fa-image text-text-muted/20 text-4xl" />
-          </div>
-        )}
-        <img
-          src={displayUrl}
-          alt={image.fileName}
-          className={`w-full h-full object-cover transition-all duration-500 ${isLoaded ? "opacity-100 scale-100 group-hover:scale-110" : "opacity-0 scale-105"}`}
-          loading="lazy"
-          onLoad={() => setIsLoaded(true)}
-        />
+      <div className="relative aspect-[2/3] bg-page-2">
+        <button
+          type="button"
+          onClick={onOpen}
+          className="block h-full w-full cursor-zoom-in overflow-hidden focus-visible:outline-offset-[-2px]"
+          aria-label={`Open ${image.fileName}`}
+        >
+          <img
+            ref={imgRef}
+            src={displayUrl}
+            alt=""
+            className={cn(
+              "h-full w-full object-cover transition-opacity duration-200",
+              loadState === "ready" ? "opacity-100" : "opacity-0",
+            )}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setLoadState("ready")}
+            onError={() => setLoadState("error")}
+          />
+          {loadState === "error" && (
+            <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs text-ink-3">
+              <ImageOff aria-hidden="true" className="h-5 w-5" />
+              Image unavailable
+            </span>
+          )}
+        </button>
 
         {onToggleSelect && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleSelect();
-            }}
-            aria-label={`${isSelected ? "Unselect" : "Select"} ${image.fileName}`}
-            aria-pressed={isSelected}
-            className={`absolute left-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-xl border backdrop-blur-md transition-all ${
+          <IconButton
+            label={`${isSelected ? "Unselect" : "Select"} ${image.fileName}`}
+            size="sm"
+            variant="secondary"
+            active={isSelected}
+            onClick={onToggleSelect}
+            className={cn(
+              "absolute left-2 top-2 shadow-pop transition-opacity duration-120",
               isSelected
-                ? "border-primary bg-primary text-white shadow-glow"
-                : "border-border-muted bg-background/75 text-text-muted hover:border-primary/70 hover:text-primary"
-            }`}
+                ? "opacity-100"
+                : "opacity-0 group-hover/card:opacity-100 focus-visible:opacity-100",
+            )}
           >
-            <i className={`fas ${isSelected ? "fa-check" : "fa-square"} text-xs`} />
-          </button>
+            {isSelected ? <Check /> : <Square />}
+          </IconButton>
         )}
 
-        {/* Status Overlay */}
-        <div
-          className={`absolute top-4 flex flex-col gap-2 ${
-            onToggleSelect ? "left-16" : "left-4"
-          }`}
-        >
-          <div
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest backdrop-blur-md border shadow-lg transition-colors ${
-              image.status === "completed"
-                ? "bg-emerald-500/20 border-emerald-500/30 text-emerald-400"
-                : image.status === "processing"
-                  ? "bg-primary/20 border-primary/30 text-primary animate-pulse"
-                  : image.status === "error"
-                    ? "bg-red-500/20 border-red-500/30 text-red-400"
-                    : "bg-surface-raised/80 border-border-muted text-text-muted"
-            }`}
+        {image.cost !== undefined && image.cost > 0 && (
+          <Mono
+            className="absolute right-2 top-2 rounded-chip border border-line bg-page px-1.5 py-0.5 text-xs text-ink-2"
+            title="Translation cost"
           >
-            {image.status === "processing" ? (
-              <span className="flex items-center gap-2">
-                <i className="fas fa-circle-notch fa-spin"></i>
-                Processing
-              </span>
-            ) : (
-              image.status
-            )}
-          </div>
-        </div>
-
-        {/* Cost Badge */}
-        {image.cost !== undefined && (
-          <div className="absolute top-4 right-4 bg-background/80 backdrop-blur-md border border-border-muted px-2.5 py-1 rounded-xl text-[10px] font-mono font-bold text-primary shadow-glow">
-            ${image.cost.toFixed(5)}
-          </div>
+            ${image.cost.toFixed(4)}
+          </Mono>
         )}
       </div>
 
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <div className="overflow-hidden">
-            <h4
-              className="text-text-main font-bold text-sm truncate mb-1"
-              title={image.fileName}
-            >
-              {image.fileName}
-            </h4>
-            <div className="flex items-center gap-2 text-[10px] font-bold text-text-dark uppercase tracking-wider">
-              <span>IMG {String(index + 1).padStart(2, "0")}</span>
-              <span className="w-1 h-1 rounded-full bg-border-muted"></span>
-              <span>
-                {(image.usage?.totalTokenCount || 0).toLocaleString()} tok
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={handleRemove}
-            className="text-slate-600 hover:text-red-400 transition-colors p-1"
-            title="Remove"
-          >
-            <i className="fas fa-trash-alt text-sm"></i>
-          </button>
+      <div className="flex flex-col gap-2 p-3">
+        <div className="flex items-baseline gap-2">
+          <Mono className="shrink-0 text-xs text-ink-3">
+            p.{String(index + 1).padStart(3, "0")}
+          </Mono>
+          <span className="min-w-0 truncate text-sm font-medium text-ink" title={image.fileName}>
+            {image.fileName}
+          </span>
         </div>
 
-        <div className="mb-3">
-          <label className="block text-[10px] font-black uppercase tracking-wider text-text-dark mb-1">
-            Manual Status
-          </label>
-          <select
-            value={image.status}
-            onChange={handleStatusChange}
-            disabled={isStatusUpdating}
-            className="w-full bg-surface-raised/50 border border-border-muted rounded-xl px-3 py-2 text-xs font-semibold text-text-main disabled:opacity-60"
-          >
-            <option value="idle">idle</option>
-            <option value="processing">processing</option>
-            <option value="completed">completed</option>
-            <option value="error">error</option>
-          </select>
-        </div>
+        <StageBar stages={status.stages} label={status.label} />
 
-        {developerMode && image.usage && (
-          <div className="mb-4 rounded-2xl border border-primary/20 bg-background/40 p-3">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <span className="text-[9px] font-black uppercase tracking-[0.18em] text-primary">
-                Developer Metadata
-              </span>
-              <span className="text-[8px] font-mono text-text-dark">
-                {processing?.completedAt
-                  ? new Date(processing.completedAt).toLocaleTimeString()
-                  : "Legacy result"}
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                {
-                  label: "Pipeline",
-                  value: processing
-                    ? `${processing.requestedPipeline} → ${processing.actualPipeline}`
-                    : "unknown",
-                },
-                {
-                  label: "Detection",
-                  value: processing
-                    ? `${processing.detection.provider} · ${processing.detection.model}`
-                    : image.usage.modelUsed || "unknown",
-                },
-                {
-                  label: "Translation",
-                  value: processing
-                    ? `${processing.translation.model} · ${processing.translation.inputMode}`
-                    : image.usage.modelUsed || "unknown",
-                },
-                {
-                  label: "Usage",
-                  value: `${image.usage.promptTokenCount.toLocaleString()} in · ${image.usage.candidatesTokenCount.toLocaleString()} out`,
-                },
-                {
-                  label: "OCR Runtime",
-                  value: processing?.detection.durationMs
-                    ? `${processing.detection.durationMs.toLocaleString()} ms · ${processing.detection.regions || 0} regions`
-                    : "Not applicable",
-                },
-                {
-                  label: "Fallback",
-                  value: processing?.translation.fallbackUsed
-                    ? "Used"
-                    : "Not used",
-                },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="min-w-0 rounded-xl border border-border-muted bg-surface-raised/60 p-2.5"
-                >
-                  <p className="text-[7px] font-black uppercase tracking-widest text-text-dark">
-                    {item.label}
-                  </p>
-                  <p
-                    className="mt-1 break-words text-[9px] font-bold leading-tight text-text-main"
-                    title={item.value}
-                  >
-                    {item.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-            {(image.usage.breakdown || []).length > 0 && (
-              <div className="mt-2 space-y-1.5">
-                <p className="text-[7px] font-black uppercase tracking-widest text-text-dark">
-                  Model Calls
-                </p>
-                {(image.usage.breakdown || []).map((call, callIndex) => (
-                  <div
-                    key={`${call.model}-${callIndex}`}
-                    className="flex items-center justify-between gap-2 rounded-lg border border-border-muted bg-surface-raised/40 px-2 py-1.5 text-[8px]"
-                  >
-                    <span className="truncate font-bold text-text-main">
-                      {call.model}
-                    </span>
-                    <span className="shrink-0 font-mono text-text-dark">
-                      {call.billingMode} · {call.totalTokenCount.toLocaleString()} tok
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {processing?.detection.workerId && (
-              <p className="mt-2 truncate text-[8px] font-mono text-text-dark">
-                Worker: {processing.detection.workerId} · Device:{" "}
-                {processing.detection.device || "unknown"}
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => {
-              if (image.status === "completed") {
-                confirm({
-                  title: "Re-translate Image",
-                  message:
-                    "This will overwrite the existing translation and usage data. Are you sure?",
-                  onConfirm: () => processImage(image, 0, true),
-                  type: "warning",
-                });
-              } else {
-                processImage(image, 0, true);
-              }
-            }}
-            disabled={image.status === "processing"}
-            className="flex-1 bg-primary hover:bg-primary-hover disabled:bg-surface-elevated disabled:text-text-dark text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all disabled:cursor-not-allowed group/btn shadow-lg shadow-primary/20 border border-primary/30"
-          >
-            <span className="group-hover/btn:hidden">
-              {image.status === "completed"
-                ? "Re-translate"
-                : image.status === "error"
-                  ? "Retry"
-                  : "Translate"}
+        <p className={cn("flex min-w-0 items-center gap-1.5 text-xs", toneText[status.tone])}>
+          <span className="shrink-0 font-medium">{status.label}</span>
+          {status.error && (
+            <span className="min-w-0 truncate text-ink-3" title={status.error}>
+              · {status.error}
             </span>
-            <span className="hidden group-hover/btn:inline">
-              <i className="fas fa-bolt"></i> Run
-            </span>
-          </button>
-
-          {image.status === "processing" && (
-            <button
-              onClick={() => cancelProcessing(image.id)}
-              className="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white p-2.5 rounded-xl text-xs transition-all border border-red-500/20"
-              title="Cancel Processing"
-            >
-              <i className="fas fa-times"></i>
-            </button>
           )}
+        </p>
 
-          {/* Premium Order Control */}
-          <div className="flex bg-background/50 rounded-2xl border border-border-muted p-1 items-center shadow-inner group/order">
-            <button
-              onClick={() => moveImage("up")}
-              disabled={index === 0}
-              className="w-9 h-9 flex items-center justify-center text-text-dark hover:text-primary hover:bg-primary/10 rounded-xl transition-all disabled:opacity-20 active:scale-90"
-              title="Move Up"
+        {developerMode && large && <DeveloperMeta image={image} />}
+
+        {!readOnly && (
+          <div className="flex flex-wrap items-center gap-1">
+            {status.active ? (
+              <Button size="sm" icon={<X />} onClick={onCancel} className="flex-1">
+                Cancel
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant={image.status === "completed" ? "secondary" : "primary"}
+                icon={<Zap />}
+                onClick={onTranslate}
+                className="min-w-0 flex-1"
+              >
+                {translateLabel}
+              </Button>
+            )}
+            <IconButton
+              label="Open layout editor"
+              size="sm"
+              variant="secondary"
+              disabled={status.active}
+              onClick={onOpenEditor}
             >
-              <i className="fas fa-chevron-left text-xs"></i>
-            </button>
-
-            <div className="relative flex items-center px-1">
-              <span className="absolute left-1/2 -translate-x-1/2 text-[8px] font-black text-text-dark/40 uppercase tracking-tighter -top-3 opacity-0 group-hover/order:opacity-100 transition-opacity">
-                Pos
-              </span>
-
-              <div className="relative">
-                <input
-                  type="number"
-                  min={1}
-                  max={total}
-                  className="w-10 bg-transparent text-center text-xs font-black text-text-main focus:outline-none focus:ring-1 focus:ring-primary/50 rounded-lg py-1 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  value={sequenceInput}
-                  onChange={(e) => setSequenceInput(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  onBlur={commitSequence}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.currentTarget.blur();
-                    if (event.key === "Escape") {
-                      setSequenceInput(String(image.sequenceNumber));
-                      event.currentTarget.blur();
-                    }
-                  }}
-                />
-              </div>
-            </div>
-
-            <button
-              onClick={() => moveImage("down")}
-              disabled={index === total - 1}
-              className="w-9 h-9 flex items-center justify-center text-text-dark hover:text-primary hover:bg-primary/10 rounded-xl transition-all disabled:opacity-20 active:scale-90"
-              title="Move Down"
-            >
-              <i className="fas fa-chevron-right text-xs"></i>
-            </button>
+              <PencilRuler />
+            </IconButton>
+            <Menu
+              items={[
+                { label: "Mark ready", onSelect: () => onSetStatus("completed") },
+                { label: "Mark not translated", onSelect: () => onSetStatus("idle") },
+                { label: "Mark failed", onSelect: () => onSetStatus("error") },
+                {
+                  label: "Delete page",
+                  icon: <Trash2 />,
+                  onSelect: onDelete,
+                  danger: true,
+                  separator: true,
+                },
+              ]}
+              trigger={(props) => (
+                <IconButton label="More" size="sm" variant="secondary" {...props}>
+                  <MoreHorizontal />
+                </IconButton>
+              )}
+            />
           </div>
-        </div>
+        )}
+
+        {!readOnly && (
+          <div className="flex items-center justify-between gap-1 border-t border-line-2 pt-2">
+            <IconButton
+              label="Move earlier"
+              size="sm"
+              disabled={index === 0}
+              onClick={() => onMove("up")}
+            >
+              <ChevronLeft />
+            </IconButton>
+            <label className="flex items-center gap-1 whitespace-nowrap text-xs text-ink-3">
+              <span className="sr-only">Position</span>
+              <input
+                type="number"
+                min={1}
+                max={total}
+                value={sequenceInput}
+                onChange={(event) => setSequenceInput(event.target.value)}
+                onFocus={(event) => event.target.select()}
+                onBlur={commitSequence}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    setSequenceInput(String(image.sequenceNumber));
+                    event.currentTarget.blur();
+                  }
+                }}
+                aria-label={`Position of ${image.fileName}, 1 to ${total}`}
+                className="no-spinner h-6 w-12 rounded-chip border border-transparent bg-transparent text-center font-mono text-xs tabular text-ink hover:border-line focus:border-action focus:outline-none"
+              />
+              <Mono>/ {total}</Mono>
+            </label>
+            <IconButton
+              label="Move later"
+              size="sm"
+              disabled={index === total - 1}
+              onClick={() => onMove("down")}
+            >
+              <ChevronRight />
+            </IconButton>
+          </div>
+        )}
       </div>
-    </div>
+    </li>
   );
 };
 
-export default ImageCard;
+export default React.memo(ImageCard);

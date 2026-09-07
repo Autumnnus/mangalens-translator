@@ -1,6 +1,8 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { ProcessedImage } from "../../types";
 import { getThumbnailUrl } from "../../utils/url";
+import { IconButton, Input, Mono } from "../ui";
 
 interface ThumbnailStripProps {
   images: ProcessedImage[];
@@ -13,6 +15,14 @@ interface ThumbnailStripProps {
   onPageChange: (page: number) => void;
   isOverlay?: boolean;
 }
+
+/** Icon buttons on the theater ground: white on dark instead of ink tokens. */
+const theaterButton = "text-theater-ink-2 hover:bg-theater-hover hover:text-theater-ink";
+
+const tileClass = (active: boolean) =>
+  `relative shrink-0 overflow-hidden rounded-control border-2 bg-theater transition-colors duration-120 ${
+    active ? "border-action" : "border-theater-line hover:border-theater-line"
+  }`;
 
 const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
   images,
@@ -44,20 +54,24 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
     changePage(page);
   };
 
+  const isGrid = comparisonMode === "grid";
+
   return (
     <div
-      className={`${isOverlay ? "p-2 sm:p-5 mx-0 sm:mx-6 mb-0 sm:mb-6 rounded-none sm:rounded-[3rem] border-x-0 sm:border-x" : "mt-3 sm:mt-10 p-3 sm:p-5 mx-2 sm:mx-6 mb-4 sm:mb-6 rounded-3xl border"} bg-surface/30 backdrop-blur-2xl border-border-muted shrink-0 transition-all glass-card ${
-        comparisonMode === "grid"
-          ? "overflow-y-auto max-h-[72vh] sm:max-h-[60vh] custom-scrollbar"
-          : ""
-      }`}
+      className={`shrink-0 bg-theater p-3 text-theater-ink ${
+        isOverlay
+          ? "border-y border-theater-line sm:rounded-panel sm:border"
+          : "rounded-panel border border-theater-line"
+      } ${isGrid ? "max-h-[72vh] overflow-y-auto sm:max-h-[60vh]" : ""}`}
     >
-      <div className="flex items-center justify-between mb-2 sm:mb-4 px-2">
-        <div className="flex items-center gap-2">
-          <label className="flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-primary">
-            <span className="hidden sm:inline">Grid</span>
-            <input
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-theater-ink-2">
+            <span className="hidden sm:inline">Set</span>
+            <Input
               type="number"
+              mono
+              inputSize="sm"
               min={1}
               max={totalThumbPages}
               value={pageInput}
@@ -66,94 +80,98 @@ const ThumbnailStrip: React.FC<ThumbnailStripProps> = ({
               onKeyDown={(event) => {
                 if (event.key === "Enter") event.currentTarget.blur();
               }}
-              className="w-6 bg-transparent text-center text-[10px] font-black text-primary outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              aria-label={`Go to thumbnail grid page, between 1 and ${totalThumbPages}`}
+              className="no-spinner w-14 text-center"
+              aria-label={`Go to thumbnail set, between 1 and ${totalThumbPages}`}
             />
-            <span>/{totalThumbPages}</span>
+            <Mono>/ {totalThumbPages}</Mono>
           </label>
           {!isOverlay && (
-            <span className="text-[9px] font-black text-text-dark uppercase tracking-widest hidden sm:inline ml-2">
-              {images.length} Pages
-            </span>
+            <Mono className="hidden text-xs text-theater-ink-2 sm:inline">
+              {images.length} pages
+            </Mono>
           )}
         </div>
 
-        <div className="flex items-center gap-1.5">
-          <button
+        <div className="flex items-center gap-0.5 rounded-control border border-theater-line p-0.5">
+          <IconButton
+            label="Previous set"
+            size="sm"
+            className={theaterButton}
             onClick={() => changePage(currentThumbPage)}
             disabled={currentThumbPage === 0}
-            className="w-8 h-8 sm:w-10 sm:h-10 bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main rounded-xl disabled:opacity-30 transition-all border border-border-muted flex items-center justify-center active:scale-95"
           >
-            <i className="fas fa-chevron-left text-[10px]"></i>
-          </button>
-          <button
+            <ChevronLeft />
+          </IconButton>
+          <IconButton
+            label="Next set"
+            size="sm"
+            className={theaterButton}
             onClick={() => changePage(currentThumbPage + 2)}
             disabled={currentThumbPage >= totalThumbPages - 1}
-            className="w-8 h-8 sm:w-10 sm:h-10 bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main rounded-xl disabled:opacity-30 transition-all border border-border-muted flex items-center justify-center active:scale-95"
           >
-            <i className="fas fa-chevron-right text-[10px]"></i>
-          </button>
+            <ChevronRight />
+          </IconButton>
         </div>
       </div>
 
-      {comparisonMode === "grid" ? (
-        <div className="grid grid-cols-2 xs:grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-10 gap-2 sm:gap-4">
+      {isGrid ? (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-10">
           {currentThumbSet.map((img) => {
             const idx = images.findIndex((i) => i.id === img.id);
+            const active = idx === currentImageIndex;
             return (
               <button
                 key={img.id}
+                type="button"
                 onClick={() => onSelectIndex(idx)}
-                className={`relative aspect-[3/4] sm:aspect-[2/3] group rounded-xl sm:rounded-2xl overflow-hidden border-2 transition-all shadow-premium bg-black/80 ${
-                  idx === currentImageIndex
-                    ? "border-primary shadow-glow scale-105 z-10"
-                    : "border-border-muted hover:border-primary/50 opacity-70 hover:opacity-100"
-                }`}
+                aria-current={active ? "true" : undefined}
+                aria-label={`Open page ${idx + 1}`}
+                className={`${tileClass(active)} aspect-[3/4] sm:aspect-[2/3]`}
               >
                 <img
                   src={getThumbnailUrl(img.originalKey, img.originalUrl, 180, 66)}
-                  alt={`Page ${idx + 1}`}
+                  alt=""
                   loading="lazy"
-                  className="w-full h-full object-contain transition-opacity duration-300 p-1"
+                  decoding="async"
+                  className="h-full w-full object-contain p-1 transition-opacity duration-200"
                   onLoad={(e) => (e.currentTarget.style.opacity = "1")}
                   style={{ opacity: 0 }}
                 />
-                <div className="absolute inset-0 bg-primary/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
-                  <span className="text-white font-black text-xs uppercase tracking-widest bg-primary/80 px-2 py-1 rounded-lg">
-                    Pg {idx + 1}
-                  </span>
-                </div>
+                <Mono className="absolute bottom-1 left-1 rounded-chip bg-theater px-1.5 py-0.5 text-xs text-theater-ink-2">
+                  {idx + 1}
+                </Mono>
               </button>
             );
           })}
         </div>
       ) : (
-        <div className="flex items-center justify-start sm:justify-center gap-2 sm:gap-4 overflow-x-auto no-scrollbar pb-2">
+        <div className="no-scrollbar flex items-center justify-start gap-2 overflow-x-auto pb-1 sm:justify-center sm:gap-3">
           {currentThumbSet.map((img) => {
             const idx = images.findIndex((i) => i.id === img.id);
+            const active = idx === currentImageIndex;
             return (
               <button
                 key={img.id}
+                type="button"
                 onClick={() => onSelectIndex(idx)}
-                className={`relative w-16 h-24 sm:w-24 sm:h-36 shrink-0 rounded-xl sm:rounded-2xl overflow-hidden border-2 transition-all shadow-premium bg-black/80 ${
-                  idx === currentImageIndex
-                    ? "border-primary shadow-glow scale-110 z-10"
-                    : "border-border-muted opacity-40 hover:opacity-100 hover:scale-105"
+                aria-current={active ? "true" : undefined}
+                aria-label={`Open page ${idx + 1}`}
+                className={`${tileClass(active)} h-24 w-16 sm:h-36 sm:w-24 ${
+                  active ? "" : "opacity-60 hover:opacity-100"
                 }`}
               >
                 <img
                   src={getThumbnailUrl(img.originalKey, img.originalUrl, 220, 68)}
-                  alt={`Page ${idx + 1}`}
+                  alt=""
                   loading="lazy"
-                  className="w-full h-full object-contain transition-opacity duration-300 p-1"
+                  decoding="async"
+                  className="h-full w-full object-contain p-1 transition-opacity duration-200"
                   onLoad={(e) => (e.currentTarget.style.opacity = "1")}
                   style={{ opacity: 0 }}
                 />
-                <div className="absolute bottom-0 inset-x-0 bg-surface/80 backdrop-blur-md py-1.5 border-t border-border-muted">
-                  <span className="text-[10px] font-black text-text-main uppercase tracking-tighter">
-                    {idx + 1}
-                  </span>
-                </div>
+                <Mono className="absolute bottom-1 left-1 rounded-chip bg-theater px-1.5 py-0.5 text-xs text-theater-ink-2">
+                  {idx + 1}
+                </Mono>
               </button>
             );
           })}

@@ -1,3 +1,4 @@
+import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
@@ -9,16 +10,11 @@ const DEFAULT_SETTINGS: TranslationSettings = {
   targetLanguage: "Turkish",
   translationPipeline: "auto",
   developerMode: false,
-  fontSize: 24,
-  fontColor: "#000000",
-  backgroundColor: "#ffffff",
-  strokeColor: "#ffffff",
   customInstructions: "",
   model: "gemini-2.5-flash-lite",
   fallbackModel: "gemini-2.5-flash",
   enableQualityFallback: true,
   useGeminiBatch: true,
-  refineBubbles: true,
   batchSize: 10,
   batchDelay: 0,
   useCustomApiKey: false,
@@ -63,7 +59,7 @@ export async function GET() {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Unknown server error",
+          describeError(error, "Unknown server error"),
       },
       { status: 500 },
     );
@@ -107,7 +103,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Unknown server error",
+          describeError(error, "Unknown server error"),
       },
       { status: 500 },
     );

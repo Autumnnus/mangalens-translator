@@ -26,6 +26,8 @@
     "lucide-react": "^0.562.0",
     "next": "^16.1.4",
     "next-auth": "^5.0.0-beta.30",
+    "onnxruntime-web": "^1.29.0",
+    "opentype.js": "^2.0.0",
     "pg": "^8.17.2",
     "postgres": "^3.4.8",
     "randomcolor": "^0.6.2",
@@ -33,6 +35,7 @@
     "react-dom": "^19.2.3",
     "react-image-gallery": "^1.4.0",
     "react-zoom-pan-pinch": "^3.7.0",
+    "sharp": "^0.34.5",
     "swiper": "^12.0.3",
     "zod": "^4.3.5",
     "zustand": "^5.0.9"
@@ -43,6 +46,7 @@
     "@types/file-saver": "^2.0.7",
     "@types/jszip": "^3.4.1",
     "@types/node": "^20",
+    "@types/opentype.js": "^1.3.10",
     "@types/pg": "^8.16.0",
     "@types/randomcolor": "^0.5.9",
     "@types/react": "^19",
@@ -52,6 +56,13 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.13",
     "typescript": "^5"
+  },
+  "optionalDependencies": {
+    "@tailwindcss/oxide-darwin-arm64": "^4.1.18",
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.1.18",
+    "lightningcss-darwin-arm64": "^1.30.2",
+    "lightningcss-linux-x64-gnu": "^1.30.2"
   }
 }

@@ -1,10 +1,28 @@
+import { describeError } from "@/server/errors";
 import { db } from "@/db";
-import { localOcrJobs } from "@/db/schema";
+import { images, localOcrJobs, series, users } from "@/db/schema";
+import { resolveActiveGeminiKeys } from "@/server/gemini/keys";
 import { authenticateLocalOcrWorker } from "@/server/local-ocr/auth";
-import { translateLocalOcrResult } from "@/server/local-ocr/jobs";
+import { getOwnedImage } from "@/server/pages/layoutService";
+import {
+  completePageJob,
+  failPageJob,
+  findActivePageJobByRef,
+  isPageJobActive,
+  setPageJobStage,
+} from "@/server/jobs/pageJobs";
+import {
+  completeDetectedPage,
+  detectedFromLocalOcr,
+  PipelineCancelledError,
+} from "@/server/pipeline/translatePage";
+import { loadOriginal, readDimensions } from "@/server/pages/layoutService";
+import { TranslationSettings } from "@/types";
 import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+
+export const maxDuration = 180;
 
 const bubbleSchema = z.object({
   id: z.string().min(1).max(120),
@@ -19,7 +37,7 @@ const bubbleSchema = z.object({
   original_text: z.string().min(1).max(5000),
   confidence: z.number().min(0).max(1),
   type: z
-    .enum(["speech", "caption", "sfx", "label", "dialogue", "environmental"])
+    .enum(["speech", "thought", "caption", "sfx", "label", "dialogue", "environmental"])
     .optional(),
 });
 
@@ -34,6 +52,10 @@ const completeSchema = z.object({
   }),
 });
 
+/**
+ * The worker hands back OCR regions; the server translates, cleans, typesets
+ * and stores the page exactly like the Gemini Vision path.
+ */
 export async function POST(
   request: Request,
   context: { params: Promise<{ jobId: string }> },
@@ -81,18 +103,67 @@ export async function POST(
       );
     }
 
+    const pageJob = await findActivePageJobByRef(job.id);
     try {
-      const translated = await translateLocalOcrResult(
-        job,
-        parsed.data.bubbles,
-        parsed.data.metadata,
-      );
+      const image = await getOwnedImage(job.imageId, job.userId);
+      if (!image) throw new Error("Image for this OCR job no longer exists");
+      const user = await db.query.users.findFirst({
+        where: eq(users.id, job.userId),
+      });
+      const stored = (user?.settings || {}) as Partial<TranslationSettings>;
+      const keys = resolveActiveGeminiKeys(stored);
+      if (keys.length === 0) throw new Error("No Gemini API key available");
+      const seriesRow = await db.query.series.findFirst({
+        where: eq(series.id, job.seriesId),
+        columns: { name: true, originalTitle: true, author: true },
+      });
+
+      const original = await loadOriginal(image);
+      const { width, height } = await readDimensions(original);
+      const completed = await completeDetectedPage({
+        image,
+        userId: job.userId,
+        keys,
+        settings: {
+          targetLanguage: job.targetLanguage,
+          customInstructions: job.customInstructions || undefined,
+          model: job.primaryModel,
+          fallbackModel: job.fallbackModel,
+          enableQualityFallback: stored.enableQualityFallback ?? true,
+        },
+        requestedPipeline: job.pipeline === "local_ocr" ? "local_ocr" : "auto",
+        detected: detectedFromLocalOcr(parsed.data.bubbles, width, height),
+        detector: {
+          provider: "paddleocr",
+          model: parsed.data.metadata.engine,
+          workerId,
+          device: parsed.data.metadata.device,
+          durationMs: parsed.data.metadata.durationMs,
+          mangaOcrEnabled: parsed.data.metadata.mangaOcrEnabled,
+          usageEntries: job.initialUsage?.breakdown || [],
+        },
+        context: {
+          seriesTitle: seriesRow?.name,
+          originalTitle: seriesRow?.originalTitle,
+          author: seriesRow?.author,
+        },
+        original,
+        hooks: pageJob
+          ? {
+              onStage: (stage) => setPageJobStage(pageJob.id, stage),
+              shouldContinue: () => isPageJobActive(pageJob.id),
+            }
+          : undefined,
+      });
+      if (pageJob) {
+        await completePageJob(pageJob.id, { usage: completed.usage, cost: completed.cost });
+      }
+
       await db
         .update(localOcrJobs)
         .set({
           status: "completed",
-          translatedBubbles: translated.bubbles,
-          usage: translated.usage,
+          usage: completed.usage,
           leaseExpiresAt: null,
           error: null,
           updatedAt: new Date(),
@@ -100,8 +171,15 @@ export async function POST(
         .where(eq(localOcrJobs.id, job.id));
       return NextResponse.json({ completed: true });
     } catch (error) {
+      if (error instanceof PipelineCancelledError) {
+        await db
+          .update(localOcrJobs)
+          .set({ status: "cancelled", leaseExpiresAt: null, updatedAt: new Date() })
+          .where(eq(localOcrJobs.id, job.id));
+        return NextResponse.json({ completed: false, cancelled: true });
+      }
       const message =
-        error instanceof Error ? error.message : "Text-only translation failed";
+        describeError(error, "Page completion failed");
       await db
         .update(localOcrJobs)
         .set({
@@ -111,12 +189,20 @@ export async function POST(
           updatedAt: new Date(),
         })
         .where(eq(localOcrJobs.id, job.id));
+      if (pageJob) await failPageJob(pageJob.id, message);
+      else {
+        await db
+          .update(images)
+          .set({ status: "error", updatedAt: new Date() })
+          .where(eq(images.id, job.imageId))
+          .catch(() => undefined);
+      }
       return NextResponse.json({ error: message }, { status: 422 });
     }
   } catch (error) {
     console.error("Local OCR completion failed", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "OCR completion failed" },
+      { error: describeError(error, "OCR completion failed") },
       { status: 500 },
     );
   }
