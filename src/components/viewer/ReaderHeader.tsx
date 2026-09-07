@@ -75,6 +75,7 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
   const groupStart = (currentPageGroup - 1) * pageGroupSize + 1;
   const groupEnd = Math.min(currentPageGroup * pageGroupSize, imageCount);
   const layout: "grid" | "single" = comparisonMode === "grid" ? "grid" : "single";
+  const hasPages = imageCount > 0;
 
   return (
     <header className="flex h-11 shrink-0 items-center gap-2 border-b border-theater-line bg-theater px-2 text-theater-ink">
@@ -107,113 +108,115 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
         </div>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        <div
-          role="group"
-          aria-label="Page navigation"
-          className="flex items-center gap-0.5 rounded-control border border-theater-line p-0.5"
-        >
-          <IconButton
-            label="First page"
-            size="sm"
-            className={`${theaterButton} hidden sm:inline-flex`}
-            onClick={() => goToPage(1)}
-            disabled={isFirst}
-          >
-            <SkipBack />
-          </IconButton>
-          <IconButton
-            label="Previous page"
-            size="sm"
-            className={theaterButton}
-            onClick={() => goToPage(currentImageIndex)}
-            disabled={isFirst}
-          >
-            <ChevronLeft />
-          </IconButton>
-          <Input
-            type="number"
-            mono
-            inputSize="sm"
-            min={1}
-            max={imageCount}
-            value={pageInput}
-            onChange={(event) => setPageInput(event.target.value)}
-            onBlur={commitPageInput}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-            }}
-            className="no-spinner w-14 text-center"
-            aria-label={`Go to page, between 1 and ${imageCount}`}
-          />
-          <IconButton
-            label="Next page"
-            size="sm"
-            className={theaterButton}
-            onClick={() => goToPage(currentImageIndex + 2)}
-            disabled={isLast}
-          >
-            <ChevronRight />
-          </IconButton>
-          <IconButton
-            label="Last page"
-            size="sm"
-            className={`${theaterButton} hidden sm:inline-flex`}
-            onClick={() => goToPage(imageCount)}
-            disabled={isLast}
-          >
-            <SkipForward />
-          </IconButton>
-        </div>
-
-        {totalPageGroups > 1 && (
+      {hasPages && (
+        <div className="flex shrink-0 items-center gap-2">
           <div
             role="group"
-            aria-label="Page set navigation"
-            className="hidden items-center gap-0.5 rounded-control border border-theater-line p-0.5 md:flex"
+            aria-label="Page navigation"
+            className="flex items-center gap-0.5 rounded-control border border-theater-line p-0.5"
           >
             <IconButton
-              label="Previous page set"
+              label="First page"
               size="sm"
-              className={theaterButton}
-              onClick={() => onPageGroupChange(currentPageGroup - 1)}
-              disabled={currentPageGroup === 1}
+              className={`${theaterButton} hidden sm:inline-flex`}
+              onClick={() => goToPage(1)}
+              disabled={isFirst}
             >
-              <ChevronsLeft />
+              <SkipBack />
             </IconButton>
-            <Mono
-              className="min-w-24 px-1 text-center text-xs text-theater-ink-2"
-              title={`Set ${currentPageGroup} of ${totalPageGroups}`}
-            >
-              Pages {groupStart}–{groupEnd}
-            </Mono>
             <IconButton
-              label="Next page set"
+              label="Previous page"
               size="sm"
               className={theaterButton}
-              onClick={() => onPageGroupChange(currentPageGroup + 1)}
-              disabled={currentPageGroup === totalPageGroups}
+              onClick={() => goToPage(currentImageIndex)}
+              disabled={isFirst}
             >
-              <ChevronsRight />
+              <ChevronLeft />
+            </IconButton>
+            <Input
+              type="number"
+              mono
+              inputSize="sm"
+              min={1}
+              max={imageCount}
+              value={pageInput}
+              onChange={(event) => setPageInput(event.target.value)}
+              onBlur={commitPageInput}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              className="no-spinner w-14 text-center"
+              aria-label={`Go to page, between 1 and ${imageCount}`}
+            />
+            <IconButton
+              label="Next page"
+              size="sm"
+              className={theaterButton}
+              onClick={() => goToPage(currentImageIndex + 2)}
+              disabled={isLast}
+            >
+              <ChevronRight />
+            </IconButton>
+            <IconButton
+              label="Last page"
+              size="sm"
+              className={`${theaterButton} hidden sm:inline-flex`}
+              onClick={() => goToPage(imageCount)}
+              disabled={isLast}
+            >
+              <SkipForward />
             </IconButton>
           </div>
-        )}
 
-        <SegmentedControl
-          label="Layout"
-          size="sm"
-          value={layout}
-          onChange={(value) =>
-            setComparisonMode(value === "grid" ? "grid" : "toggle")
-          }
-          options={[
-            { value: "grid", icon: <LayoutGrid />, title: "Grid" },
-            { value: "single", icon: <ImageIcon />, title: "Single page" },
-          ]}
-        />
+          {totalPageGroups > 1 && (
+            <div
+              role="group"
+              aria-label="Page set navigation"
+              className="hidden items-center gap-0.5 rounded-control border border-theater-line p-0.5 md:flex"
+            >
+              <IconButton
+                label="Previous page set"
+                size="sm"
+                className={theaterButton}
+                onClick={() => onPageGroupChange(currentPageGroup - 1)}
+                disabled={currentPageGroup === 1}
+              >
+                <ChevronsLeft />
+              </IconButton>
+              <Mono
+                className="min-w-24 px-1 text-center text-xs text-theater-ink-2"
+                title={`Set ${currentPageGroup} of ${totalPageGroups}`}
+              >
+                Pages {groupStart}–{groupEnd}
+              </Mono>
+              <IconButton
+                label="Next page set"
+                size="sm"
+                className={theaterButton}
+                onClick={() => onPageGroupChange(currentPageGroup + 1)}
+                disabled={currentPageGroup === totalPageGroups}
+              >
+                <ChevronsRight />
+              </IconButton>
+            </div>
+          )}
 
-        {children}
-      </div>
+          <SegmentedControl
+            label="Layout"
+            size="sm"
+            value={layout}
+            onChange={(value) =>
+              setComparisonMode(value === "grid" ? "grid" : "toggle")
+            }
+            options={[
+              { value: "grid", icon: <LayoutGrid />, title: "Grid" },
+              { value: "single", icon: <ImageIcon />, title: "Single page" },
+            ]}
+          />
+
+          {children}
+        </div>
+      )}
     </header>
   );
 };

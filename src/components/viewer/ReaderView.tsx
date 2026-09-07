@@ -118,17 +118,33 @@ const ReaderView: React.FC = () => {
 
   if (images.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-theater p-10 text-center text-theater-ink">
-        <span
-          aria-hidden="true"
-          className="mb-4 flex h-12 w-12 items-center justify-center rounded-panel border border-theater-line text-theater-ink-2 [&_svg]:h-5 [&_svg]:w-5"
-        >
-          <ImageOff />
-        </span>
-        <h2 className="text-base font-semibold">No pages yet</h2>
-        <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-theater-ink-2">
-          This series is empty. Go back to the editor to add pages.
-        </p>
+      <div className="relative flex h-full min-h-0 flex-1 flex-col bg-theater text-theater-ink">
+        <ReaderHeader
+          activeSeries={activeSeries}
+          currentImageIndex={currentImageIndex}
+          imageCount={0}
+          toggleViewOnly={toggleViewOnly}
+          onOpenSeriesList={handleOpenSeriesList}
+          setCurrentImageIndex={setCurrentImageIndex}
+          currentPageGroup={1}
+          totalPageGroups={0}
+          pageGroupSize={thumbnailsPerPage}
+          onPageGroupChange={handleThumbPageChange}
+          comparisonMode={comparisonMode}
+          setComparisonMode={setComparisonMode}
+        />
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center p-10 text-center">
+          <span
+            aria-hidden="true"
+            className="mb-4 flex h-12 w-12 items-center justify-center rounded-panel border border-theater-line text-theater-ink-2 [&_svg]:h-5 [&_svg]:w-5"
+          >
+            <ImageOff />
+          </span>
+          <h2 className="text-base font-semibold">No pages yet</h2>
+          <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-theater-ink-2">
+            This series is empty. Go back to the editor to add pages.
+          </p>
+        </div>
       </div>
     );
   }
