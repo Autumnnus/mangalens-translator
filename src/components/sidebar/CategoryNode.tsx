@@ -1,7 +1,12 @@
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import React from "react";
 import { Category, Series } from "../../types";
-import SeriesIcon from "./SeriesIcon";
+import { cn } from "../../utils/cn";
+import { IconButton, Mono } from "../ui";
+import SeriesRow from "./SeriesRow";
+
+/** Horizontal inset per tree level, in px. */
+export const TREE_INDENT = 12;
 
 interface CategoryNodeProps {
   category: Category;
@@ -66,7 +71,7 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
 
   const directSeries = series.filter((s) => s.categoryId === category.id);
 
-  // Recursive olarak bu kategori ve altındaki tüm serileri say
+  // Count the series in this category and every category below it.
   const getTotalSeriesCount = (catId: string): number => {
     const direct = series.filter((s) => s.categoryId === catId).length;
     const children = allCategories.filter((c) => c.parentId === catId);
@@ -77,7 +82,10 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
     return direct + childCounts;
   };
 
-  const totalSeriesCount = getTotalSeriesCount(category.id);
+  const totalSeriesCount =
+    category.id === "uncategorized"
+      ? series.filter((s) => !s.categoryId).length
+      : getTotalSeriesCount(category.id);
 
   const handleDragStart = (
     e: React.DragEvent,
@@ -112,88 +120,85 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
     e.preventDefault();
   };
 
+  const toggleLabel = `${isCollapsed ? "Expand" : "Collapse"} ${category.name}`;
+  const select = (id: string) => {
+    onSelect(id);
+    closeMobileSidebar();
+  };
+
   return (
-    <div className="border-b border-border-subtle last:border-b-0">
-      <div
-        className="group relative"
-        onDrop={handleDrop}
-        onDragOver={handleDragOver}
-      >
+    <div>
+      <div onDrop={handleDrop} onDragOver={handleDragOver}>
         <div
-          className={`flex items-center hover:bg-surface-raised/30 transition-all group-hover:bg-surface-raised/50 relative
-              ${isSidebarCollapsed ? "px-2 py-3 justify-center" : "px-4 py-2.5"}
-            `}
+          className={cn(
+            "group relative flex items-center gap-1 rounded-control transition-colors duration-120 hover:bg-page-2",
+            isSidebarCollapsed ? "mx-1 justify-center py-0.5" : "mr-1 py-0.5 pr-1",
+          )}
           style={{
-            paddingLeft: !isSidebarCollapsed
-              ? `${depth * 16 + 16}px`
-              : undefined,
+            marginLeft: isSidebarCollapsed ? undefined : depth * TREE_INDENT + 4,
           }}
         >
-          {!isSidebarCollapsed && depth > 0 && (
-            <div
-              className="absolute left-0 top-0 bottom-0 border-l border-border-muted"
-              style={{ left: `${depth * 16 + 4}px` }}
+          <IconButton
+            size="sm"
+            label={toggleLabel}
+            title={isSidebarCollapsed ? category.name : toggleLabel}
+            aria-expanded={!isCollapsed}
+            onClick={() => toggleCategory(category.id)}
+          >
+            <ChevronRight
+              className="transition-transform duration-120"
+              style={{ transform: isCollapsed ? "none" : "rotate(90deg)" }}
             />
+          </IconButton>
+
+          {!isSidebarCollapsed && (
+            <button
+              type="button"
+              draggable={!isViewOnly}
+              onDragStart={(e) => handleDragStart(e, "category", category.id)}
+              onClick={() => toggleCategory(category.id)}
+              aria-expanded={!isCollapsed}
+              className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-control text-left"
+            >
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: category.color || "var(--c-ink-3)" }}
+              />
+              <span className="label-mono truncate">{category.name}</span>
+              <Mono className="ml-auto pl-2 text-xs text-ink-3">
+                {totalSeriesCount}
+              </Mono>
+            </button>
           )}
 
-          <button
-            onClick={() => toggleCategory(category.id)}
-            draggable={!isViewOnly}
-            onDragStart={(e) => handleDragStart(e, "category", category.id)}
-            className="flex-1 flex items-center gap-2 overflow-hidden text-left"
-            aria-expanded={!isCollapsed}
-            title={`${isCollapsed ? "Expand" : "Collapse"} ${category.name}`}
-          >
-            <i
-              className={`fas fa-chevron-${
-                isCollapsed ? "right" : "down"
-              } text-[10px] ${
-                isCollapsed ? "text-text-dark" : "text-primary"
-              } transition-transform shrink-0 w-3`}
-            ></i>
-            {!isSidebarCollapsed && (
-              <div className="flex items-center gap-2 truncate">
-                <div
-                  className="w-2 h-2 rounded-full shrink-0 shadow-sm"
-                  style={{ backgroundColor: category.color || "#6366f1" }}
-                />
-                <span
-                  className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${
-                    isCollapsed
-                      ? "text-text-muted/60"
-                      : "text-text-main text-glow"
-                  }`}
-                >
-                  {category.name}
-                </span>
-                <span className="text-[9px] font-bold text-text-dark bg-surface-raised/80 px-1.5 py-0.5 rounded-md shrink-0 border border-border-muted/30">
-                  {category.id === "uncategorized"
-                    ? series.filter((s) => !s.categoryId).length
-                    : totalSeriesCount}
-                </span>
-              </div>
-            )}
-          </button>
-
           {!isViewOnly && !isSidebarCollapsed && (
-            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity absolute right-4">
-              <button
+            <div className="flex shrink-0 items-center opacity-0 transition-opacity duration-120 group-hover:opacity-100 group-focus-within:opacity-100">
+              <IconButton
+                size="sm"
+                label={`Add series to ${category.name}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(`new:${category.id}`);
                 }}
-                className="w-6 h-6 bg-surface-raised hover:bg-primary/20 text-text-dark hover:text-primary rounded-lg flex items-center justify-center transition-all border border-border-muted/50"
-                title="Add Series to Category"
               >
-                <Plus className="w-3 h-3" />
-              </button>
+                <Plus />
+              </IconButton>
             </div>
           )}
         </div>
       </div>
 
       {!isCollapsed && (
-        <>
+        <div className="relative flex flex-col gap-0.5 pb-1">
+          {!isSidebarCollapsed && (
+            <span
+              aria-hidden="true"
+              className="absolute bottom-1 top-0 w-px bg-line-2"
+              style={{ left: depth * TREE_INDENT + 10 }}
+            />
+          )}
+
           {childrenCategories.map((child) => (
             <CategoryNode
               key={child.id}
@@ -213,125 +218,32 @@ const CategoryNode: React.FC<CategoryNodeProps> = ({
               onMoveSeries={onMoveSeries}
               onMoveCategory={onMoveCategory}
               onAddSubcategory={onAddSubcategory}
-                onMoveSeriesUpDown={onMoveSeriesUpDown}
-                forceExpanded={forceExpanded}
-                hideEmptyCategories={hideEmptyCategories}
-              />
+              onMoveSeriesUpDown={onMoveSeriesUpDown}
+              forceExpanded={forceExpanded}
+              hideEmptyCategories={hideEmptyCategories}
+            />
           ))}
 
-          <div
-            className={`space-y-1 pb-1 ${!isSidebarCollapsed ? "pr-2" : ""}`}
-          >
-            {directSeries.map((s, index) => (
-                <div
-                  key={s.id}
-                  draggable={!isViewOnly}
-                  onDragStart={(e) => handleDragStart(e, "series", s.id)}
-                  onClick={() => {
-                    onSelect(s.id);
-                    closeMobileSidebar();
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onSelect(s.id);
-                      closeMobileSidebar();
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-current={activeId === s.id ? "page" : undefined}
-                  title={isSidebarCollapsed ? s.name : undefined}
-                  style={{
-                    paddingLeft: !isSidebarCollapsed
-                      ? `${(depth + 1) * 16 + 16}px`
-                      : undefined,
-                  }}
-                  className={`group flex items-center gap-2 px-2 py-2 rounded-xl transition-all cursor-pointer border ${
-                    activeId === s.id
-                      ? "bg-primary/10 border-primary/40 shadow-glow"
-                      : "hover:bg-surface-raised/50 border-transparent hover:border-border-muted"
-                  }`}
-                >
-                  {!isViewOnly &&
-                    !isSidebarCollapsed &&
-                    directSeries.length > 1 && (
-                      <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        {index > 0 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onMoveSeriesUpDown?.(s.id, "up");
-                            }}
-                            className="p-0.5 hover:text-primary transition-colors"
-                          >
-                            <i className="fas fa-chevron-up text-[10px]"></i>
-                          </button>
-                        )}
-                        {index < directSeries.length - 1 && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onMoveSeriesUpDown?.(s.id, "down");
-                            }}
-                            className="p-0.5 hover:text-primary transition-colors"
-                          >
-                            <i className="fas fa-chevron-down text-[10px]"></i>
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  <SeriesIcon
-                    images={s.images}
-                    previewImages={s.previewImages}
-                    seriesName={s.name}
-                    imageCount={s.imageCount}
-                  />
-                  {!isSidebarCollapsed && (
-                    <>
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className={`text-sm font-bold truncate transition-colors ${activeId === s.id ? "text-primary" : "text-text-main group-hover:text-primary/90"}`}
-                        >
-                          {s.name}
-                        </p>
-                        <p className="text-[10px] text-text-dark font-bold">
-                          {s.completedCount || 0}/{s.imageCount ?? s.images.length} translated
-                          {(s.errorCount || 0) > 0 && (
-                            <span className="ml-1 text-red-400/90">
-                              ({s.errorCount} error{s.errorCount === 1 ? "" : "s"})
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      {!isViewOnly && (
-                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEdit(s.id);
-                            }}
-                            className="w-7 h-7 bg-surface-elevated hover:bg-primary rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-                          >
-                            <i className="fas fa-edit text-[10px]"></i>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDelete(s.id);
-                            }}
-                            className="w-7 h-7 bg-surface-elevated hover:bg-red-600/80 rounded-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              ))}
-          </div>
-        </>
+          {directSeries.map((s, index) => (
+            <SeriesRow
+              key={s.id}
+              series={s}
+              active={activeId === s.id}
+              collapsed={isSidebarCollapsed}
+              viewOnly={!!isViewOnly}
+              indent={(depth + 1) * TREE_INDENT + 4}
+              canMoveUp={directSeries.length > 1 && index > 0}
+              canMoveDown={
+                directSeries.length > 1 && index < directSeries.length - 1
+              }
+              onSelect={select}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onMoveUpDown={onMoveSeriesUpDown}
+              onDragStart={(e, id) => handleDragStart(e, "series", id)}
+            />
+          ))}
+        </div>
       )}
     </div>
   );

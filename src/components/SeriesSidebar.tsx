@@ -1,13 +1,57 @@
-import { Menu } from "lucide-react";
-import React, { useCallback, useMemo, useState } from "react";
+import { FolderOpen, Plus, X } from "lucide-react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { useUIStore } from "../stores/useUIStore";
 import { Category, Series } from "../types";
+import { cn } from "../utils/cn";
 import FilterSortModal, { FilterSortOptions } from "./FilterSortModal";
 import CategoryNode from "./sidebar/CategoryNode";
+import QueuePanel from "./sidebar/QueuePanel";
 import SidebarActions from "./sidebar/SidebarActions";
 import SidebarFooter from "./sidebar/SidebarFooter";
 import SidebarHeader from "./sidebar/SidebarHeader";
-import SystemActions from "./sidebar/SystemActions";
 import UncategorizedSection from "./sidebar/UncategorizedSection";
+import { Button, EmptyState, Skeleton } from "./ui";
+
+const COLLAPSED_STORAGE_KEY = "mangalens_sidebar_collapsed";
+
+/* Collapsed state lives in localStorage; a tiny external store keeps server
+   and client markup identical and avoids setState inside an effect. */
+let collapsedInMemory: boolean | null = null;
+const collapsedListeners = new Set<() => void>();
+
+const readCollapsed = (): boolean => {
+  if (collapsedInMemory !== null) return collapsedInMemory;
+  try {
+    return window.localStorage.getItem(COLLAPSED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+const subscribeCollapsed = (callback: () => void) => {
+  collapsedListeners.add(callback);
+  window.addEventListener("storage", callback);
+  return () => {
+    collapsedListeners.delete(callback);
+    window.removeEventListener("storage", callback);
+  };
+};
+
+const writeCollapsed = (value: boolean) => {
+  collapsedInMemory = value;
+  try {
+    window.localStorage.setItem(COLLAPSED_STORAGE_KEY, value ? "1" : "0");
+  } catch {
+    // Storage unavailable; the in-memory value still applies for this session.
+  }
+  collapsedListeners.forEach((callback) => callback());
+};
 
 interface Props {
   series: Series[];
@@ -28,6 +72,14 @@ interface Props {
   isLoading?: boolean;
 }
 
+const DEFAULT_FILTERS: FilterSortOptions = {
+  search: "",
+  categories: [],
+  sortBy: "sequence",
+  showCompleted: true,
+  showInProgress: true,
+};
+
 const SeriesSidebar: React.FC<Props> = ({
   series,
   activeId,
@@ -43,28 +95,45 @@ const SeriesSidebar: React.FC<Props> = ({
   onMoveSeriesUpDown,
   isLoading = false,
 }) => {
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const isSidebarOpen = useUIStore((state) => state.isSidebarOpen);
+  const toggleSidebar = useUIStore((state) => state.toggleSidebar);
+
+  const isSidebarCollapsed = useSyncExternalStore(
+    subscribeCollapsed,
+    readCollapsed,
+    () => false,
+  );
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(
     new Set(),
   );
-  const [filters, setFilters] = useState<FilterSortOptions>({
-    search: "",
-    categories: [],
-    sortBy: "sequence",
-    showCompleted: true,
-    showInProgress: true,
-  });
+  const [filters, setFilters] = useState<FilterSortOptions>(DEFAULT_FILTERS);
+
+  const setIsSidebarCollapsed = useCallback(
+    (value: boolean) => {
+      writeCollapsed(value);
+      toggleSidebar(false);
+    },
+    [toggleSidebar],
+  );
+
+  const closeMobileSidebar = useCallback(() => toggleSidebar(false), [toggleSidebar]);
+
+  // Escape closes the off-canvas sidebar.
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") toggleSidebar(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [isSidebarOpen, toggleSidebar]);
+
+  // The off-canvas drawer is always shown expanded.
+  const collapsed = isSidebarCollapsed && !isSidebarOpen;
 
   const resetFilters = useCallback(() => {
-    setFilters({
-      search: "",
-      categories: [],
-      sortBy: "sequence",
-      showCompleted: true,
-      showInProgress: true,
-    });
+    setFilters(DEFAULT_FILTERS);
   }, []);
 
   const toggleCategory = useCallback((categoryId: string) => {
@@ -184,127 +253,158 @@ const SeriesSidebar: React.FC<Props> = ({
     [onAddSubcategory],
   );
 
-  const sidebarContent = (
-    <>
-      <SidebarHeader
-        isSidebarCollapsed={isSidebarCollapsed}
-        setIsSidebarCollapsed={setIsSidebarCollapsed}
-        setIsMobileOpen={setIsMobileOpen}
-      />
-
-      <SidebarActions
-        onAdd={onAdd}
-        onOpenFilter={() => setIsFilterModalOpen(true)}
-        search={filters.search}
-        onSearchChange={(search) =>
-          setFilters((current) => ({ ...current, search }))
-        }
-        activeFilterCount={activeFilterCount}
-        onClearFilters={resetFilters}
-        isSidebarCollapsed={isSidebarCollapsed}
-        isViewOnly={isViewOnly}
-      />
-
-      <SystemActions isViewOnly={isViewOnly} />
-
-      <div className="flex-1 overflow-y-auto custom-scrollbar">
-        {isLoading ? (
-          <div className="p-4 space-y-4">
-            {[...Array(5)].map((_, i) => (
-              <div key={i} className="space-y-2 animate-pulse">
-                <div className="h-4 bg-surface-muted rounded-md w-24 mb-3" />
-                <div className="space-y-2">
-                  <div className="h-10 bg-surface-muted/50 rounded-xl w-full" />
-                  <div className="h-10 bg-surface-muted/50 rounded-xl w-[90%] ml-auto" />
+  const renderList = () => {
+    if (isLoading) {
+      return (
+        <div
+          className={cn("flex flex-col gap-1 py-1", collapsed ? "items-center" : "px-1")}
+          aria-busy="true"
+          aria-label="Loading series"
+        >
+          {Array.from({ length: 6 }).map((_, i) =>
+            collapsed ? (
+              <Skeleton key={i} className="h-9 w-9" />
+            ) : (
+              <div key={i} className="flex items-center gap-2 px-2 py-1.5">
+                <Skeleton className="h-9 w-9 shrink-0" />
+                <div className="flex flex-1 flex-col gap-1.5">
+                  <Skeleton className="h-3.5 w-3/4" />
+                  <Skeleton className="h-1 w-full rounded-full" />
                 </div>
               </div>
-            ))}
-          </div>
-        ) : filteredAndSortedSeries.length === 0 ? (
-          <div className="p-6 text-center text-slate-500 text-sm">
-            No series found
-          </div>
-        ) : (
-          <>
-            <UncategorizedSection
-              uncategorizedSeries={uncategorizedSeries}
-              collapsedCategories={collapsedCategories}
-              toggleCategory={toggleCategory}
-              activeId={activeId}
-              onSelect={onSelect}
-              setIsMobileOpen={setIsMobileOpen}
-              isSidebarCollapsed={isSidebarCollapsed}
-              isViewOnly={isViewOnly}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              onMoveSeries={onMoveSeries}
-              onMoveCategory={onMoveCategory}
-              onMoveSeriesUpDown={onMoveSeriesUpDown}
-              forceExpanded={hasNarrowingFilter}
-            />
+            ),
+          )}
+        </div>
+      );
+    }
 
-            {visibleRootCategories.map((cat) => (
-              <CategoryNode
-                key={cat.id}
-                category={cat}
-                allCategories={categories}
-                series={filteredAndSortedSeries}
-                depth={0}
-                collapsedCategories={collapsedCategories}
-                toggleCategory={toggleCategory}
-                activeId={activeId}
-                onSelect={onSelect}
-                closeMobileSidebar={() => setIsMobileOpen(false)}
-                isSidebarCollapsed={isSidebarCollapsed}
-                isViewOnly={isViewOnly}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onMoveSeries={onMoveSeries}
-                onMoveCategory={onMoveCategory}
-                onAddSubcategory={handleAddSubcategory}
-                onMoveSeriesUpDown={onMoveSeriesUpDown}
-                forceExpanded={hasNarrowingFilter}
-                hideEmptyCategories={hasNarrowingFilter}
-              />
-            ))}
-          </>
-        )}
+    if (filteredAndSortedSeries.length === 0) {
+      if (collapsed) return null;
+      return hasNarrowingFilter ? (
+        <EmptyState
+          className="m-2 px-3 py-8"
+          textured={false}
+          title="No series match"
+          description="Try a different search or clear the filters."
+          action={
+            <Button variant="ghost" size="sm" icon={<X />} onClick={resetFilters}>
+              Clear filters
+            </Button>
+          }
+        />
+      ) : (
+        <EmptyState
+          className="m-2 px-3 py-8"
+          textured={false}
+          icon={<FolderOpen />}
+          title="No series yet"
+          description={
+            isViewOnly
+              ? "Nothing to read yet."
+              : "Create a series and add pages to start translating."
+          }
+          action={
+            !isViewOnly && (
+              <Button variant="primary" size="sm" icon={<Plus />} onClick={onAdd}>
+                New series
+              </Button>
+            )
+          }
+        />
+      );
+    }
+
+    return (
+      <div className="flex flex-col gap-0.5 py-1">
+        <UncategorizedSection
+          uncategorizedSeries={uncategorizedSeries}
+          collapsedCategories={collapsedCategories}
+          toggleCategory={toggleCategory}
+          activeId={activeId}
+          onSelect={onSelect}
+          closeMobileSidebar={closeMobileSidebar}
+          isSidebarCollapsed={collapsed}
+          isViewOnly={isViewOnly}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onMoveSeries={onMoveSeries}
+          onMoveCategory={onMoveCategory}
+          onMoveSeriesUpDown={onMoveSeriesUpDown}
+          forceExpanded={hasNarrowingFilter}
+        />
+
+        {visibleRootCategories.map((cat) => (
+          <CategoryNode
+            key={cat.id}
+            category={cat}
+            allCategories={categories}
+            series={filteredAndSortedSeries}
+            depth={0}
+            collapsedCategories={collapsedCategories}
+            toggleCategory={toggleCategory}
+            activeId={activeId}
+            onSelect={onSelect}
+            closeMobileSidebar={closeMobileSidebar}
+            isSidebarCollapsed={collapsed}
+            isViewOnly={isViewOnly}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onMoveSeries={onMoveSeries}
+            onMoveCategory={onMoveCategory}
+            onAddSubcategory={handleAddSubcategory}
+            onMoveSeriesUpDown={onMoveSeriesUpDown}
+            forceExpanded={hasNarrowingFilter}
+            hideEmptyCategories={hasNarrowingFilter}
+          />
+        ))}
       </div>
-
-      <SidebarFooter
-        isSidebarCollapsed={isSidebarCollapsed}
-        isViewOnly={isViewOnly}
-      />
-    </>
-  );
+    );
+  };
 
   return (
     <>
-      <button
-        onClick={() => setIsMobileOpen(true)}
-        className="fixed top-4 left-4 z-[150] w-12 h-12 bg-slate-900 border border-slate-700 rounded-2xl flex items-center justify-center md:hidden shadow-2xl"
-      >
-        <Menu className="w-5 h-5" />
-      </button>
-
-      {isMobileOpen && (
+      {isSidebarOpen && (
         <div
-          className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm md:hidden"
-          onClick={() => setIsMobileOpen(false)}
+          aria-hidden="true"
+          className="fixed inset-0 z-(--z-sidebar) bg-scrim animate-fade-in md:hidden"
+          onClick={closeMobileSidebar}
         />
       )}
 
       <aside
-        className={`
-          ${isSidebarCollapsed ? "w-20" : "w-72"} 
-          bg-surface border-r border-border-muted 
-          flex flex-col h-screen overflow-hidden
-          transition-all duration-300 ease-in-out
-          fixed md:relative inset-y-0 left-0 z-[80]
-          ${isMobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-        `}
+        aria-label="Series"
+        className={cn(
+          "fixed inset-y-0 left-0 z-(--z-sidebar) flex h-dvh shrink-0 flex-col border-r border-line bg-page transition-[width] duration-200 ease-out md:relative",
+          collapsed ? "w-14" : "w-[264px]",
+          isSidebarOpen ? "animate-fade-in" : "max-md:hidden",
+        )}
       >
-        {sidebarContent}
+        <SidebarHeader
+          isSidebarCollapsed={collapsed}
+          setIsSidebarCollapsed={setIsSidebarCollapsed}
+          onCloseMobile={closeMobileSidebar}
+        />
+
+        <SidebarActions
+          onAdd={onAdd}
+          onOpenFilter={() => setIsFilterModalOpen(true)}
+          search={filters.search}
+          onSearchChange={(search) =>
+            setFilters((current) => ({ ...current, search }))
+          }
+          activeFilterCount={activeFilterCount}
+          onClearFilters={resetFilters}
+          isSidebarCollapsed={collapsed}
+          isViewOnly={isViewOnly}
+        />
+
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          {renderList()}
+        </div>
+
+        <QueuePanel collapsed={collapsed} />
+
+        <SidebarFooter isSidebarCollapsed={collapsed} isViewOnly={isViewOnly} />
       </aside>
 
       {isFilterModalOpen && (

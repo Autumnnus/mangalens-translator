@@ -37,16 +37,25 @@ import {
   Check,
   Eye,
   Languages,
-  Loader2,
   Minus,
   PencilRuler,
   Plus,
   Redo2,
   Save,
   Undo2,
-  X,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Button,
+  Chip,
+  FullscreenShell,
+  IconButton,
+  Kbd,
+  Mono,
+  SectionLabel,
+  SegmentedControl,
+  Spinner,
+} from "@/components/ui";
 import EditorCanvas, { DragTarget } from "./EditorCanvas";
 import RegionInspector from "./RegionInspector";
 import { useLayoutEditorState } from "./useLayoutEditorState";
@@ -54,9 +63,9 @@ import { useLayoutEditorState } from "./useLayoutEditorState";
 type Busy = null | "loading" | "saving" | "preview" | "apply" | "translate";
 
 const ORIGIN_LABEL: Record<string, string> = {
-  stored: "Kayıtlı layout",
-  legacy: "Eski kutulardan üretildi (henüz kaydedilmedi)",
-  empty: "Boş sayfa: bölge ekleyin veya çeviri çalıştırın",
+  stored: "Saved layout",
+  legacy: "Built from legacy boxes (not saved yet)",
+  empty: "Empty page: add a region or run translation",
 };
 
 /**
@@ -129,12 +138,22 @@ const LayoutEditorModal: React.FC = () => {
       return;
     }
     confirm({
-      title: "Kaydedilmemiş değişiklikler",
-      message: "Layout değişiklikleri kaydedilmedi. Kapatmak istiyor musun?",
+      title: "Unsaved changes",
+      message: "Your layout changes are not saved. Close anyway?",
       type: "warning",
       onConfirm: closeLayoutEditor,
     });
   }, [closeLayoutEditor, confirm, isDirty]);
+
+  // The shell re-runs its dialog effect (focus, scroll lock) whenever onClose
+  // changes, so give it a stable callback that always calls the latest one.
+  // While a confirm dialog is open, Escape belongs to that dialog.
+  const requestCloseRef = useRef(requestClose);
+  requestCloseRef.current = requestClose;
+  const shellClose = useCallback(() => {
+    if (useUIStore.getState().confirmConfig.isOpen) return;
+    requestCloseRef.current();
+  }, []);
 
   const selectedRegion = useMemo(
     () => layout?.regions.find((region) => region.id === selectedId) || null,
@@ -232,7 +251,7 @@ const LayoutEditorModal: React.FC = () => {
     try {
       const result = await savePageLayout(imageId, current);
       markSaved(result.layout);
-      showToast("Layout kaydedildi.", "success", 3000);
+      showToast("Layout saved.", "success", 3000);
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
@@ -242,8 +261,8 @@ const LayoutEditorModal: React.FC = () => {
 
   const applyRender = () => {
     confirm({
-      title: "Sayfayı yeniden üret",
-      message: "Bu layout ile sayfa sunucuda yeniden render edilip mevcut çevirinin yerine geçecek. Eski render saklanır.",
+      title: "Re-render page",
+      message: "The page will be rendered on the server with this layout and replace the current translation. The previous render is kept.",
       type: "warning",
       onConfirm: async () => {
         const current = layoutRef.current;
@@ -256,7 +275,7 @@ const LayoutEditorModal: React.FC = () => {
           setPreviewUrl(result.url);
           setMode("preview");
           refreshImages();
-          showToast("Sayfa yeniden üretildi ve kaydedildi.", "success", 4000);
+          showToast("Page re-rendered and saved.", "success", 4000);
         } catch (applyError) {
           setError(applyError instanceof Error ? applyError.message : String(applyError));
         } finally {
@@ -275,7 +294,7 @@ const LayoutEditorModal: React.FC = () => {
       const result = await translateLayoutText(imageId, current, regionIds);
       apply(result.layout);
       showToast(
-        `Çeviri tamamlandı (${result.usage.totalTokenCount} token, $${result.cost.toFixed(5)}).`,
+        `Translation finished (${result.usage.totalTokenCount} tokens, $${result.cost.toFixed(5)}).`,
         "success",
         4000,
       );
@@ -289,6 +308,9 @@ const LayoutEditorModal: React.FC = () => {
 
   // ---- keyboard ------------------------------------------------------------
 
+  // Capture phase so Escape can blur an input or clear the selection before
+  // the shell's own Escape listener (which closes the editor) sees it. When a
+  // confirm dialog is open, Escape is left to that dialog.
   useEffect(() => {
     if (!imageId) return;
     const onKey = (event: KeyboardEvent) => {
@@ -303,18 +325,24 @@ const LayoutEditorModal: React.FC = () => {
         event.preventDefault();
         void saveOnly();
       } else if (event.key === "Escape") {
-        if (typing) (target as HTMLElement).blur();
-        else if (selectedId) select(null);
-        else requestClose();
+        if (useUIStore.getState().confirmConfig.isOpen) return;
+        if (typing) {
+          event.stopPropagation();
+          (target as HTMLElement).blur();
+        } else if (selectedId) {
+          event.stopPropagation();
+          select(null);
+        }
+        // Otherwise the shell handles Escape and calls requestClose.
       } else if ((event.key === "Delete" || event.key === "Backspace") && !typing && selectedId) {
         event.preventDefault();
         deleteSelected();
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [imageId, selectedId, undo, redo, requestClose]);
+  }, [imageId, selectedId, undo, redo]);
 
   if (!image) return null;
 
@@ -323,154 +351,177 @@ const LayoutEditorModal: React.FC = () => {
     : 0;
   const isBusy = busy !== null;
   const originalUrl = resolveImageUrl(image.originalUrl);
+  const subtitle = `${ORIGIN_LABEL[origin] || ""}${isDirty ? " · unsaved changes" : ""}`;
 
   return (
-    <div className="fixed inset-0 z-[150] flex flex-col bg-background text-text-main">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border-muted bg-surface/80 px-4 backdrop-blur-md">
-        <PencilRuler className="h-4 w-4 text-primary" />
-        <div className="min-w-0">
-          <p className="truncate text-sm font-bold">{image.fileName}</p>
-          <p className="truncate text-[9px] font-bold uppercase tracking-widest text-text-dark">
-            {ORIGIN_LABEL[origin] || ""}
-            {isDirty ? " · kaydedilmemiş değişiklik" : ""}
-          </p>
+    <FullscreenShell
+      open
+      onClose={shellClose}
+      icon={<PencilRuler />}
+      title={image.fileName}
+      subtitle={subtitle}
+      actions={
+        <>
+          <IconButton label="Undo (Ctrl+Z)" variant="secondary" onClick={undo} disabled={!editor.canUndo}>
+            <Undo2 />
+          </IconButton>
+          <IconButton label="Redo (Ctrl+Shift+Z)" variant="secondary" onClick={redo} disabled={!editor.canRedo}>
+            <Redo2 />
+          </IconButton>
+          <span aria-hidden="true" className="mx-1 h-6 w-px bg-line" />
+          <Button variant="secondary" icon={<Plus />} onClick={addNewRegion} disabled={!layout || isBusy}>
+            Add region
+          </Button>
+          <Button
+            variant="secondary"
+            icon={<Languages />}
+            onClick={() => translate()}
+            disabled={!layout || isBusy || missingTranslations === 0}
+          >
+            Translate missing{missingTranslations ? ` (${missingTranslations})` : ""}
+          </Button>
+          <Button variant="secondary" icon={<Eye />} onClick={runServerPreview} disabled={!layout || isBusy} loading={busy === "preview"}>
+            Server preview
+          </Button>
+          <Button variant="secondary" icon={<Save />} onClick={saveOnly} disabled={!layout || isBusy || !isDirty} loading={busy === "saving"}>
+            Save
+          </Button>
+          <Button variant="primary" icon={<Check />} onClick={applyRender} disabled={!layout || isBusy} loading={busy === "apply"}>
+            Apply
+          </Button>
+        </>
+      }
+    >
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line bg-page px-3">
+          <SegmentedControl
+            size="sm"
+            label="View"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "edit", label: "Edit" },
+              { value: "preview", label: "Server output", disabled: !previewUrl },
+            ]}
+          />
+          <Chip
+            tone={showSourceBoxes ? "danger" : "neutral"}
+            active={showSourceBoxes}
+            onClick={() => setShowSourceBoxes((value) => !value)}
+          >
+            Source boxes
+          </Chip>
+          <span className="ml-auto flex items-center gap-1">
+            <IconButton label="Zoom out" size="sm" onClick={() => setZoom((value) => Math.max(0.25, value - 0.25))}>
+              <Minus />
+            </IconButton>
+            <Mono className="w-12 text-center text-xs text-ink-2">{Math.round(zoom * 100)}%</Mono>
+            <IconButton label="Zoom in" size="sm" onClick={() => setZoom((value) => Math.min(4, value + 0.25))}>
+              <Plus />
+            </IconButton>
+            <Button variant="ghost" size="sm" onClick={() => setZoom(1)}>
+              Fit
+            </Button>
+          </span>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <button type="button" title="Geri al (Ctrl+Z)" onClick={undo} disabled={!editor.canUndo} className="rounded-lg border border-border-muted p-2 text-text-dark hover:text-primary disabled:opacity-30">
-            <Undo2 className="h-4 w-4" />
-          </button>
-          <button type="button" title="Yinele (Ctrl+Shift+Z)" onClick={redo} disabled={!editor.canRedo} className="rounded-lg border border-border-muted p-2 text-text-dark hover:text-primary disabled:opacity-30">
-            <Redo2 className="h-4 w-4" />
-          </button>
-          <span className="mx-1 h-6 w-px bg-border-muted" />
-          <button type="button" onClick={addNewRegion} disabled={!layout || isBusy} className="flex items-center gap-1.5 rounded-xl border border-border-muted px-3 py-2 text-[10px] font-black uppercase tracking-wider text-text-main hover:border-primary/60 disabled:opacity-40">
-            <Plus className="h-3.5 w-3.5" /> Bölge ekle
-          </button>
-          <button type="button" onClick={() => translate()} disabled={!layout || isBusy || missingTranslations === 0} className="flex items-center gap-1.5 rounded-xl border border-border-muted px-3 py-2 text-[10px] font-black uppercase tracking-wider text-text-main hover:border-primary/60 disabled:opacity-40">
-            <Languages className="h-3.5 w-3.5" /> Eksikleri çevir{missingTranslations ? ` (${missingTranslations})` : ""}
-          </button>
-          <button type="button" onClick={runServerPreview} disabled={!layout || isBusy} className="flex items-center gap-1.5 rounded-xl border border-border-muted px-3 py-2 text-[10px] font-black uppercase tracking-wider text-text-main hover:border-primary/60 disabled:opacity-40">
-            {busy === "preview" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />} Sunucu önizleme
-          </button>
-          <button type="button" onClick={saveOnly} disabled={!layout || isBusy || !isDirty} className="flex items-center gap-1.5 rounded-xl border border-border-muted px-3 py-2 text-[10px] font-black uppercase tracking-wider text-text-main hover:border-primary/60 disabled:opacity-40">
-            {busy === "saving" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Kaydet
-          </button>
-          <button type="button" onClick={applyRender} disabled={!layout || isBusy} className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white shadow-glow hover:bg-primary-hover disabled:opacity-40">
-            {busy === "apply" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Uygula
-          </button>
-          <button type="button" onClick={requestClose} className="ml-1 rounded-lg p-2 text-text-dark hover:text-text-main" title="Kapat (Esc)">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-      </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="relative flex min-w-0 flex-1 flex-col">
-          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-border-muted bg-surface/60 px-4 text-[10px] font-black uppercase tracking-wider text-text-dark">
-            <button type="button" onClick={() => setMode("edit")} className={`rounded-lg px-2.5 py-1 ${mode === "edit" ? "bg-primary/15 text-primary" : "hover:text-text-main"}`}>Düzenle</button>
-            <button type="button" onClick={() => setMode("preview")} disabled={!previewUrl} className={`rounded-lg px-2.5 py-1 disabled:opacity-30 ${mode === "preview" ? "bg-primary/15 text-primary" : "hover:text-text-main"}`}>Sunucu çıktısı</button>
-            <span className="mx-1 h-4 w-px bg-border-muted" />
-            <button type="button" onClick={() => setShowSourceBoxes((value) => !value)} className={`rounded-lg px-2.5 py-1 ${showSourceBoxes ? "bg-red-500/15 text-red-400" : "hover:text-text-main"}`}>Kaynak kutuları</button>
-            <span className="ml-auto flex items-center gap-1">
-              <button type="button" onClick={() => setZoom((value) => Math.max(0.25, value - 0.25))} className="rounded-lg border border-border-muted p-1 hover:text-text-main"><Minus className="h-3 w-3" /></button>
-              <span className="w-12 text-center font-mono">{Math.round(zoom * 100)}%</span>
-              <button type="button" onClick={() => setZoom((value) => Math.min(4, value + 0.25))} className="rounded-lg border border-border-muted p-1 hover:text-text-main"><Plus className="h-3 w-3" /></button>
-            </span>
-          </div>
-
-          <div className="custom-scrollbar min-h-0 flex-1 overflow-auto bg-black/60 p-6">
-            {busy === "loading" && (
-              <div className="flex h-full items-center justify-center gap-3 text-sm text-text-muted">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Layout ve fontlar yükleniyor…
-              </div>
-            )}
-            {error && (
-              <div className="mb-4 rounded-2xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300">{error}</div>
-            )}
-            {layout && fonts && mode === "edit" && (
-              <EditorCanvas
-                layout={layout}
-                imageUrl={originalUrl}
-                fonts={fonts}
-                selectedId={selectedId}
-                dragTarget={dragTarget}
-                showSourceBoxes={showSourceBoxes}
-                zoom={zoom}
-                onSelect={select}
-                onBoxLive={onBoxLive}
-                onGestureStart={onGestureStart}
-                onGestureEnd={onGestureEnd}
-                onPreviewComputed={onPreviewComputed}
-              />
-            )}
-            {mode === "preview" && previewUrl && (
-              <img src={previewUrl} alt="Sunucu önizlemesi" className="block" style={{ width: `${zoom * 100}%` }} />
-            )}
-          </div>
-
-          {issues.length > 0 && mode === "edit" && (
-            <div className="max-h-24 shrink-0 overflow-y-auto border-t border-border-muted bg-surface/70 px-4 py-2 text-[10px] text-amber-300/90">
-              {issues.map((issue, index) => {
-                const region = layout?.regions.find((item) => item.id === issue.regionId);
-                return (
-                  <button key={`${issue.regionId}-${index}`} type="button" onClick={() => select(issue.regionId)} className="mr-3 hover:underline">
-                    {region ? `${region.order + 1}` : issue.regionId}: {issue.message}
-                  </button>
-                );
-              })}
+        <div className="min-h-0 flex-1 overflow-auto bg-theater p-6">
+          {busy === "loading" && (
+            <div className="flex h-full items-center justify-center gap-3 text-sm text-theater-ink-2">
+              <Spinner label="Loading layout and fonts" /> Loading layout and fonts…
             </div>
+          )}
+          {error && (
+            <div role="alert" className="mb-4 rounded-control border border-shu/40 bg-shu-soft px-3 py-2 text-sm text-shu">
+              {error}
+            </div>
+          )}
+          {layout && fonts && mode === "edit" && (
+            <EditorCanvas
+              layout={layout}
+              imageUrl={originalUrl}
+              fonts={fonts}
+              selectedId={selectedId}
+              dragTarget={dragTarget}
+              showSourceBoxes={showSourceBoxes}
+              zoom={zoom}
+              onSelect={select}
+              onBoxLive={onBoxLive}
+              onGestureStart={onGestureStart}
+              onGestureEnd={onGestureEnd}
+              onPreviewComputed={onPreviewComputed}
+            />
+          )}
+          {mode === "preview" && previewUrl && (
+            <img src={previewUrl} alt="Server preview" className="block" style={{ width: `${zoom * 100}%` }} />
           )}
         </div>
 
-        <aside className="custom-scrollbar w-[22rem] shrink-0 overflow-y-auto border-l border-border-muted bg-surface/60 p-3">
-          {layout && selectedRegion ? (
-            <RegionInspector
-              region={selectedRegion}
-              plan={selectedPlan}
-              dragTarget={dragTarget}
-              busy={isBusy}
-              onPatch={(patch) => withLayout((current) => patchRegion(current, selectedRegion.id, patch))}
-              onStylePatch={(patch) => withLayout((current) => patchRegionStyle(current, selectedRegion.id, patch))}
-              onKindChange={(kind) => changeKind(selectedRegion.id, kind)}
-              onMaskType={(type) =>
-                withLayout((current) =>
-                  setRegionMaskType(current, selectedRegion.id, type, selectedPlan?.area || selectedRegion.textBox),
-                )
-              }
-              onResetArea={() => withLayout((current) => patchRegion(current, selectedRegion.id, { textArea: undefined }))}
-              onDragTarget={setDragTarget}
-              onTranslate={() => translate([selectedRegion.id])}
-              onMove={(direction) => withLayout((current) => moveRegionOrder(current, selectedRegion.id, direction))}
-              onDelete={deleteSelected}
-            />
-          ) : layout ? (
-            <div className="space-y-3">
-              <p className="text-[9px] font-black uppercase tracking-widest text-text-dark">Bölgeler</p>
-              {sortedRegions(layout).map((region) => (
-                <button
-                  key={region.id}
-                  type="button"
-                  onClick={() => select(region.id)}
-                  className="flex w-full items-start gap-2 rounded-xl border border-border-muted bg-surface-raised/40 p-2.5 text-left hover:border-primary/60"
-                >
-                  <span className="mt-0.5 w-5 shrink-0 text-[10px] font-black text-primary">{region.order + 1}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-xs font-semibold text-text-main">{region.translatedText || "—"}</span>
-                    <span className="block truncate text-[10px] text-text-dark">{region.sourceText}</span>
+        {issues.length > 0 && mode === "edit" && (
+          <div className="flex max-h-24 shrink-0 flex-wrap items-center gap-1 overflow-y-auto border-t border-line bg-page px-3 py-1.5 text-xs text-warn">
+            {issues.map((issue, index) => {
+              const region = layout?.regions.find((item) => item.id === issue.regionId);
+              return (
+                <Button key={`${issue.regionId}-${index}`} variant="ghost" size="sm" onClick={() => select(issue.regionId)}>
+                  <span className="text-warn">
+                    <Mono>{region ? `${region.order + 1}` : issue.regionId}</Mono>: {issue.message}
                   </span>
-                </button>
-              ))}
-              {layout.regions.length === 0 && (
-                <p className="text-xs text-text-muted">Bu sayfada bölge yok. Üstteki &quot;Bölge ekle&quot; ile başlayın.</p>
-              )}
-              <p className="pt-2 text-[10px] leading-relaxed text-text-dark">
-                Bir bölgeyi seçmek için kanvasta kutusuna tıklayın. Sürükleyerek taşıyın, köşelerden boyutlandırın. Ctrl+Z geri alır, Delete siler.
-              </p>
-            </div>
-          ) : null}
-        </aside>
+                </Button>
+              );
+            })}
+          </div>
+        )}
       </div>
-    </div>
+
+      <aside className="w-80 shrink-0 overflow-y-auto border-l border-line bg-page p-3">
+        {layout && selectedRegion ? (
+          <RegionInspector
+            region={selectedRegion}
+            plan={selectedPlan}
+            dragTarget={dragTarget}
+            busy={isBusy}
+            onPatch={(patch) => withLayout((current) => patchRegion(current, selectedRegion.id, patch))}
+            onStylePatch={(patch) => withLayout((current) => patchRegionStyle(current, selectedRegion.id, patch))}
+            onKindChange={(kind) => changeKind(selectedRegion.id, kind)}
+            onMaskType={(type) =>
+              withLayout((current) =>
+                setRegionMaskType(current, selectedRegion.id, type, selectedPlan?.area || selectedRegion.textBox),
+              )
+            }
+            onResetArea={() => withLayout((current) => patchRegion(current, selectedRegion.id, { textArea: undefined }))}
+            onDragTarget={setDragTarget}
+            onTranslate={() => translate([selectedRegion.id])}
+            onMove={(direction) => withLayout((current) => moveRegionOrder(current, selectedRegion.id, direction))}
+            onDelete={deleteSelected}
+          />
+        ) : layout ? (
+          <div className="flex flex-col gap-2">
+            <SectionLabel>Regions</SectionLabel>
+            {sortedRegions(layout).map((region) => (
+              <button
+                key={region.id}
+                type="button"
+                onClick={() => select(region.id)}
+                className="flex w-full items-start gap-2 rounded-control border border-line px-2.5 py-2 text-left transition-colors duration-120 hover:border-ink-3"
+              >
+                <Mono className="mt-0.5 w-5 shrink-0 text-xs text-action">{region.order + 1}</Mono>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-ink">{region.translatedText || "—"}</span>
+                  <span className="block truncate text-xs text-ink-3">{region.sourceText}</span>
+                </span>
+              </button>
+            ))}
+            {layout.regions.length === 0 && (
+              <p className="text-xs text-ink-3">No regions on this page. Start with Add region.</p>
+            )}
+            <p className="pt-2 text-xs leading-relaxed text-ink-3">
+              Click a box to select it. Drag to move, use the handles to resize.{" "}
+              <Kbd>Ctrl</Kbd>+<Kbd>Z</Kbd> undoes, <Kbd>Delete</Kbd> removes.
+            </p>
+          </div>
+        ) : null}
+      </aside>
+    </FullscreenShell>
   );
 };
 

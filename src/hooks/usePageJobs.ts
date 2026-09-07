@@ -67,18 +67,18 @@ export const usePageJobs = (seriesId: string | null) => {
 };
 
 export const STAGE_LABELS: Record<PageJobStage, string> = {
-  queued: "Sırada",
-  detecting: "Tespit",
-  translating: "Çeviri",
-  rendering: "Render",
-  completed: "Tamamlandı",
-  failed: "Hata",
-  cancelled: "İptal",
+  queued: "Queued",
+  detecting: "Detecting",
+  translating: "Translating",
+  rendering: "Rendering",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
 };
 
 export const describeJob = (job: PageJobSummary) => {
-  if (job.waitingForWorker) return "OCR worker bekleniyor";
-  if (job.provider === "gemini_batch" && job.stage === "detecting") return "Batch tespit";
-  if (job.provider === "migration" && isActiveJob(job)) return "Taşınıyor";
+  if (job.waitingForWorker) return "Waiting for OCR worker";
+  if (job.provider === "gemini_batch" && job.stage === "detecting") return "Detecting (batch)";
+  if (job.provider === "migration" && isActiveJob(job)) return "Migrating";
   return STAGE_LABELS[job.stage];
 };

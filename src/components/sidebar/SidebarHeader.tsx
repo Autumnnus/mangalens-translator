@@ -1,48 +1,51 @@
-import { X } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, ScanFace, X } from "lucide-react";
 import React from "react";
+import { cn } from "../../utils/cn";
+import { IconButton } from "../ui";
 
 interface SidebarHeaderProps {
   isSidebarCollapsed: boolean;
   setIsSidebarCollapsed: (value: boolean) => void;
-  setIsMobileOpen: (value: boolean) => void;
+  /** Closes the off-canvas sidebar on small screens. */
+  onCloseMobile?: () => void;
 }
 
 const SidebarHeader: React.FC<SidebarHeaderProps> = ({
   isSidebarCollapsed,
   setIsSidebarCollapsed,
-  setIsMobileOpen,
-}) => {
-  return (
-    <div
-      className={`p-6 flex items-center ${
-        isSidebarCollapsed ? "justify-center" : "justify-between"
-      } border-b border-border-muted`}
+  onCloseMobile,
+}) => (
+  <header
+    className={cn(
+      "flex h-12 shrink-0 items-center border-b border-line",
+      isSidebarCollapsed ? "justify-center px-1" : "justify-between pl-3 pr-2",
+    )}
+  >
+    {!isSidebarCollapsed && (
+      <div className="flex min-w-0 items-center gap-2">
+        <ScanFace aria-hidden="true" className="h-4 w-4 shrink-0 text-action" />
+        <span className="truncate text-sm font-semibold text-ink">MangaLens</span>
+      </div>
+    )}
+
+    <IconButton
+      label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      className="hidden md:inline-flex"
+      onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
     >
-      {!isSidebarCollapsed && (
-        <div className="flex items-center gap-3">
-          <h5 className="text-xl font-black tracking-tighter uppercase leading-none italic select-none">
-            Manga<span className="text-primary text-glow">Lens</span>
-          </h5>
-        </div>
-      )}
-      <button
-        onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        className="w-8 h-8 rounded-xl bg-surface-raised hover:bg-surface-elevated text-text-muted hover:text-text-main flex items-center justify-center transition-all md:flex hidden border border-border-muted"
+      {isSidebarCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
+    </IconButton>
+
+    {onCloseMobile && (
+      <IconButton
+        label="Close series list"
+        className="md:hidden"
+        onClick={onCloseMobile}
       >
-        <i
-          className={`fas fa-chevron-${
-            isSidebarCollapsed ? "right" : "left"
-          } text-xs`}
-        ></i>
-      </button>
-      <button
-        onClick={() => setIsMobileOpen(false)}
-        className="w-8 h-8 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center transition-colors md:hidden"
-      >
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-};
+        <X />
+      </IconButton>
+    )}
+  </header>
+);
 
 export default React.memo(SidebarHeader);

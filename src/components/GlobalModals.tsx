@@ -1,3 +1,4 @@
+import { Image as ImageIcon, PencilRuler } from "lucide-react";
 import React, { useCallback } from "react";
 import { useConfirm } from "../hooks/useConfirm";
 import { useSeriesStore } from "../stores/useSeriesStore";
@@ -11,6 +12,7 @@ import MigrationModal from "./MigrationModal";
 import NewSeriesModal from "./NewSeriesModal";
 import SettingsModal from "./SettingsModal";
 import ToastViewport from "./ToastViewport";
+import { Button, FullscreenShell, SegmentedControl } from "./ui";
 import ReaderImageArea from "./viewer/ReaderImageArea";
 
 import {
@@ -145,6 +147,16 @@ const GlobalModals: React.FC = () => {
     [deleteCategory],
   );
 
+  const closeLightbox = useCallback(
+    () => setSelectedImage(null),
+    [setSelectedImage],
+  );
+
+  const handleOpenLayoutEditor = useCallback(() => {
+    const current = images[selectedIndex] || selectedImage;
+    if (current) openLayoutEditor(current);
+  }, [images, selectedIndex, selectedImage, openLayoutEditor]);
+
   return (
     <>
       <ToastViewport />
@@ -227,68 +239,58 @@ const GlobalModals: React.FC = () => {
       <LayoutEditorModal />
 
       {selectedImage && (
-        <div
-          className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex flex-col items-center justify-center p-4 md:p-10"
-          onClick={() => setSelectedImage(null)}
+        <FullscreenShell
+          open
+          onClose={closeLightbox}
+          theater
+          layer="lightbox"
+          icon={<ImageIcon />}
+          title={selectedImage.fileName}
+          subtitle={
+            <span className="font-mono tabular">
+              Page {selectedIndex + 1} of {images.length}
+            </span>
+          }
+          actions={
+            modalUIVisible ? (
+              <>
+                {selectedImage.translatedUrl && (
+                  <SegmentedControl<ViewMode>
+                    label="Compare mode"
+                    size="sm"
+                    value={modalCompareMode}
+                    onChange={setModalCompareMode}
+                    options={[
+                      { value: "slider", label: "Slider" },
+                      { value: "side-by-side", label: "Split" },
+                      { value: "toggle", label: "Toggle" },
+                    ]}
+                  />
+                )}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<PencilRuler />}
+                  onClick={handleOpenLayoutEditor}
+                >
+                  Open layout editor
+                </Button>
+              </>
+            ) : null
+          }
         >
-          <div
-            className="w-full max-w-5xl h-full flex flex-col items-center justify-center gap-6 animate-in zoom-in-95 duration-300"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-full h-full flex flex-col relative min-h-0">
-              <div className="flex-1 min-h-0 relative">
-                <ReaderImageArea
-                  images={images}
-                  currentIndex={selectedIndex}
-                  onIndexChange={handleIndexChange}
-                  showComparison={!!selectedImage.translatedUrl}
-                  comparisonMode={modalCompareMode}
-                  onToggleUI={() => setModalUIVisible(!modalUIVisible)}
-                  isUIVisible={modalUIVisible}
-                />
-              </div>
-
-              {modalUIVisible && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[110] bg-slate-900/80 backdrop-blur-md p-1.5 rounded-2xl flex gap-1.5 border border-white/10 shadow-2xl">
-                  {selectedImage.translatedUrl &&
-                    (["slider", "side-by-side", "toggle"] as ViewMode[]).map(
-                      (mode) => (
-                        <button
-                          key={mode}
-                          onClick={() => setModalCompareMode(mode)}
-                          className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                            modalCompareMode === mode
-                              ? "bg-primary text-white shadow-glow"
-                              : "text-slate-400 hover:text-white hover:bg-white/5"
-                          }`}
-                        >
-                          {mode.replace(/-/g, " ")}
-                        </button>
-                      ),
-                    )}
-                  <button
-                    onClick={() => {
-                      const current = images[selectedIndex] || selectedImage;
-                      openLayoutEditor(current);
-                    }}
-                    className="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all text-amber-300 hover:text-white hover:bg-white/5 border-l border-white/10"
-                    title="Baloncukları ve metinleri düzenle"
-                  >
-                    <i className="fas fa-pen-nib mr-1.5" />
-                    Düzenle
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <button
-              className={`absolute top-8 right-8 text-white/50 hover:text-white text-3xl transition-all z-[120] ${!modalUIVisible ? "opacity-0 pointer-events-none" : "opacity-100"}`}
-              onClick={() => setSelectedImage(null)}
-            >
-              <i className="fas fa-times"></i>
-            </button>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ReaderImageArea
+              images={images}
+              currentIndex={selectedIndex}
+              onIndexChange={handleIndexChange}
+              showComparison={!!selectedImage.translatedUrl}
+              comparisonMode={modalCompareMode}
+              onToggleUI={() => setModalUIVisible(!modalUIVisible)}
+              isUIVisible={modalUIVisible}
+            />
           </div>
-        </div>
+        </FullscreenShell>
       )}
     </>
   );

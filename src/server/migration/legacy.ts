@@ -37,7 +37,7 @@ export const migrateLegacyPage = async (
 /** Puts the v1 render back in front. The v2 layout stays saved for later. */
 export const revertLegacyPage = async (image: OwnedImage) => {
   if (!image.legacyTranslatedKey) {
-    throw new Error("Bu sayfanın saklanan eski render'ı yok.");
+    throw new Error("This page has no stored legacy render.");
   }
   const v2Key = image.translatedKey;
   await db

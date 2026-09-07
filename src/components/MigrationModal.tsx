@@ -1,5 +1,15 @@
+import {
+  Button,
+  EmptyState,
+  FullscreenShell,
+  IconButton,
+  Mono,
+  SegmentedControl,
+  Spinner,
+  StageBar,
+} from "@/components/ui";
 import { useConfirm } from "@/hooks/useConfirm";
-import { describeJob, isActiveJob, usePageJobs } from "@/hooks/usePageJobs";
+import { isActiveJob, usePageJobs } from "@/hooks/usePageJobs";
 import { seriesKeys, useSeriesImagesQuery } from "@/hooks/useSeriesQueries";
 import {
   dropSeriesLegacy,
@@ -7,23 +17,59 @@ import {
   startMigration,
 } from "@/services/migration.service";
 import { useUIStore } from "@/stores/useUIStore";
-import { ProcessedImage, ViewMode } from "@/types";
+import { PageJobSummary, ProcessedImage, ViewMode } from "@/types";
+import { describePageStatus, PageTone } from "@/utils/stages";
 import { resolveImageUrl } from "@/utils/url";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftRight,
+  Check,
   ChevronLeft,
   ChevronRight,
-  Loader2,
+  Eye,
+  ImageOff,
+  PencilLine,
   Sparkles,
   Trash2,
   Undo2,
-  X,
 } from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
 import ComparisonView from "./ComparisonView";
 
 type Busy = null | "start" | "redetect" | "cleanup" | "page";
+type PageAction = "preview" | "apply" | "revert" | "drop-legacy";
+
+const toneClass: Record<PageTone, string> = {
+  neutral: "text-ink-3",
+  accent: "text-action",
+  ok: "text-ok",
+  warn: "text-warn",
+  danger: "text-shu",
+};
+
+const pages = (count: number) => `${count} ${count === 1 ? "page" : "pages"}`;
+
+const isMigratedPage = (image: ProcessedImage) =>
+  image.layoutVersion === 2 && !!image.legacyTranslatedUrl;
+
+/** Stage bar + label for a row in the migration list. */
+const describeMigrationRow = (image: ProcessedImage, job?: PageJobSummary | null) => {
+  const status = describePageStatus(image, job);
+  if (status.active) return status;
+  if (isMigratedPage(image)) {
+    return { ...status, label: "Migrated · review", tone: "ok" as PageTone };
+  }
+  if (image.hasLegacyBubbles) {
+    return { ...status, label: "Legacy · free migration", tone: "warn" as PageTone };
+  }
+  return { ...status, label: "Legacy · needs re-detection", tone: "danger" as PageTone };
+};
+
+const MODE_OPTIONS: Array<{ value: ViewMode; label: string }> = [
+  { value: "slider", label: "Slider" },
+  { value: "side-by-side", label: "Split" },
+  { value: "toggle", label: "Toggle" },
+];
 
 /**
  * Migration panel for a series: moves flattened v1 pages to layout v2 (free,
@@ -45,15 +91,13 @@ const MigrationModal: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<ViewMode>("slider");
+  const [pendingAction, setPendingAction] = useState<PageAction | null>(null);
 
   const legacyPages = useMemo(
     () => images.filter((image) => image.layoutVersion === 1 && !!image.translatedUrl),
     [images],
   );
-  const migratedPages = useMemo(
-    () => images.filter((image) => image.layoutVersion === 2 && !!image.legacyTranslatedUrl),
-    [images],
-  );
+  const migratedPages = useMemo(() => images.filter(isMigratedPage), [images]);
   const freeCount = legacyPages.filter((image) => image.hasLegacyBubbles).length;
   const needsRedetect = legacyPages.length - freeCount;
   const migrationJobs = activeJobs.filter((job) => job.provider === "migration" || job.provider === "gemini");
@@ -89,7 +133,9 @@ const MigrationModal: React.FC = () => {
     try {
       const result = await startMigration(seriesId, strategy, imageIds);
       showToast(
-        `${result.queued} sayfa kuyruğa alındı${result.skipped ? `, ${result.skipped} sayfa baloncuk verisi olmadığı için atlandı` : ""}.`,
+        `${pages(result.queued)} queued${
+          result.skipped ? `, ${result.skipped} skipped because they have no bubble data` : ""
+        }.`,
         "success",
         5000,
       );
@@ -105,8 +151,8 @@ const MigrationModal: React.FC = () => {
   const startAll = () => {
     if (freeCount === 0) return;
     confirm({
-      title: "Eski sayfaları taşı",
-      message: `${freeCount} sayfa eski baloncuk verisinden yeniden dizilecek. Gemini çağrısı yapılmaz. Eski render'lar incelemen için saklanır.`,
+      title: "Migrate legacy pages",
+      message: `${pages(freeCount)} will be re-typeset from the stored bubble data. No Gemini call is made, so this is free. The old renders are kept for review.`,
       type: "warning",
       onConfirm: () => void runStart("legacy"),
     });
@@ -116,8 +162,8 @@ const MigrationModal: React.FC = () => {
     const count = imageIds ? imageIds.length : legacyPages.length;
     if (count === 0) return;
     confirm({
-      title: "Gemini ile yeniden tespit",
-      message: `${count} sayfa Gemini Vision ile baştan tespit edilip çevrilecek. Token maliyeti oluşur. Eski render'lar saklanır.`,
+      title: "Re-detect with Gemini",
+      message: `${pages(count)} will be detected and translated again with Gemini Vision. This uses tokens and costs money. The old renders are kept for review.`,
       type: "warning",
       onConfirm: () => void runStart("redetect", imageIds),
     });
@@ -126,14 +172,14 @@ const MigrationModal: React.FC = () => {
   const cleanup = () => {
     if (migratedPages.length === 0) return;
     confirm({
-      title: "Eski render'ları sil",
-      message: `${migratedPages.length} sayfanın eski render dosyası kalıcı olarak silinecek. Bu sayfalarda geri alma artık mümkün olmaz.`,
+      title: "Delete old renders",
+      message: `The old render files of ${pages(migratedPages.length)} will be deleted permanently. Those pages can no longer be reverted.`,
       type: "danger",
       onConfirm: async () => {
         setBusy("cleanup");
         try {
           const result = await dropSeriesLegacy(seriesId);
-          showToast(`${result.deleted} eski render silindi.`, "success", 4000);
+          showToast(`${result.deleted} old ${result.deleted === 1 ? "render" : "renders"} deleted.`, "success", 4000);
           refresh();
         } catch (error) {
           showToast(error instanceof Error ? error.message : String(error), "error", 6000);
@@ -144,8 +190,9 @@ const MigrationModal: React.FC = () => {
     });
   };
 
-  const pageAction = async (image: ProcessedImage, action: "preview" | "apply" | "revert" | "drop-legacy") => {
+  const pageAction = async (image: ProcessedImage, action: PageAction) => {
     setBusy("page");
+    setPendingAction(action);
     try {
       const result = await pageMigrationAction(image.id, action);
       if (action === "preview" && result.url) {
@@ -153,10 +200,10 @@ const MigrationModal: React.FC = () => {
       } else {
         showToast(
           action === "apply"
-            ? "Sayfa yeni sisteme taşındı."
+            ? "Page migrated to layout v2."
             : action === "revert"
-              ? "Eski render geri getirildi."
-              : "Eski render silindi.",
+              ? "Old render restored."
+              : "Old render deleted.",
           "success",
           3500,
         );
@@ -167,12 +214,13 @@ const MigrationModal: React.FC = () => {
       showToast(error instanceof Error ? error.message : String(error), "error", 6000);
     } finally {
       setBusy(null);
+      setPendingAction(null);
     }
   };
 
   const selectedJob = selected ? byImage.get(selected.id) : undefined;
   const selectedActive = selectedJob && isActiveJob(selectedJob) ? selectedJob : null;
-  const isMigrated = !!selected && selected.layoutVersion === 2 && !!selected.legacyTranslatedUrl;
+  const isMigrated = !!selected && isMigratedPage(selected);
   const comparisonPair =
     selected && (isMigrated || previewUrl)
       ? {
@@ -185,140 +233,240 @@ const MigrationModal: React.FC = () => {
       : null;
 
   return (
-    <div className="fixed inset-0 z-[140] flex flex-col bg-background text-text-main">
-      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border-muted bg-surface/80 px-4 backdrop-blur-md">
-        <ArrowLeftRight className="h-4 w-4 text-amber-400" />
-        <div>
-          <p className="text-sm font-bold">Yeni sisteme taşıma</p>
-          <p className="text-[9px] font-bold uppercase tracking-widest text-text-dark">
-            {legacyPages.length} eski sayfa · {migratedPages.length} incelenecek · {migrationJobs.length} aktif iş
-          </p>
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={startAll}
+    <FullscreenShell
+      open
+      onClose={closeMigration}
+      icon={<ArrowLeftRight />}
+      title="Migrate to layout v2"
+      subtitle={
+        <Mono>
+          {legacyPages.length} legacy {legacyPages.length === 1 ? "page" : "pages"} ·{" "}
+          {migratedPages.length} to review · {migrationJobs.length} running
+        </Mono>
+      }
+      actions={
+        <>
+          <Button
+            variant="primary"
+            icon={<ArrowLeftRight />}
+            loading={busy === "start"}
             disabled={busy !== null || freeCount === 0}
-            className="flex items-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white shadow-glow hover:bg-primary-hover disabled:opacity-40"
+            onClick={startAll}
           >
-            {busy === "start" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
-            Tümünü taşı ({freeCount}, ücretsiz)
-          </button>
-          <button
-            type="button"
-            onClick={() => startRedetect()}
+            <span>
+              Migrate all (<Mono>{freeCount}</Mono>, free)
+            </span>
+          </Button>
+          <Button
+            variant="secondary"
+            icon={<Sparkles />}
+            loading={busy === "redetect"}
             disabled={busy !== null || legacyPages.length === 0}
-            className="flex items-center gap-1.5 rounded-xl border border-border-muted px-3 py-2 text-[10px] font-black uppercase tracking-wider hover:border-primary/60 disabled:opacity-40"
-            title={needsRedetect ? `${needsRedetect} sayfanın baloncuk verisi yok, sadece bu yolla taşınabilir` : undefined}
+            onClick={() => startRedetect()}
+            title={
+              needsRedetect
+                ? `${pages(needsRedetect)} have no bubble data and can only be migrated this way.`
+                : undefined
+            }
           >
-            {busy === "redetect" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            Gemini ile yeniden tespit ({legacyPages.length})
-          </button>
-          <button
-            type="button"
-            onClick={cleanup}
+            <span>
+              Re-detect with Gemini (<Mono>{legacyPages.length}</Mono>)
+            </span>
+          </Button>
+          <Button
+            variant="danger"
+            icon={<Trash2 />}
+            loading={busy === "cleanup"}
             disabled={busy !== null || migratedPages.length === 0}
-            className="flex items-center gap-1.5 rounded-xl border border-red-500/40 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-red-300 hover:bg-red-500/10 disabled:opacity-40"
+            onClick={cleanup}
           >
-            {busy === "cleanup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-            Eski render&apos;ları sil ({migratedPages.length})
-          </button>
-          <button type="button" onClick={closeMigration} className="ml-1 rounded-lg p-2 text-text-dark hover:text-text-main" title="Kapat">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-      </header>
-
-      <div className="flex min-h-0 flex-1">
-        <aside className="custom-scrollbar w-72 shrink-0 overflow-y-auto border-r border-border-muted bg-surface/60 p-3">
-          {reviewList.length === 0 ? (
-            <p className="text-xs text-text-muted">Bu seride taşınacak ya da incelenecek sayfa yok.</p>
-          ) : (
-            <div className="space-y-1.5">
-              {reviewList.map((image) => {
-                const job = byImage.get(image.id);
-                const active = job && isActiveJob(job) ? job : null;
-                const migrated = image.layoutVersion === 2 && !!image.legacyTranslatedUrl;
-                return (
+            <span>
+              Delete old renders (<Mono>{migratedPages.length}</Mono>)
+            </span>
+          </Button>
+        </>
+      }
+    >
+      <aside
+        aria-label="Pages"
+        className="custom-scrollbar w-72 shrink-0 overflow-y-auto border-r border-line bg-page p-2"
+      >
+        {reviewList.length === 0 ? (
+          <p className="px-2 py-3 text-sm text-ink-3">Nothing to migrate or review in this series.</p>
+        ) : (
+          <ul className="flex flex-col gap-0.5">
+            {reviewList.map((image) => {
+              const row = describeMigrationRow(image, byImage.get(image.id));
+              const isSelected = image.id === selectedId;
+              return (
+                <li key={image.id}>
                   <button
-                    key={image.id}
                     type="button"
+                    aria-current={isSelected || undefined}
                     onClick={() => setSelectedId(image.id)}
-                    className={`flex w-full items-center gap-2 rounded-xl border p-2 text-left ${
-                      image.id === selectedId ? "border-primary/60 bg-primary/10" : "border-border-muted bg-surface-raised/40 hover:border-primary/40"
+                    className={`w-full rounded-control px-2 py-1.5 text-left transition-colors duration-120 hover:bg-page-2 ${
+                      isSelected ? "bg-npb shadow-[inset_2px_0_0_var(--c-action)]" : ""
                     }`}
                   >
-                    <span className="w-6 shrink-0 text-[10px] font-black text-text-dark">{image.sequenceNumber}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-xs font-semibold">{image.fileName}</span>
-                      <span className={`block text-[9px] font-black uppercase tracking-wider ${active ? "text-primary" : migrated ? "text-emerald-400" : image.hasLegacyBubbles ? "text-amber-300" : "text-red-300"}`}>
-                        {active ? describeJob(active) : migrated ? "Taşındı · incele" : image.hasLegacyBubbles ? "Eski (ücretsiz taşınabilir)" : "Eski (veri yok, yeniden tespit)"}
-                      </span>
+                    <span className="flex items-center gap-2">
+                      <Mono className="shrink-0 text-xs text-ink-3">
+                        p.{String(image.sequenceNumber).padStart(3, "0")}
+                      </Mono>
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink">{image.fileName}</span>
+                    </span>
+                    <span className="mt-1.5 flex items-center gap-2">
+                      <StageBar stages={row.stages} label={row.label} size="sm" className="w-16 shrink-0" />
+                      <span className={`truncate text-xs ${toneClass[row.tone]}`}>{row.label}</span>
                     </span>
                   </button>
-                );
-              })}
-            </div>
-          )}
-        </aside>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
-          {selected ? (
-            <>
-              <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border-muted bg-surface/60 px-4 text-[10px] font-black uppercase tracking-wider text-text-dark">
-                <button type="button" disabled={selectedIndex <= 0} onClick={() => setSelectedId(reviewList[selectedIndex - 1].id)} className="rounded-lg border border-border-muted p-1 disabled:opacity-30"><ChevronLeft className="h-3.5 w-3.5" /></button>
-                <button type="button" disabled={selectedIndex >= reviewList.length - 1} onClick={() => setSelectedId(reviewList[selectedIndex + 1].id)} className="rounded-lg border border-border-muted p-1 disabled:opacity-30"><ChevronRight className="h-3.5 w-3.5" /></button>
-                <span className="truncate text-text-main">{selected.fileName}</span>
-                {comparisonPair && (
-                  <span className="ml-3 flex items-center gap-1">
-                    {(["slider", "side-by-side", "toggle"] as ViewMode[]).map((item) => (
-                      <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-lg px-2 py-1 ${mode === item ? "bg-primary/15 text-primary" : "hover:text-text-main"}`}>
-                        {item.replace(/-/g, " ")}
-                      </button>
-                    ))}
-                    <span className="ml-2 text-text-dark">Sol: eski · Sağ: yeni</span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        {selected ? (
+          <>
+            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-line bg-page px-3">
+              <IconButton
+                size="sm"
+                label="Previous page"
+                disabled={selectedIndex <= 0}
+                onClick={() => setSelectedId(reviewList[selectedIndex - 1].id)}
+              >
+                <ChevronLeft />
+              </IconButton>
+              <IconButton
+                size="sm"
+                label="Next page"
+                disabled={selectedIndex >= reviewList.length - 1}
+                onClick={() => setSelectedId(reviewList[selectedIndex + 1].id)}
+              >
+                <ChevronRight />
+              </IconButton>
+              <span className="min-w-0 truncate text-sm text-ink">{selected.fileName}</span>
+              {comparisonPair && (
+                <>
+                  <SegmentedControl
+                    size="sm"
+                    label="Comparison mode"
+                    value={mode}
+                    onChange={setMode}
+                    options={MODE_OPTIONS}
+                    className="ml-2"
+                  />
+                  <span className="text-xs text-ink-3">Left: old · Right: new</span>
+                </>
+              )}
+              <div className="ml-auto flex items-center gap-1.5">
+                {selectedActive ? (
+                  <span className="flex items-center gap-1.5 text-xs text-action">
+                    <Spinner size="xs" />
+                    {describePageStatus(selected, selectedActive).label}
                   </span>
-                )}
-                <span className="ml-auto flex items-center gap-1.5">
-                  {selectedActive ? (
-                    <span className="flex items-center gap-1.5 text-primary"><Loader2 className="h-3 w-3 animate-spin" /> {describeJob(selectedActive)}</span>
-                  ) : isMigrated ? (
-                    <>
-                      <button type="button" onClick={() => openLayoutEditor(selected)} className="rounded-lg border border-border-muted px-2.5 py-1.5 hover:border-primary/60">Editörde aç</button>
-                      <button type="button" disabled={busy !== null} onClick={() => pageAction(selected, "revert")} className="flex items-center gap-1 rounded-lg border border-border-muted px-2.5 py-1.5 hover:border-amber-500/60 disabled:opacity-40"><Undo2 className="h-3 w-3" /> Eskiye dön</button>
-                      <button type="button" disabled={busy !== null} onClick={() => pageAction(selected, "drop-legacy")} className="flex items-center gap-1 rounded-lg border border-emerald-500/50 px-2.5 py-1.5 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40">Kabul et, eskiyi sil</button>
-                    </>
-                  ) : (
-                    <>
-                      {selected.hasLegacyBubbles && (
-                        <button type="button" disabled={busy !== null} onClick={() => pageAction(selected, "preview")} className="rounded-lg border border-border-muted px-2.5 py-1.5 hover:border-primary/60 disabled:opacity-40">
-                          {busy === "page" ? "…" : "Önizle (ücretsiz)"}
-                        </button>
-                      )}
-                      {selected.hasLegacyBubbles && previewUrl && (
-                        <button type="button" disabled={busy !== null} onClick={() => pageAction(selected, "apply")} className="rounded-lg bg-primary px-2.5 py-1.5 text-white hover:bg-primary-hover disabled:opacity-40">Uygula</button>
-                      )}
-                      <button type="button" disabled={busy !== null} onClick={() => startRedetect([selected.id])} className="flex items-center gap-1 rounded-lg border border-border-muted px-2.5 py-1.5 hover:border-primary/60 disabled:opacity-40"><Sparkles className="h-3 w-3" /> Yeniden tespit</button>
-                    </>
-                  )}
-                </span>
-              </div>
-              <div className="min-h-0 flex-1 bg-black/60 p-4">
-                {comparisonPair ? (
-                  <ComparisonView pair={comparisonPair} mode={mode} />
+                ) : isMigrated ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<PencilLine />}
+                      onClick={() => openLayoutEditor(selected)}
+                    >
+                      Open in layout editor
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<Undo2 />}
+                      disabled={busy !== null}
+                      loading={pendingAction === "revert"}
+                      onClick={() => pageAction(selected, "revert")}
+                    >
+                      Revert to old
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      icon={<Check />}
+                      disabled={busy !== null}
+                      loading={pendingAction === "drop-legacy"}
+                      onClick={() => pageAction(selected, "drop-legacy")}
+                    >
+                      Accept and delete old
+                    </Button>
+                  </>
                 ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <img src={resolveImageUrl(selected.translatedUrl || selected.originalUrl)} alt={selected.fileName} className="max-h-full max-w-full object-contain" />
-                  </div>
+                  <>
+                    {selected.hasLegacyBubbles && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<Eye />}
+                        disabled={busy !== null}
+                        loading={pendingAction === "preview"}
+                        onClick={() => pageAction(selected, "preview")}
+                      >
+                        Preview (free)
+                      </Button>
+                    )}
+                    {selected.hasLegacyBubbles && previewUrl && (
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        icon={<Check />}
+                        disabled={busy !== null}
+                        loading={pendingAction === "apply"}
+                        onClick={() => pageAction(selected, "apply")}
+                      >
+                        Apply
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<Sparkles />}
+                      disabled={busy !== null}
+                      onClick={() => startRedetect([selected.id])}
+                    >
+                      Re-detect
+                    </Button>
+                  </>
                 )}
               </div>
-            </>
-          ) : (
-            <div className="flex flex-1 items-center justify-center text-sm text-text-muted">Sol listeden bir sayfa seç.</div>
-          )}
-        </div>
+            </div>
+            <div className="min-h-0 flex-1 bg-theater p-4">
+              {comparisonPair ? (
+                <ComparisonView pair={comparisonPair} mode={mode} />
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <img
+                    src={resolveImageUrl(selected.translatedUrl || selected.originalUrl)}
+                    alt={selected.fileName}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-1 items-center justify-center p-6">
+            <EmptyState
+              icon={<ImageOff />}
+              title="Select a page on the left."
+              description={
+                reviewList.length === 0
+                  ? "Nothing to migrate or review in this series."
+                  : "Pick a page to compare the old and new renders."
+              }
+              textured={false}
+              className="w-full max-w-sm"
+            />
+          </div>
+        )}
       </div>
-    </div>
+    </FullscreenShell>
   );
 };
 

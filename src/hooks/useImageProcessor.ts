@@ -55,9 +55,9 @@ export const useImageProcessor = () => {
       try {
         const { job, existing } = await startPageJob(image.id, jobOptions());
         if (existing) {
-          showToast(`${image.fileName}: zaten işleniyor.`, "info", 3000);
+          showToast(`${image.fileName}: already in progress.`, "info", 3000);
         } else if (job.waitingForWorker) {
-          showToast(`${image.fileName}: yerel OCR kuyruğuna alındı.`, "info", 4000);
+          showToast(`${image.fileName}: queued for local OCR.`, "info", 4000);
         }
         refresh(activeSeriesId);
         return true;
@@ -93,7 +93,7 @@ export const useImageProcessor = () => {
       (img) => img.status !== "completed" && !byImage.get(img.id)?.stage.match(/queued|detecting|translating|rendering/),
     );
     if (pending.length === 0) {
-      showToast("İşlenecek sayfa yok.", "info", 4000);
+      showToast("Every page is already translated.", "info", 4000);
       return;
     }
 
@@ -123,7 +123,7 @@ export const useImageProcessor = () => {
       if (await processImage(image)) queued += 1;
     }
     showToast(
-      `${queued}/${pending.length} sayfa kuyruğa alındı. Sekmeyi kapatsan da sunucu devam eder.`,
+      `${queued}/${pending.length} pages queued. The server keeps working if you close this tab.`,
       queued === pending.length ? "success" : "info",
       6000,
     );

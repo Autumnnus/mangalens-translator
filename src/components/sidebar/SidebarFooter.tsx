@@ -1,26 +1,34 @@
-import { Download, LogOut, Upload } from "lucide-react";
+import { Archive, Download, LogOut, Settings, Tags, Upload } from "lucide-react";
 import { signOut } from "next-auth/react";
-import React, { useCallback } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { useConfirm } from "../../hooks/useConfirm";
+import { useUIStore } from "../../stores/useUIStore";
+import { cn } from "../../utils/cn";
+import { IconButton, Menu } from "../ui";
 
 interface SidebarFooterProps {
   isSidebarCollapsed: boolean;
   isViewOnly: boolean;
 }
 
+/** Sidebar footer: Categories, Settings, Backup (export / import) and Sign out. */
 const SidebarFooter: React.FC<SidebarFooterProps> = ({
   isSidebarCollapsed,
   isViewOnly,
 }) => {
-  const [isExporting, setIsExporting] = React.useState(false);
-  const [isImporting, setIsImporting] = React.useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { confirm } = useConfirm();
+  const showToast = useUIStore((state) => state.showToast);
+  const toggleCategoryModal = useUIStore((state) => state.toggleCategoryModal);
+  const toggleSettingsModal = useUIStore((state) => state.toggleSettingsModal);
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
     try {
       const res = await fetch("/api/backup/export");
-      if (!res.ok) throw new Error("Export failed");
+      if (!res.ok) throw new Error(`Server error: ${res.status} ${res.statusText}`);
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -30,12 +38,16 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      showToast("Backup exported.", "success", 3000);
     } catch (e) {
-      alert("Export failed: " + e);
+      showToast(
+        `Export failed: ${e instanceof Error ? e.message : String(e)}`,
+        "error",
+      );
     } finally {
       setIsExporting(false);
     }
-  }, []);
+  }, [showToast]);
 
   const handleImport = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -67,16 +79,16 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
 
         const json = await res.json();
         if (json.success) {
-          alert("Backup restored successfully!");
+          showToast("Backup restored. Reloading…", "success", 3000);
           window.location.reload();
         } else {
-          throw new Error(json.error || "Unknown error occurred");
+          throw new Error(json.error || "Unknown error");
         }
       } catch (err: Error | unknown) {
         console.error("Import error:", err);
-        alert(
-          "Import failed: " +
-            (err instanceof Error ? err.message : String(err)),
+        showToast(
+          `Import failed: ${err instanceof Error ? err.message : String(err)}`,
+          "error",
         );
       } finally {
         setIsImporting(false);
@@ -85,76 +97,86 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
         }
       }
     },
-    [],
+    [showToast],
   );
 
   const handleLogout = () => {
     confirm({
-      title: "Sign Out",
-      message: "Are you sure you want to sign out?",
+      title: "Sign out",
+      message: "Sign out of MangaLens?",
       onConfirm: () => signOut(),
       type: "danger",
     });
   };
 
-  if (isSidebarCollapsed || isViewOnly) return null;
+  const busy = isExporting || isImporting;
 
   return (
-    <div className="p-4 border-t border-slate-800 space-y-2">
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          onClick={handleExport}
-          disabled={isExporting}
-          className="flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-indigo-600/20 border border-slate-700/50 hover:border-indigo-500/50 p-2 rounded-xl transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Export Backup"
-        >
-          {isExporting ? (
-            <div className="w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-          ) : (
-            <Download className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-400" />
-          )}
-          <span className="text-[10px] font-bold text-slate-400 group-hover:text-indigo-400 uppercase tracking-wider">
-            {isExporting ? "Busy" : "Export"}
-          </span>
-        </button>
-
-        <div className="relative">
+    <footer
+      className={cn(
+        "flex shrink-0 items-center border-t border-line",
+        isSidebarCollapsed
+          ? "flex-col gap-1 py-2"
+          : "justify-between px-2 py-1.5",
+      )}
+    >
+      {!isViewOnly && (
+        <>
+          <IconButton label="Categories" onClick={() => toggleCategoryModal(true)}>
+            <Tags />
+          </IconButton>
+          <IconButton label="Settings" onClick={() => toggleSettingsModal(true)}>
+            <Settings />
+          </IconButton>
+          <Menu
+            align="left"
+           
+            items={[
+              {
+                label: "Export backup",
+                icon: <Download />,
+                onSelect: () => void handleExport(),
+                disabled: busy,
+              },
+              {
+                label: "Import backup…",
+                icon: <Upload />,
+                onSelect: () => fileInputRef.current?.click(),
+                disabled: busy,
+              },
+            ]}
+            trigger={(props) => (
+              <IconButton
+                label={
+                  isExporting
+                    ? "Exporting backup"
+                    : isImporting
+                      ? "Importing backup"
+                      : "Backup"
+                }
+                loading={busy}
+                {...props}
+              >
+                <Archive />
+              </IconButton>
+            )}
+          />
           <input
+            ref={fileInputRef}
             type="file"
             accept=".zip"
-            disabled={isImporting}
-            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10 disabled:cursor-not-allowed"
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
             onChange={handleImport}
           />
-          <button
-            disabled={isImporting}
-            className="w-full flex items-center justify-center gap-2 bg-slate-800/50 hover:bg-emerald-600/20 border border-slate-700/50 hover:border-emerald-500/50 p-2 rounded-xl transition-all group disabled:opacity-50"
-            title="Import Backup"
-          >
-            {isImporting ? (
-              <div className="w-3.5 h-3.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-400" />
-            )}
-            <span className="text-[10px] font-bold text-slate-400 group-hover:text-emerald-400 uppercase tracking-wider">
-              {isImporting ? "Busy" : "Import"}
-            </span>
-          </button>
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* Logout Button */}
-      <button
-        onClick={handleLogout}
-        className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 hover:border-red-500/40 p-2.5 rounded-xl transition-all group mt-2"
-        title="Sign Out"
-      >
-        <LogOut className="w-3.5 h-3.5 text-red-400 group-hover:text-red-300 transition-colors" />
-        <span className="text-[10px] font-black text-red-400 group-hover:text-red-300 uppercase tracking-widest">
-          Sign Out
-        </span>
-      </button>
-    </div>
+      <IconButton label="Sign out" variant="danger" onClick={handleLogout}>
+        <LogOut />
+      </IconButton>
+    </footer>
   );
 };
 

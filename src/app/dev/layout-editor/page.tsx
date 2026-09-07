@@ -3,6 +3,7 @@
 import EditorCanvas, { DragTarget } from "@/components/layout-editor/EditorCanvas";
 import RegionInspector from "@/components/layout-editor/RegionInspector";
 import { useLayoutEditorState } from "@/components/layout-editor/useLayoutEditorState";
+import { Button, IconButton, Mono, SegmentedControl } from "@/components/ui";
 import {
   defaultFillForKind,
   defaultMaskForKind,
@@ -28,6 +29,7 @@ import { RegionPlan } from "@/layout/plan";
 import { PreviewIssue } from "@/layout/preview";
 import { Box, PageLayout, pageLayoutSchema, RegionKind } from "@/layout/types";
 import { TextBubble } from "@/types";
+import { Minus, Plus, Redo2, Undo2 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 /**
@@ -65,7 +67,7 @@ export default function LayoutEditorHarness() {
     const params = new URLSearchParams(window.location.search);
     const image = params.get("image");
     if (!image) {
-      setError("image parametresi gerekli");
+      setError("The image parameter is required");
       return;
     }
     setImageUrl(image);
@@ -76,7 +78,7 @@ export default function LayoutEditorHarness() {
       const bubblesUrl = params.get("bubbles");
       if (layoutUrl) {
         const parsed = pageLayoutSchema.safeParse(await (await fetch(layoutUrl)).json());
-        if (!parsed.success) throw new Error("Layout JSON geçersiz");
+        if (!parsed.success) throw new Error("Layout JSON is invalid");
         reset(parsed.data);
       } else if (bubblesUrl) {
         const bubbles = (await (await fetch(bubblesUrl)).json()) as TextBubble[];
@@ -152,14 +154,19 @@ export default function LayoutEditorHarness() {
   if (process.env.NODE_ENV === "production") return null;
 
   return (
-    <div className="flex h-screen flex-col bg-background text-text-main">
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border-muted px-4 text-[10px] font-black uppercase tracking-wider">
-        <span className="text-primary">Layout editor harness</span>
-        <span className="mx-2 h-4 w-px bg-border-muted" />
-        <button type="button" onClick={undo} disabled={!editor.canUndo} className="rounded-lg border border-border-muted px-2 py-1 disabled:opacity-30">Geri al</button>
-        <button type="button" onClick={redo} disabled={!editor.canRedo} className="rounded-lg border border-border-muted px-2 py-1 disabled:opacity-30">Yinele</button>
-        <button
-          type="button"
+    <div className="flex h-screen flex-col bg-paper text-ink">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-line bg-page px-3">
+        <span className="text-sm font-medium text-action">Layout editor harness</span>
+        <span aria-hidden="true" className="mx-1 h-6 w-px bg-line" />
+        <IconButton label="Undo (Ctrl+Z)" variant="secondary" onClick={undo} disabled={!editor.canUndo}>
+          <Undo2 />
+        </IconButton>
+        <IconButton label="Redo (Ctrl+Shift+Z)" variant="secondary" onClick={redo} disabled={!editor.canRedo}>
+          <Redo2 />
+        </IconButton>
+        <Button
+          variant="secondary"
+          icon={<Plus />}
           onClick={() => {
             const current = layoutRef.current;
             if (!current) return;
@@ -169,35 +176,50 @@ export default function LayoutEditorHarness() {
             apply(result.layout);
             select(result.region.id);
           }}
-          className="rounded-lg border border-border-muted px-2 py-1"
         >
-          Bölge ekle
-        </button>
-        <button type="button" onClick={serverRender} disabled={busy || !layout} className="rounded-lg border border-primary/50 bg-primary/10 px-2 py-1 text-primary disabled:opacity-30">
-          {busy ? "Render…" : "Sunucu render"}
-        </button>
-        <button type="button" onClick={() => setMode("edit")} className={`rounded-lg px-2 py-1 ${mode === "edit" ? "bg-primary/15 text-primary" : ""}`}>Düzenle</button>
-        <button type="button" onClick={() => setMode("server")} disabled={!serverUrl} className={`rounded-lg px-2 py-1 disabled:opacity-30 ${mode === "server" ? "bg-primary/15 text-primary" : ""}`}>Sunucu çıktısı</button>
+          Add region
+        </Button>
+        <Button variant="primary" onClick={serverRender} disabled={busy || !layout} loading={busy}>
+          Server render
+        </Button>
+        <SegmentedControl
+          size="sm"
+          label="View"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: "edit", label: "Edit" },
+            { value: "server", label: "Server output", disabled: !serverUrl },
+          ]}
+        />
         <span className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={() => setZoom((v) => Math.max(0.25, v - 0.1))} className="rounded-lg border border-border-muted px-2 py-1">-</button>
-          <span className="w-12 text-center font-mono">{Math.round(zoom * 100)}%</span>
-          <button type="button" onClick={() => setZoom((v) => Math.min(3, v + 0.1))} className="rounded-lg border border-border-muted px-2 py-1">+</button>
+          <IconButton label="Zoom out" size="sm" onClick={() => setZoom((v) => Math.max(0.25, v - 0.1))}>
+            <Minus />
+          </IconButton>
+          <Mono className="w-12 text-center text-xs text-ink-2">{Math.round(zoom * 100)}%</Mono>
+          <IconButton label="Zoom in" size="sm" onClick={() => setZoom((v) => Math.min(3, v + 0.1))}>
+            <Plus />
+          </IconButton>
         </span>
-        <button
-          type="button"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={() => {
             const current = layoutRef.current;
             if (current) console.log(JSON.stringify(current, null, 2));
           }}
-          className="rounded-lg border border-border-muted px-2 py-1"
         >
-          JSON → console
-        </button>
+          Log JSON to console
+        </Button>
       </header>
       <div className="flex min-h-0 flex-1">
-        <div className="custom-scrollbar min-w-0 flex-1 overflow-auto bg-black/60 p-4" data-testid="canvas-scroll">
-          {error && <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/10 p-2 text-xs text-red-300">{error}</div>}
-          {!layout && !error && <p className="text-xs text-text-muted">Yükleniyor…</p>}
+        <div className="min-w-0 flex-1 overflow-auto bg-theater p-4" data-testid="canvas-scroll">
+          {error && (
+            <div role="alert" className="mb-3 rounded-control border border-shu/40 bg-shu-soft px-3 py-2 text-sm text-shu">
+              {error}
+            </div>
+          )}
+          {!layout && !error && <p className="text-xs text-white/70">Loading…</p>}
           {layout && fonts && mode === "edit" && (
             <EditorCanvas
               layout={layout}
@@ -214,16 +236,16 @@ export default function LayoutEditorHarness() {
               onPreviewComputed={onPreviewComputed}
             />
           )}
-          {mode === "server" && serverUrl && <img src={serverUrl} alt="server render" style={{ width: `${zoom * 100}%` }} />}
+          {mode === "server" && serverUrl && <img src={serverUrl} alt="Server render" style={{ width: `${zoom * 100}%` }} />}
           {issues.length > 0 && (
-            <div className="mt-3 text-[10px] text-amber-300/90" data-testid="issues">
+            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-xs text-warn" data-testid="issues">
               {issues.map((issue, index) => (
-                <span key={index} className="mr-3">{issue.regionId}: {issue.message}</span>
+                <span key={index}><Mono>{issue.regionId}</Mono>: {issue.message}</span>
               ))}
             </div>
           )}
         </div>
-        <aside className="custom-scrollbar w-[22rem] shrink-0 overflow-y-auto border-l border-border-muted bg-surface/60 p-3">
+        <aside className="w-80 shrink-0 overflow-y-auto border-l border-line bg-page p-3">
           {layout && selectedRegion ? (
             <RegionInspector
               region={selectedRegion}
@@ -236,7 +258,7 @@ export default function LayoutEditorHarness() {
               onMaskType={(type) => withLayout((current) => setRegionMaskType(current, selectedRegion.id, type, selectedPlan?.area || selectedRegion.textBox))}
               onResetArea={() => withLayout((current) => patchRegion(current, selectedRegion.id, { textArea: undefined }))}
               onDragTarget={setDragTarget}
-              onTranslate={() => setError("Harness: çeviri ucu kimlik doğrulama gerektirir")}
+              onTranslate={() => setError("Harness: the translate endpoint requires authentication")}
               onMove={(direction) => withLayout((current) => moveRegionOrder(current, selectedRegion.id, direction))}
               onDelete={() => {
                 withLayout((current) => removeRegion(current, selectedRegion.id));
@@ -244,11 +266,16 @@ export default function LayoutEditorHarness() {
               }}
             />
           ) : layout ? (
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               {sortedRegions(layout).map((region) => (
-                <button key={region.id} type="button" onClick={() => select(region.id)} className="block w-full rounded-xl border border-border-muted p-2 text-left text-xs">
-                  <span className="mr-2 font-black text-primary">{region.order + 1}</span>
-                  {region.translatedText || "—"}
+                <button
+                  key={region.id}
+                  type="button"
+                  onClick={() => select(region.id)}
+                  className="flex w-full items-start gap-2 rounded-control border border-line px-2.5 py-2 text-left transition-colors duration-120 hover:border-ink-3"
+                >
+                  <Mono className="mt-0.5 w-5 shrink-0 text-xs text-action">{region.order + 1}</Mono>
+                  <span className="min-w-0 flex-1 truncate text-sm text-ink">{region.translatedText || "—"}</span>
                 </button>
               ))}
             </div>

@@ -1,12 +1,13 @@
+import { ImageOff } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSeriesStore } from "../../stores/useSeriesStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useUIStore } from "../../stores/useUIStore";
 import { ViewMode } from "../../types";
+import { Spinner } from "../ui";
 import ViewModeControls from "../ViewModeControls";
 import ReaderHeader from "./ReaderHeader";
 import ReaderImageArea from "./ReaderImageArea";
-
 import ThumbnailStrip from "./ThumbnailStrip";
 
 import {
@@ -26,6 +27,7 @@ const ReaderView: React.FC = () => {
   const setCurrentImageIndex = useUIStore(
     (state) => state.setCurrentImageIndex,
   );
+  const toggleSidebar = useUIStore((state) => state.toggleSidebar);
   const toggleViewOnly = useSettingsStore((state) => state.toggleViewOnly);
 
   const prevSeriesIdRef = useRef(activeSeriesId);
@@ -96,50 +98,54 @@ const ReaderView: React.FC = () => {
     );
   }, [images.length, setCurrentImageIndex, thumbnailsPerPage]);
 
+  const handleOpenSeriesList = useCallback(() => {
+    toggleSidebar(true);
+  }, [toggleSidebar]);
+
   if (
     isImagesLoading ||
     (images.length === 0 && (activeSeries?.imageCount || 0) > 0)
   ) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-10">
-        <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-6" />
-        <h3 className="text-xl font-bold text-text-main mb-2">
-          Opening Grimoire...
-        </h3>
-        <p className="text-text-muted animate-pulse">
-          Fetching and signing pages for your viewing pleasure.
-        </p>
+      <div className="flex flex-1 items-center justify-center bg-theater p-10 text-theater-ink">
+        <div className="flex items-center gap-3 text-sm text-theater-ink-2">
+          <Spinner size="md" className="text-action" label="Opening pages" />
+          Opening pages…
+        </div>
       </div>
     );
   }
 
   if (images.length === 0) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-20 text-center">
-        <div className="w-20 h-20 bg-surface-muted/30 rounded-3xl flex items-center justify-center mb-6">
-          <i className="fas fa-image-slash text-3xl text-text-muted/40" />
-        </div>
-        <h3 className="text-xl font-bold text-text-main mb-2">
-          No Pages Found
-        </h3>
-        <p className="text-text-muted max-w-xs">
-          This series is currently empty. Add some images in the editor to get
-          started.
+      <div className="flex flex-1 flex-col items-center justify-center bg-theater p-10 text-center text-theater-ink">
+        <span
+          aria-hidden="true"
+          className="mb-4 flex h-12 w-12 items-center justify-center rounded-panel border border-theater-line text-theater-ink-2 [&_svg]:h-5 [&_svg]:w-5"
+        >
+          <ImageOff />
+        </span>
+        <h2 className="text-base font-semibold">No pages yet</h2>
+        <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-theater-ink-2">
+          This series is empty. Go back to the editor to add pages.
         </p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full animate-in fade-in duration-700 min-h-0 relative bg-black">
+    <div className="relative flex h-full min-h-0 flex-1 flex-col bg-theater text-theater-ink">
       <div
-        className={`absolute top-0 left-0 right-0 z-[100] transition-all duration-500 ease-in-out ${isUIVisible ? "translate-y-0 opacity-100" : "-translate-y-full opacity-0 pointer-events-none"}`}
+        className={`absolute inset-x-0 z-(--z-bar) transition-[top] duration-200 ease-out ${
+          isUIVisible ? "top-0" : "pointer-events-none -top-11"
+        }`}
       >
         <ReaderHeader
           activeSeries={activeSeries}
           currentImageIndex={currentImageIndex}
           imageCount={images.length}
           toggleViewOnly={toggleViewOnly}
+          onOpenSeriesList={handleOpenSeriesList}
           setCurrentImageIndex={setCurrentImageIndex}
           currentPageGroup={currentPageGroup}
           totalPageGroups={totalThumbPages}
@@ -160,9 +166,9 @@ const ReaderView: React.FC = () => {
         </ReaderHeader>
       </div>
 
-      <div className="flex-1 flex flex-col min-h-0 relative">
+      <div className="relative flex min-h-0 flex-1 flex-col">
         {comparisonMode === "grid" ? (
-          <div className="flex-1 p-4 md:p-8 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto px-4 pb-4 pt-15 md:px-6 md:pb-6">
             <ThumbnailStrip
               images={images}
               currentThumbSet={currentThumbSet}

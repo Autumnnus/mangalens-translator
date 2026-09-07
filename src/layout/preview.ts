@@ -65,12 +65,12 @@ export const buildPreview = (
     }
     plans.push(plan);
     if (plan.info.overflow) {
-      issues.push({ regionId: region.id, message: "Metin alana sığmıyor" });
+      issues.push({ regionId: region.id, message: "Text does not fit the area" });
     }
     if (region.mask.type === "auto" && region.placement === "inside" && region.fill.mode !== "none") {
       issues.push({
         regionId: region.id,
-        message: "Temizleme maskesi sunucu önizlemesinde hesaplanacak",
+        message: "Cleaning mask will be computed in the server preview",
       });
     }
   }

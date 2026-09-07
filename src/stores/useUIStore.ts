@@ -59,6 +59,8 @@ export interface ToastMessage {
   type: "success" | "error" | "info" | "warning";
 }
 
+const MAX_TOASTS = 4;
+
 export const useUIStore = create<UIState>((set) => ({
   isSidebarOpen: false,
   isSettingsModalOpen: false,
@@ -121,8 +123,9 @@ export const useUIStore = create<UIState>((set) => ({
         ? crypto.randomUUID()
         : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
+    // Keep at most 4 toasts on screen; drop the oldest when a 5th arrives.
     set((state) => ({
-      toasts: [...state.toasts, { id, message, type }],
+      toasts: [...state.toasts, { id, message, type }].slice(-MAX_TOASTS),
     }));
 
     setTimeout(() => {

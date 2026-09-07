@@ -336,7 +336,7 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
     let failure: string | undefined;
 
     if (pageJob && !["detecting", "queued"].includes(pageJob.stage)) {
-      results.push({ imageId, usage: combineUsage([], storedJob.model, false), error: "İş iptal edildi" });
+      results.push({ imageId, usage: combineUsage([], storedJob.model, false), error: "Job cancelled" });
       continue;
     }
 
@@ -448,7 +448,7 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
       results.push({ imageId, usage: completed.usage, cost: completed.cost, applied: true, translatedKey: completed.render.key });
     } catch (error) {
       if (error instanceof PipelineCancelledError) {
-        results.push({ imageId, usage: combineUsage(usageEntries, detectionModel, fallbackUsed), error: "İş iptal edildi" });
+        results.push({ imageId, usage: combineUsage(usageEntries, detectionModel, fallbackUsed), error: "Job cancelled" });
         continue;
       }
       const message = error instanceof Error ? error.message : String(error);

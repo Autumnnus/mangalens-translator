@@ -1,11 +1,26 @@
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Image as ImageIcon,
+  LayoutGrid,
+  Menu,
+  SkipBack,
+  SkipForward,
+} from "lucide-react";
 import React, { useEffect, useState } from "react";
 import { Series } from "../../types";
+import { IconButton, Input, Mono, SegmentedControl } from "../ui";
 
 interface ReaderHeaderProps {
   activeSeries: Series | undefined;
   currentImageIndex: number;
   imageCount: number;
   toggleViewOnly: () => void;
+  /** Opens the series list (sidebar) on small screens. */
+  onOpenSeriesList?: () => void;
   setCurrentImageIndex: (index: number) => void;
   currentPageGroup: number;
   totalPageGroups: number;
@@ -18,11 +33,15 @@ interface ReaderHeaderProps {
   children?: React.ReactNode;
 }
 
+/** Icon buttons on the theater ground: white on dark instead of ink tokens. */
+const theaterButton = "text-theater-ink-2 hover:bg-theater-hover hover:text-theater-ink";
+
 const ReaderHeader: React.FC<ReaderHeaderProps> = ({
   activeSeries,
   currentImageIndex,
   imageCount,
   toggleViewOnly,
+  onOpenSeriesList,
   setCurrentImageIndex,
   currentPageGroup,
   totalPageGroups,
@@ -51,147 +70,151 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
     goToPage(page);
   };
 
-  return (
-    <div className="bg-surface/40 backdrop-blur-xl p-3 sm:p-6 rounded-2xl sm:rounded-[3rem] border border-border-muted flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6 mb-4 sm:mb-8 shadow-premium shrink-0 mx-2 sm:mx-6 mt-2 sm:mt-6 overflow-hidden relative glass-card">
-      <div className="absolute top-0 left-0 w-32 h-full bg-primary/5 blur-3xl rounded-full -translate-x-1/2 pointer-events-none" />
+  const isFirst = currentImageIndex === 0;
+  const isLast = currentImageIndex === imageCount - 1;
+  const groupStart = (currentPageGroup - 1) * pageGroupSize + 1;
+  const groupEnd = Math.min(currentPageGroup * pageGroupSize, imageCount);
+  const layout: "grid" | "single" = comparisonMode === "grid" ? "grid" : "single";
 
-      <div className="flex items-center justify-between w-full sm:justify-start sm:gap-6 z-10">
-        <div className="flex flex-col min-w-0 pl-16 sm:pl-0">
-          <h2 className="text-sm sm:text-2xl font-black text-text-main italic uppercase tracking-tight truncate max-w-[150px] sm:max-w-none text-glow">
+  return (
+    <header className="flex h-11 shrink-0 items-center gap-2 border-b border-theater-line bg-theater px-2 text-theater-ink">
+      <div className="flex min-w-0 flex-1 items-center gap-1">
+        {onOpenSeriesList && (
+          <IconButton
+            label="Series list"
+            size="sm"
+            className={`${theaterButton} md:hidden`}
+            onClick={onOpenSeriesList}
+          >
+            <Menu />
+          </IconButton>
+        )}
+        <IconButton
+          label="Back to editor"
+          size="sm"
+          className={theaterButton}
+          onClick={toggleViewOnly}
+        >
+          <ArrowLeft />
+        </IconButton>
+        <div className="flex min-w-0 items-baseline gap-2 pl-1">
+          <h2 className="truncate text-sm font-semibold">
             {activeSeries?.name}
           </h2>
-          <div className="flex items-center gap-2 sm:gap-3 mt-1 sm:mt-0">
-            <span className="text-[8px] sm:text-[10px] font-black text-primary uppercase tracking-widest bg-primary/10 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full border border-primary/20 shadow-glow">
-              {activeSeries?.category}
-            </span>
-            <span className="text-[8px] sm:text-[10px] font-black text-text-dark uppercase tracking-widest">
-              Page {currentImageIndex + 1} / {imageCount}
-            </span>
-          </div>
+          <Mono className="hidden shrink-0 text-xs text-theater-ink-2 sm:inline">
+            Page {currentImageIndex + 1} / {imageCount}
+          </Mono>
         </div>
-
-        <button
-          onClick={toggleViewOnly}
-          className="group flex items-center gap-2.5 bg-surface-raised/50 hover:bg-red-500/10 text-text-muted hover:text-red-400 px-3 sm:px-5 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all border border-border-muted hover:border-red-500/20 shadow-premium ml-auto sm:ml-0"
-          title="Exit Reader"
-        >
-          <i className="fas fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
-          <span className="hidden sm:inline">Back</span>
-        </button>
       </div>
 
-      <div className="flex items-center justify-between md:justify-end gap-3 sm:gap-4 z-10">
-        <div className="flex items-center bg-surface-raised/50 rounded-2xl p-1.5 border border-border-muted glass gap-1">
-          <button
+      <div className="flex shrink-0 items-center gap-2">
+        <div
+          role="group"
+          aria-label="Page navigation"
+          className="flex items-center gap-0.5 rounded-control border border-theater-line p-0.5"
+        >
+          <IconButton
+            label="First page"
+            size="sm"
+            className={`${theaterButton} hidden sm:inline-flex`}
             onClick={() => goToPage(1)}
-            disabled={currentImageIndex === 0}
-            className="hidden sm:flex p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
-            title="First Page"
+            disabled={isFirst}
           >
-            <i className="fas fa-step-backward text-[10px] sm:text-xs"></i>
-          </button>
-          <button
+            <SkipBack />
+          </IconButton>
+          <IconButton
+            label="Previous page"
+            size="sm"
+            className={theaterButton}
             onClick={() => goToPage(currentImageIndex)}
-            disabled={currentImageIndex === 0}
-            className="p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
-            title="Previous Page"
+            disabled={isFirst}
           >
-            <i className="fas fa-chevron-left text-[10px] sm:text-xs"></i>
-          </button>
-          <label className="flex items-center gap-1 px-1 text-[9px] font-black text-text-muted">
-            <span className="sr-only">Go to page</span>
-            <input
-              type="number"
-              min={1}
-              max={imageCount}
-              value={pageInput}
-              onChange={(event) => setPageInput(event.target.value)}
-              onBlur={commitPageInput}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") event.currentTarget.blur();
-              }}
-              className="w-8 bg-transparent text-center text-[10px] font-black text-text-main outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              aria-label={`Go to page, between 1 and ${imageCount}`}
-            />
-            <span className="text-text-dark">/ {imageCount}</span>
-          </label>
-          <button
+            <ChevronLeft />
+          </IconButton>
+          <Input
+            type="number"
+            mono
+            inputSize="sm"
+            min={1}
+            max={imageCount}
+            value={pageInput}
+            onChange={(event) => setPageInput(event.target.value)}
+            onBlur={commitPageInput}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+            }}
+            className="no-spinner w-14 text-center"
+            aria-label={`Go to page, between 1 and ${imageCount}`}
+          />
+          <IconButton
+            label="Next page"
+            size="sm"
+            className={theaterButton}
             onClick={() => goToPage(currentImageIndex + 2)}
-            disabled={currentImageIndex === imageCount - 1}
-            className="p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
-            title="Next Page"
+            disabled={isLast}
           >
-            <i className="fas fa-chevron-right text-[10px] sm:text-xs"></i>
-          </button>
-          <button
+            <ChevronRight />
+          </IconButton>
+          <IconButton
+            label="Last page"
+            size="sm"
+            className={`${theaterButton} hidden sm:inline-flex`}
             onClick={() => goToPage(imageCount)}
-            disabled={currentImageIndex === imageCount - 1}
-            className="hidden sm:flex p-2 sm:p-2.5 hover:bg-surface-elevated rounded-xl disabled:opacity-30 transition-all text-text-muted hover:text-text-main"
-            title="Last Page"
+            disabled={isLast}
           >
-            <i className="fas fa-step-forward text-[10px] sm:text-xs"></i>
-          </button>
+            <SkipForward />
+          </IconButton>
         </div>
 
         {totalPageGroups > 1 && (
-          <div className="flex items-center gap-1 rounded-2xl border border-border-muted bg-surface-raised/50 p-1.5 glass">
-            <button
-              type="button"
+          <div
+            role="group"
+            aria-label="Page set navigation"
+            className="hidden items-center gap-0.5 rounded-control border border-theater-line p-0.5 md:flex"
+          >
+            <IconButton
+              label="Previous page set"
+              size="sm"
+              className={theaterButton}
               onClick={() => onPageGroupChange(currentPageGroup - 1)}
               disabled={currentPageGroup === 1}
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-text-muted transition-all hover:bg-surface-elevated hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
-              title="Previous page group"
-              aria-label="Previous page group"
             >
-              <i className="fas fa-angle-double-left text-xs" />
-            </button>
-            <span
-              className="min-w-14 px-1 text-center text-[9px] font-black uppercase tracking-wider text-text-muted"
-              title={`Pages ${(currentPageGroup - 1) * pageGroupSize + 1}–${Math.min(currentPageGroup * pageGroupSize, imageCount)}`}
+              <ChevronsLeft />
+            </IconButton>
+            <Mono
+              className="min-w-24 px-1 text-center text-xs text-theater-ink-2"
+              title={`Set ${currentPageGroup} of ${totalPageGroups}`}
             >
-              Set {currentPageGroup}/{totalPageGroups}
-            </span>
-            <button
-              type="button"
+              Pages {groupStart}–{groupEnd}
+            </Mono>
+            <IconButton
+              label="Next page set"
+              size="sm"
+              className={theaterButton}
               onClick={() => onPageGroupChange(currentPageGroup + 1)}
               disabled={currentPageGroup === totalPageGroups}
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-text-muted transition-all hover:bg-surface-elevated hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
-              title="Next page group"
-              aria-label="Next page group"
             >
-              <i className="fas fa-angle-double-right text-xs" />
-            </button>
+              <ChevronsRight />
+            </IconButton>
           </div>
         )}
 
-        <div className="flex items-center bg-surface-raised/50 rounded-2xl p-1.5 border border-border-muted glass gap-1.5">
-          <button
-            onClick={() => setComparisonMode("grid")}
-            className={`p-2 sm:p-2.5 rounded-xl transition-all ${
-              comparisonMode === "grid"
-                ? "bg-primary text-white shadow-glow"
-                : "text-text-muted hover:text-text-main hover:bg-surface-elevated"
-            }`}
-            title="Grid View"
-          >
-            <i className="fas fa-th text-[10px] sm:text-xs"></i>
-          </button>
-          <button
-            onClick={() => setComparisonMode("toggle")}
-            className={`p-2 sm:p-2.5 rounded-xl transition-all ${
-              comparisonMode !== "grid"
-                ? "bg-primary text-white shadow-glow"
-                : "text-text-muted hover:text-text-main hover:bg-surface-elevated"
-            }`}
-            title="Single View (Toggle comparison)"
-          >
-            <i className="fas fa-image text-[10px] sm:text-xs"></i>
-          </button>
-        </div>
+        <SegmentedControl
+          label="Layout"
+          size="sm"
+          value={layout}
+          onChange={(value) =>
+            setComparisonMode(value === "grid" ? "grid" : "toggle")
+          }
+          options={[
+            { value: "grid", icon: <LayoutGrid />, title: "Grid" },
+            { value: "single", icon: <ImageIcon />, title: "Single page" },
+          ]}
+        />
 
         {children}
       </div>
-    </div>
+    </header>
   );
 };
 

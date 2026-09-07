@@ -9,7 +9,7 @@ export const describeError = (error: unknown, fallback = "Unknown server error")
   const causeMessage =
     cause instanceof Error ? cause.message : typeof cause === "string" ? cause : null;
   if (causeMessage && error.message.startsWith("Failed query")) {
-    return `Veritabanı hatası: ${causeMessage}`;
+    return `Database error: ${causeMessage}`;
   }
   if (causeMessage && !error.message.includes(causeMessage)) {
     return `${error.message} (${causeMessage})`;

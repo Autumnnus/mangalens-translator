@@ -1,4 +1,14 @@
+"use client";
+
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from "lucide-react";
 import React, { useEffect, useMemo, useState } from "react";
+import { cn } from "../../utils/cn";
+import { IconButton, Input, Mono } from "../ui";
 
 interface EditorPaginationProps {
   currentPage: number;
@@ -19,7 +29,7 @@ const EditorPagination: React.FC<EditorPaginationProps> = ({
     setPageInput(String(currentPage));
   }, [currentPage]);
 
-  const handlePageClick = (page: number) => {
+  const goTo = (page: number) => {
     onPageChange(Math.min(Math.max(page, 1), totalPages));
   };
 
@@ -29,7 +39,7 @@ const EditorPagination: React.FC<EditorPaginationProps> = ({
       setPageInput(String(currentPage));
       return;
     }
-    handlePageClick(page);
+    goTo(page);
   };
 
   const pageNumbers = useMemo(() => {
@@ -47,117 +57,100 @@ const EditorPagination: React.FC<EditorPaginationProps> = ({
 
   if (totalPages <= 1) return null;
 
-  const isTop = placement === "top";
-
-  const pageButtons = pageNumbers.flatMap((page, index) => {
-    const previousPage = pageNumbers[index - 1];
-    const needsEllipsis = previousPage !== undefined && page - previousPage > 1;
-    const items: React.ReactNode[] = [];
-
-    if (needsEllipsis) {
-      items.push(
-        <span
-          key={`ellipsis-${previousPage}-${page}`}
-          className="px-1 text-xs font-bold text-text-dark"
-        >
-          …
-        </span>,
-      );
-    }
-
-    items.push(
-      <button
-        key={page}
-        type="button"
-        onClick={() => handlePageClick(page)}
-        aria-current={currentPage === page ? "page" : undefined}
-        className={`h-10 min-w-10 rounded-xl border px-3 text-xs font-black transition-all ${
-          currentPage === page
-            ? "border-primary bg-primary text-white shadow-glow"
-            : "border-border-muted bg-surface-raised/70 text-text-muted hover:border-primary/50 hover:text-text-main"
-        }`}
-      >
-        {page}
-      </button>,
-    );
-
-    return items;
-  });
-
   return (
     <nav
-      aria-label="Editor page navigation"
-      className={`flex flex-col items-center justify-center gap-3 border-border-muted/70 py-5 sm:flex-row sm:gap-4 ${
-        isTop ? "mb-6 border-y" : "mt-12 border-t pt-12"
-      }`}
+      aria-label="Page navigation"
+      className={cn(
+        "flex items-center justify-center gap-1.5 py-3",
+        placement === "top" ? "mb-3 border-b border-line-2" : "mt-6 border-t border-line-2",
+      )}
     >
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          disabled={currentPage === 1}
-          onClick={() => handlePageClick(1)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-muted bg-surface-raised/70 text-text-muted transition-all hover:border-primary/50 hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
-          title="First page"
-          aria-label="First page"
-        >
-          <i className="fas fa-angle-double-left text-xs" />
-        </button>
-        <button
-          type="button"
-          disabled={currentPage === 1}
-          onClick={() => handlePageClick(currentPage - 1)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-muted bg-surface-raised/70 text-text-muted transition-all hover:border-primary/50 hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
-          title="Previous page"
-          aria-label="Previous page"
-        >
-          <i className="fas fa-chevron-left text-xs" />
-        </button>
+      <IconButton
+        label="First screen"
+        size="sm"
+        variant="secondary"
+        disabled={currentPage === 1}
+        onClick={() => goTo(1)}
+      >
+        <ChevronsLeft />
+      </IconButton>
+      <IconButton
+        label="Previous screen"
+        size="sm"
+        variant="secondary"
+        disabled={currentPage === 1}
+        onClick={() => goTo(currentPage - 1)}
+      >
+        <ChevronLeft />
+      </IconButton>
+
+      <div className="hidden items-center gap-1 sm:flex">
+        {pageNumbers.map((page, index) => {
+          const previous = pageNumbers[index - 1];
+          const gap = previous !== undefined && page - previous > 1;
+          return (
+            <React.Fragment key={page}>
+              {gap && (
+                <span aria-hidden="true" className="px-1 text-ink-3">
+                  …
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={() => goTo(page)}
+                aria-current={currentPage === page ? "page" : undefined}
+                className={cn(
+                  "h-7 min-w-7 rounded-control border px-2 font-mono text-[13px] tabular transition-colors duration-120",
+                  currentPage === page
+                    ? "border-action bg-npb text-ink"
+                    : "border-line bg-page text-ink-2 hover:border-ink-3 hover:text-ink",
+                )}
+              >
+                {page}
+              </button>
+            </React.Fragment>
+          );
+        })}
       </div>
 
-      <div className="hidden items-center gap-1.5 sm:flex">{pageButtons}</div>
-
-      <label className="flex items-center gap-2 rounded-xl border border-border-muted bg-surface-raised/70 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-text-muted">
-        <span className="hidden sm:inline">Page</span>
-        <input
+      <label className="flex items-center gap-1.5 px-1 text-xs text-ink-3">
+        <span className="sr-only">Go to screen</span>
+        <Input
           type="number"
           min={1}
           max={totalPages}
+          inputSize="sm"
+          mono
           value={pageInput}
           onChange={(event) => setPageInput(event.target.value)}
           onBlur={commitPageInput}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
+            if (event.key === "Enter") event.currentTarget.blur();
           }}
-          className="w-9 bg-transparent text-center text-xs font-black text-text-main outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          aria-label={`Go to page, between 1 and ${totalPages}`}
+          className="no-spinner w-12 text-center"
+          aria-label={`Go to screen, between 1 and ${totalPages}`}
         />
-        <span className="text-text-dark">/ {totalPages}</span>
+        <Mono>/ {totalPages}</Mono>
       </label>
 
-      <div className="flex items-center gap-1.5">
-        <button
-          type="button"
-          disabled={currentPage === totalPages}
-          onClick={() => handlePageClick(currentPage + 1)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-muted bg-surface-raised/70 text-text-muted transition-all hover:border-primary/50 hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
-          title="Next page"
-          aria-label="Next page"
-        >
-          <i className="fas fa-chevron-right text-xs" />
-        </button>
-        <button
-          type="button"
-          disabled={currentPage === totalPages}
-          onClick={() => handlePageClick(totalPages)}
-          className="flex h-10 w-10 items-center justify-center rounded-xl border border-border-muted bg-surface-raised/70 text-text-muted transition-all hover:border-primary/50 hover:text-text-main disabled:cursor-not-allowed disabled:opacity-30"
-          title="Last page"
-          aria-label="Last page"
-        >
-          <i className="fas fa-angle-double-right text-xs" />
-        </button>
-      </div>
+      <IconButton
+        label="Next screen"
+        size="sm"
+        variant="secondary"
+        disabled={currentPage === totalPages}
+        onClick={() => goTo(currentPage + 1)}
+      >
+        <ChevronRight />
+      </IconButton>
+      <IconButton
+        label="Last screen"
+        size="sm"
+        variant="secondary"
+        disabled={currentPage === totalPages}
+        onClick={() => goTo(totalPages)}
+      >
+        <ChevronsRight />
+      </IconButton>
     </nav>
   );
 };

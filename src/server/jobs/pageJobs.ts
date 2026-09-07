@@ -90,7 +90,7 @@ export const createPageJob = async ({
     // One active job per page: a new request supersedes the old one.
     await tx
       .update(pageJobs)
-      .set({ stage: "cancelled", error: "Yeni bir iş başlatıldı", updatedAt: now, completedAt: now })
+      .set({ stage: "cancelled", error: "Replaced by a newer job", updatedAt: now, completedAt: now })
       .where(and(eq(pageJobs.imageId, imageId), inArray(pageJobs.stage, ACTIVE_STAGES)));
     const [job] = await tx
       .insert(pageJobs)
@@ -167,7 +167,7 @@ export const cancelPageJob = async (jobId: string, userId: string) => {
   const now = new Date();
   const [job] = await db
     .update(pageJobs)
-    .set({ stage: "cancelled", error: "Kullanıcı iptal etti", updatedAt: now, completedAt: now })
+    .set({ stage: "cancelled", error: "Cancelled by user", updatedAt: now, completedAt: now })
     .where(and(eq(pageJobs.id, jobId), eq(pageJobs.userId, userId), inArray(pageJobs.stage, ACTIVE_STAGES)))
     .returning();
   if (!job) return null;
@@ -196,7 +196,7 @@ export const sweepStalePageJobs = async () => {
     .update(pageJobs)
     .set({
       stage: "failed",
-      error: "İş sunucuda yarım kaldı (yeniden başlatma). Tekrar deneyin.",
+      error: "The job was interrupted by a server restart. Try again.",
       updatedAt: new Date(),
       completedAt: new Date(),
     })
@@ -249,7 +249,7 @@ const executeGeminiJob = async (jobId: string) => {
 
   const image = await getOwnedImage(job.imageId, job.userId);
   if (!image) {
-    await failPageJob(job.id, "Sayfa artık mevcut değil");
+    await failPageJob(job.id, "The page no longer exists");
     return;
   }
   const user = await db.query.users.findFirst({ where: eq(users.id, job.userId) });
@@ -257,7 +257,7 @@ const executeGeminiJob = async (jobId: string) => {
   const settings = resolvePipelineSettings(stored, job.options || {});
   const keys = resolveActiveGeminiKeys(stored);
   if (keys.length === 0) {
-    await failPageJob(job.id, "Gemini API anahtarı yok");
+    await failPageJob(job.id, "No Gemini API key configured");
     return;
   }
   const seriesRow = await db.query.series.findFirst({
@@ -332,7 +332,7 @@ const executeGeminiJob = async (jobId: string) => {
         const wait = Math.min(60_000, Math.max(5_000, suggested));
         await setPageJobStage(job.id, "detecting", {
           attempts: attempt,
-          error: `Gemini yoğun; ${Math.round(wait / 1000)} sn sonra tekrar denenecek`,
+          error: `Gemini is busy; retrying in ${Math.round(wait / 1000)} s`,
         });
         await sleep(wait);
         if (!(await isPageJobActive(job.id))) return;
@@ -343,10 +343,10 @@ const executeGeminiJob = async (jobId: string) => {
       const callError = error as GeminiCallError;
       const message =
         callError?.isSafetyBlocked === true
-          ? "Gemini bu sayfayı güvenlik nedeniyle reddetti. Yerel OCR için worker ve yetişkin onaylı seri gerekir."
+          ? "Gemini rejected this page for safety reasons. Local OCR needs a running worker and a series marked as verified adult content."
           : error instanceof Error
             ? error.message
-            : "Çeviri başarısız";
+            : "Translation failed";
       await failPageJob(job.id, message);
       return;
     }
@@ -359,7 +359,7 @@ const executeMigrationJob = async (jobId: string) => {
   if (!job) return;
   const image = await getOwnedImage(job.imageId, job.userId);
   if (!image) {
-    await failPageJob(job.id, "Sayfa artık mevcut değil");
+    await failPageJob(job.id, "The page no longer exists");
     return;
   }
   try {

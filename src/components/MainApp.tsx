@@ -17,23 +17,31 @@ import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
 import { useUIStore } from "../stores/useUIStore";
 import GlobalModals from "./GlobalModals";
+import DocumentBar from "./layout/DocumentBar";
 import SeriesSidebar from "./SeriesSidebar";
+import { Spinner } from "./ui";
 
 const ReaderView = React.lazy(() => import("./viewer/ReaderView"));
 const EditorWorkspace = React.lazy(() => import("./editor/EditorWorkspace"));
 
+const WorkspaceFallback: React.FC<{ label: string }> = ({ label }) => (
+  <div className="flex flex-1 items-center justify-center">
+    <div className="flex items-center gap-3 text-sm text-ink-2">
+      <Spinner size="md" className="text-action" />
+      {label}
+    </div>
+  </div>
+);
+
 const MainAppContent: React.FC = () => {
   useUrlSync();
 
-  // Selective store access for performance
   const activeSeriesId = useSeriesStore((state) => state.activeSeriesId);
   const setActiveSeriesId = useSeriesStore((state) => state.setActiveSeriesId);
 
-  // TanStack Queries
   const { data: seriesData, isLoading: isSeriesLoading } = useSeriesQuery();
   const { data: categoriesData } = useCategoriesQuery();
 
-  // Mutations
   const { mutate: deleteSeries } = useDeleteSeriesMutation();
   const { mutate: updateSeries } = useUpdateSeriesMutation();
   const { mutate: updateCategory } = useUpdateCategoryMutation();
@@ -51,7 +59,6 @@ const MainAppContent: React.FC = () => {
     (state) => state.toggleNewSeriesModal,
   );
   const setEditingSeriesId = useUIStore((state) => state.setEditingSeriesId);
-
   const setDefaultCategoryId = useUIStore(
     (state) => state.setDefaultCategoryId,
   );
@@ -62,7 +69,6 @@ const MainAppContent: React.FC = () => {
     (state) => state.initializeSettings,
   );
 
-  // Mount effects
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -86,7 +92,6 @@ const MainAppContent: React.FC = () => {
     void loadSettings();
   }, [initializeSettings]);
 
-  // Optimized callbacks
   const handleSelectSeries = useCallback(
     (id: string) => {
       setActiveSeriesId(id);
@@ -97,7 +102,7 @@ const MainAppContent: React.FC = () => {
 
   const handleEditSeries = useCallback(
     (id: string) => {
-      // Check if id is in 'new:categoryId' format
+      // "new:<categoryId>" opens the create form with that category preselected.
       if (id.startsWith("new:")) {
         const categoryId = id.substring(4);
         setDefaultCategoryId(categoryId);
@@ -113,10 +118,10 @@ const MainAppContent: React.FC = () => {
 
   const handleDeleteSeries = useCallback(
     (id: string) => {
-      const s = series.find((item) => item.id === id);
+      const target = series.find((item) => item.id === id);
       confirm({
-        title: "Delete Series",
-        message: `Are you sure you want to delete "${s?.name}"? All associated images and metadata will be permanently removed.`,
+        title: "Delete series",
+        message: `Delete "${target?.name}"? All of its pages, translations and layouts will be removed permanently.`,
         onConfirm: () => deleteSeries(id),
         type: "danger",
       });
@@ -138,7 +143,6 @@ const MainAppContent: React.FC = () => {
 
   const handleMoveCategory = useCallback(
     (categoryId: string, targetParentId: string | undefined) => {
-      // Helper for recursive check
       const checkIsDescendant = (pId: string, cId: string): boolean => {
         const child = categories.find((c) => c.id === cId);
         if (!child || !child.parentId) return false;
@@ -148,7 +152,7 @@ const MainAppContent: React.FC = () => {
 
       if (categoryId === targetParentId) return;
 
-      // Prevent moving a category into its own descendant (Infinite loop protection)
+      // Never move a category into one of its own descendants.
       if (targetParentId && checkIsDescendant(categoryId, targetParentId)) {
         console.error(
           "Circular dependency detected: Cannot move parent into child",
@@ -193,8 +197,6 @@ const MainAppContent: React.FC = () => {
 
       if (swapIndex !== -1) {
         const otherSeries = siblings[swapIndex];
-
-        // Efficient swap in 1 request
         swapSeriesSequence({
           id1: targetSeries.id,
           id2: otherSeries.id,
@@ -204,7 +206,7 @@ const MainAppContent: React.FC = () => {
     [series, swapSeriesSequence],
   );
 
-  // Prevent drag and drop on the entire window
+  // Stop the browser from opening dropped files anywhere in the window.
   useEffect(() => {
     const handleDragOver = (e: DragEvent) => e.preventDefault();
     const handleDrop = (e: DragEvent) => e.preventDefault();
@@ -220,7 +222,7 @@ const MainAppContent: React.FC = () => {
     <>
       <GlobalModals />
 
-      <div className="flex h-screen bg-background text-text-main font-sans overflow-hidden">
+      <div className="flex h-dvh overflow-hidden bg-paper text-ink">
         <SeriesSidebar
           series={series}
           activeId={activeSeriesId}
@@ -237,21 +239,19 @@ const MainAppContent: React.FC = () => {
           isLoading={isLoading}
         />
 
-        <div className="flex-1 flex flex-col h-full overflow-x-hidden overflow-y-auto custom-scrollbar relative">
-          <React.Suspense
-            fallback={
-              <div className="flex-1 flex items-center justify-center">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-                  <p className="text-text-muted animate-pulse">
-                    Preparing Workspace...
-                  </p>
-                </div>
-              </div>
-            }
-          >
-            {isViewOnly ? <ReaderView /> : <EditorWorkspace />}
-          </React.Suspense>
+        <div className="flex min-w-0 flex-1 flex-col">
+          {!isViewOnly && <DocumentBar />}
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <Suspense
+              fallback={
+                <WorkspaceFallback
+                  label={isViewOnly ? "Opening reader…" : "Opening editor…"}
+                />
+              }
+            >
+              {isViewOnly ? <ReaderView /> : <EditorWorkspace />}
+            </Suspense>
+          </div>
         </div>
       </div>
     </>
@@ -260,7 +260,7 @@ const MainAppContent: React.FC = () => {
 
 const MainApp: React.FC = () => {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<WorkspaceFallback label="Loading…" />}>
       <MainAppContent />
     </Suspense>
   );

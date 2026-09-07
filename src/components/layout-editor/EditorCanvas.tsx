@@ -45,11 +45,11 @@ const cursorFor = (handle: ResizeHandle | "move") =>
           : "nwse-resize";
 
 const KIND_COLORS: Record<Region["kind"], string> = {
-  speech: "#8b5cf6",
-  thought: "#a78bfa",
-  caption: "#0ea5e9",
-  sfx: "#f59e0b",
-  label: "#10b981",
+  speech: "#6CC4DC",
+  thought: "#A7DBEA",
+  caption: "#F2C14E",
+  sfx: "#F28B6B",
+  label: "#8FD19E",
 };
 
 /**
@@ -182,7 +182,7 @@ const EditorCanvas: React.FC<Props> = ({
           return (
             <g key={region.id} opacity={region.hidden ? 0.35 : 1}>
               {selected && maskPath && (
-                <path d={maskPath} fill="none" stroke="#34c759" strokeWidth={strokeWidth} strokeDasharray={`${4 / scale} ${3 / scale}`} style={{ pointerEvents: "none" }} />
+                <path d={maskPath} fill="none" stroke="#63B983" strokeWidth={strokeWidth} strokeDasharray={`${4 / scale} ${3 / scale}`} style={{ pointerEvents: "none" }} />
               )}
               {(showSourceBoxes || selected) && (
                 <rect
@@ -191,7 +191,7 @@ const EditorCanvas: React.FC<Props> = ({
                   width={region.textBox.w}
                   height={region.textBox.h}
                   fill="none"
-                  stroke="#ff3b30"
+                  stroke="#E0655A"
                   strokeWidth={strokeWidth}
                   strokeDasharray={`${5 / scale} ${4 / scale}`}
                   style={{ pointerEvents: "none" }}
@@ -214,8 +214,8 @@ const EditorCanvas: React.FC<Props> = ({
                   y={editBox.y}
                   width={editBox.w}
                   height={editBox.h}
-                  fill="#ff3b3022"
-                  stroke="#ff3b30"
+                  fill="#E0655A22"
+                  stroke="#E0655A"
                   strokeWidth={strokeWidth * 1.6}
                   style={{ cursor: cursorFor("move") }}
                   onPointerDown={(event) => startDrag(event, region, "move")}
@@ -241,7 +241,7 @@ const EditorCanvas: React.FC<Props> = ({
                       width={handleSize}
                       height={handleSize}
                       fill="#ffffff"
-                      stroke={dragTarget === "textBox" ? "#ff3b30" : color}
+                      stroke={dragTarget === "textBox" ? "#E0655A" : color}
                       strokeWidth={strokeWidth}
                       style={{ cursor: cursorFor(handle) }}
                       onPointerDown={(event) => startDrag(event, region, handle)}
@@ -252,13 +252,13 @@ const EditorCanvas: React.FC<Props> = ({
                 x={area.x + 4 / scale}
                 y={area.y - 5 / scale}
                 fontSize={11 / scale}
-                fontFamily="sans-serif"
-                fontWeight={700}
+                fontFamily="IBM Plex Mono, ui-monospace, monospace"
+                fontWeight={500}
                 fill={color}
                 style={{ pointerEvents: "none" }}
               >
                 {region.order + 1} · {region.kind}
-                {region.locked ? " 🔒" : ""}
+                {region.locked ? " · locked" : ""}
               </text>
             </g>
           );

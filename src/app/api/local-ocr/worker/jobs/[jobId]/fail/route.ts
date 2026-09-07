@@ -46,7 +46,7 @@ export async function POST(
     .where(eq(localOcrJobs.id, current.id));
   if (!retry) {
     const pageJob = await findActivePageJobByRef(current.id);
-    if (pageJob) await failPageJob(pageJob.id, `Yerel OCR başarısız: ${parsed.data.error}`);
+    if (pageJob) await failPageJob(pageJob.id, `Local OCR failed: ${parsed.data.error}`);
   }
   return NextResponse.json({ retry });
 }

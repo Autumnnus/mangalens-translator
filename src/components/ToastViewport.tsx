@@ -1,7 +1,39 @@
 "use client";
 
+import { AlertTriangle, CheckCircle2, Info, X, XCircle } from "lucide-react";
 import React from "react";
-import { useUIStore } from "../stores/useUIStore";
+import { ToastMessage, useUIStore } from "../stores/useUIStore";
+import { IconButton } from "./ui";
+
+type ToastType = ToastMessage["type"];
+
+const toneStripe: Record<ToastType, string> = {
+  success: "border-l-ok",
+  error: "border-l-shu",
+  warning: "border-l-warn",
+  info: "border-l-action",
+};
+
+const toneIcon: Record<ToastType, string> = {
+  success: "text-ok",
+  error: "text-shu",
+  warning: "text-warn",
+  info: "text-action",
+};
+
+const ToneIcon: React.FC<{ type: ToastType }> = ({ type }) => {
+  const className = `mt-0.5 h-4 w-4 shrink-0 ${toneIcon[type]}`;
+  switch (type) {
+    case "success":
+      return <CheckCircle2 aria-hidden="true" className={className} />;
+    case "error":
+      return <XCircle aria-hidden="true" className={className} />;
+    case "warning":
+      return <AlertTriangle aria-hidden="true" className={className} />;
+    default:
+      return <Info aria-hidden="true" className={className} />;
+  }
+};
 
 const ToastViewport: React.FC = () => {
   const toasts = useUIStore((state) => state.toasts);
@@ -10,42 +42,30 @@ const ToastViewport: React.FC = () => {
   if (!toasts.length) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[200] flex w-[min(92vw,28rem)] flex-col gap-2">
+    <div
+      role="region"
+      aria-label="Notifications"
+      aria-live="polite"
+      className="fixed bottom-4 right-4 z-(--z-toast) flex w-[min(92vw,24rem)] flex-col gap-2"
+    >
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`animate-slide-up rounded-xl border px-4 py-3 shadow-premium backdrop-blur-md ${
-            toast.type === "error"
-              ? "border-red-500/30 bg-red-500/15 text-red-100"
-              : toast.type === "success"
-                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-100"
-                : toast.type === "warning"
-                  ? "border-amber-500/30 bg-amber-500/15 text-amber-100"
-                  : "border-primary/30 bg-surface-elevated/90 text-text-main"
-          }`}
+          role={toast.type === "error" ? "alert" : undefined}
+          className={`flex items-start gap-2.5 rounded-panel border border-line border-l-[3px] bg-page px-3 py-2.5 shadow-pop animate-slide-in-right ${toneStripe[toast.type]}`}
         >
-          <div className="flex items-start gap-3">
-            <i
-              className={`mt-0.5 text-xs ${
-                toast.type === "error"
-                  ? "fas fa-triangle-exclamation text-red-300"
-                  : toast.type === "success"
-                    ? "fas fa-circle-check text-emerald-300"
-                    : toast.type === "warning"
-                      ? "fas fa-circle-exclamation text-amber-300"
-                      : "fas fa-circle-info text-primary"
-              }`}
-            />
-            <p className="flex-1 text-sm leading-5">{toast.message}</p>
-            <button
-              type="button"
-              onClick={() => dismissToast(toast.id)}
-              className="text-xs text-text-muted hover:text-text-main transition-colors"
-              aria-label="Dismiss notification"
-            >
-              <i className="fas fa-xmark" />
-            </button>
-          </div>
+          <ToneIcon type={toast.type} />
+          <p className="min-w-0 flex-1 text-sm leading-5 text-ink">
+            {toast.message}
+          </p>
+          <IconButton
+            label="Dismiss"
+            size="sm"
+            onClick={() => dismissToast(toast.id)}
+            className="-mr-1 -mt-0.5"
+          >
+            <X />
+          </IconButton>
         </div>
       ))}
     </div>
