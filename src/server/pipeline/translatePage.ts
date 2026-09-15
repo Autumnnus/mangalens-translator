@@ -28,6 +28,9 @@ import {
 } from "@/server/pages/layoutService";
 import {
   LocalOcrBubble,
+  DEFAULT_GEMINI_FALLBACK_MODEL,
+  DEFAULT_GEMINI_MODEL,
+  isSupportedGeminiModel,
   ProcessingMetadata,
   TranslationSettings,
   UsageBreakdown,
@@ -54,17 +57,29 @@ export interface PipelineSettings {
 export const resolvePipelineSettings = (
   stored: Partial<TranslationSettings>,
   overrides: Partial<PipelineSettings> = {},
-): PipelineSettings => ({
-  targetLanguage:
-    overrides.targetLanguage || stored.targetLanguage || "Turkish",
-  customInstructions:
-    overrides.customInstructions ?? stored.customInstructions ?? undefined,
-  model: overrides.model || stored.model || "gemini-2.5-flash-lite",
-  fallbackModel:
-    overrides.fallbackModel || stored.fallbackModel || "gemini-2.5-flash",
-  enableQualityFallback:
-    overrides.enableQualityFallback ?? stored.enableQualityFallback ?? true,
-});
+): PipelineSettings => {
+  const model = isSupportedGeminiModel(overrides.model)
+    ? overrides.model
+    : isSupportedGeminiModel(stored.model)
+      ? stored.model
+      : DEFAULT_GEMINI_MODEL;
+  const fallbackModel = isSupportedGeminiModel(overrides.fallbackModel)
+    ? overrides.fallbackModel
+    : isSupportedGeminiModel(stored.fallbackModel)
+      ? stored.fallbackModel
+      : DEFAULT_GEMINI_FALLBACK_MODEL;
+
+  return {
+    targetLanguage:
+      overrides.targetLanguage || stored.targetLanguage || "Turkish",
+    customInstructions:
+      overrides.customInstructions ?? stored.customInstructions ?? undefined,
+    model,
+    fallbackModel,
+    enableQualityFallback:
+      overrides.enableQualityFallback ?? stored.enableQualityFallback ?? true,
+  };
+};
 
 export interface DetectorInfo {
   provider: ProcessingMetadata["detection"]["provider"];

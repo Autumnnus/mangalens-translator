@@ -43,9 +43,7 @@ export const seriesService = {
     return images.map((img) => ({
       id: img.id,
       fileName: img.fileName,
-      originalKey: img.originalKey,
       originalUrl: img.originalUrl,
-      translatedKey: img.translatedKey || undefined,
       translatedUrl: img.translatedUrl,
       status: img.status as ProcessedImage["status"],
       sequenceNumber: img.sequenceNumber || 0,

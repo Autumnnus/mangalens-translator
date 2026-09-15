@@ -2,7 +2,12 @@ import { describeError } from "@/server/errors";
 import { auth } from "@/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { TranslationSettings } from "@/types";
+import {
+  DEFAULT_GEMINI_FALLBACK_MODEL,
+  DEFAULT_GEMINI_MODEL,
+  isSupportedGeminiModel,
+  TranslationSettings,
+} from "@/types";
 import { eq } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -11,8 +16,8 @@ const DEFAULT_SETTINGS: TranslationSettings = {
   translationPipeline: "auto",
   developerMode: false,
   customInstructions: "",
-  model: "gemini-2.5-flash-lite",
-  fallbackModel: "gemini-2.5-flash",
+  model: DEFAULT_GEMINI_MODEL,
+  fallbackModel: DEFAULT_GEMINI_FALLBACK_MODEL,
   enableQualityFallback: true,
   useGeminiBatch: true,
   batchSize: 10,
@@ -34,7 +39,14 @@ const withTranslationPipelineDefaults = (
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
-    model: isLegacy ? "gemini-2.5-flash-lite" : stored?.model || DEFAULT_SETTINGS.model,
+    model: isLegacy
+      ? DEFAULT_GEMINI_MODEL
+      : isSupportedGeminiModel(stored?.model)
+        ? stored.model
+        : DEFAULT_SETTINGS.model,
+    fallbackModel: isSupportedGeminiModel(stored?.fallbackModel)
+      ? stored.fallbackModel
+      : DEFAULT_SETTINGS.fallbackModel,
     translationPipeline,
   };
 };
@@ -86,6 +98,12 @@ export async function PATCH(req: NextRequest) {
     const updatedSettings: TranslationSettings = {
       ...currentSettings,
       ...incoming,
+      model: isSupportedGeminiModel(incoming.model)
+        ? incoming.model
+        : currentSettings.model,
+      fallbackModel: isSupportedGeminiModel(incoming.fallbackModel)
+        ? incoming.fallbackModel
+        : currentSettings.fallbackModel,
       translationPipeline: ["auto", "gemini_vision", "local_ocr"].includes(
         String(incoming.translationPipeline),
       )

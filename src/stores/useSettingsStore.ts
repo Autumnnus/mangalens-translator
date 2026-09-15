@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { GEMINI_MODELS, TranslationSettings } from "../types";
+import {
+  DEFAULT_GEMINI_FALLBACK_MODEL,
+  DEFAULT_GEMINI_MODEL,
+  GEMINI_MODELS,
+  TranslationSettings,
+} from "../types";
 
 export type Theme = "dark" | "light";
 
@@ -28,8 +33,8 @@ export const useSettingsStore = create<SettingsState>()(
         translationPipeline: "auto",
         developerMode: false,
         customInstructions: "",
-        model: GEMINI_MODELS[0]?.id || "gemini-2.5-flash-lite",
-        fallbackModel: "gemini-2.5-flash",
+        model: DEFAULT_GEMINI_MODEL,
+        fallbackModel: DEFAULT_GEMINI_FALLBACK_MODEL,
         enableQualityFallback: true,
         useGeminiBatch: true,
         batchSize: 10,
@@ -51,6 +56,9 @@ export const useSettingsStore = create<SettingsState>()(
             model: validModelIds.has(String(newSettings.model))
               ? String(newSettings.model)
               : state.settings.model,
+            fallbackModel: validModelIds.has(String(newSettings.fallbackModel))
+              ? String(newSettings.fallbackModel)
+              : state.settings.fallbackModel,
           },
         }));
 
@@ -76,6 +84,9 @@ export const useSettingsStore = create<SettingsState>()(
             model: validModelIds.has(dbSettings.model)
               ? dbSettings.model
               : state.settings.model,
+            fallbackModel: validModelIds.has(String(dbSettings.fallbackModel))
+              ? dbSettings.fallbackModel
+              : state.settings.fallbackModel,
           },
         }));
       },

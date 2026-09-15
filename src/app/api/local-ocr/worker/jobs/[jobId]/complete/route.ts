@@ -15,6 +15,7 @@ import {
   completeDetectedPage,
   detectedFromLocalOcr,
   PipelineCancelledError,
+  resolvePipelineSettings,
 } from "@/server/pipeline/translatePage";
 import { loadOriginal, readDimensions } from "@/server/pages/layoutService";
 import { TranslationSettings } from "@/types";
@@ -120,16 +121,18 @@ export async function POST(
 
       const original = await loadOriginal(image);
       const { width, height } = await readDimensions(original);
+      const settings = resolvePipelineSettings(stored, {
+        model: job.primaryModel,
+        fallbackModel: job.fallbackModel,
+      });
       const completed = await completeDetectedPage({
         image,
         userId: job.userId,
         keys,
         settings: {
+          ...settings,
           targetLanguage: job.targetLanguage,
           customInstructions: job.customInstructions || undefined,
-          model: job.primaryModel,
-          fallbackModel: job.fallbackModel,
-          enableQualityFallback: stored.enableQualityFallback ?? true,
         },
         requestedPipeline: job.pipeline === "local_ocr" ? "local_ocr" : "auto",
         detected: detectedFromLocalOcr(parsed.data.bubbles, width, height),

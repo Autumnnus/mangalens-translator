@@ -13,7 +13,7 @@ import "swiper/css/virtual";
 import "swiper/css/zoom";
 
 import { ProcessedImage, ViewMode } from "../../types";
-import { getThumbnailUrl, getViewImageUrl } from "../../utils/url";
+import { getThumbnailUrl } from "../../utils/url";
 import ComparisonView from "../ComparisonView";
 
 interface ReaderImageAreaProps {
@@ -81,9 +81,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
 
     for (let i = startIndex; i <= endIndex; i++) {
       const img = images[i];
-      const url =
-        getViewImageUrl(img.translatedKey, img.translatedUrl) ||
-        getViewImageUrl(img.originalKey, img.originalUrl);
+      const url = img.translatedUrl || img.originalUrl;
       if (!url || preloadedRef.current.has(url)) continue;
       preloadedRef.current.add(url);
       const preloader = new Image();
@@ -95,10 +93,8 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
   const getPair = (img: ProcessedImage) => ({
     id: img.id,
     title: img.fileName,
-    sourceUrl: getViewImageUrl(img.originalKey, img.originalUrl),
-    convertedUrl:
-      getViewImageUrl(img.translatedKey, img.translatedUrl) ||
-      getViewImageUrl(img.originalKey, img.originalUrl),
+    sourceUrl: img.originalUrl,
+    convertedUrl: img.translatedUrl || img.originalUrl,
     createdAt: 0,
   });
 
@@ -219,9 +215,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
           initialSlide={currentIndex}
         >
           {images.map((img, index) => {
-            const displayUrl =
-              getViewImageUrl(img.translatedKey, img.translatedUrl) ||
-              getViewImageUrl(img.originalKey, img.originalUrl);
+            const displayUrl = img.translatedUrl || img.originalUrl;
             return (
               <SwiperSlide key={img.id} virtualIndex={index}>
                 <div className="swiper-zoom-container flex h-full w-full items-center justify-center">

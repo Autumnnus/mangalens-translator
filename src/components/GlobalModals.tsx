@@ -12,7 +12,8 @@ import MigrationModal from "./MigrationModal";
 import NewSeriesModal from "./NewSeriesModal";
 import SettingsModal from "./SettingsModal";
 import ToastViewport from "./ToastViewport";
-import { Button, FullscreenShell, SegmentedControl } from "./ui";
+import { Button, FullscreenShell } from "./ui";
+import ViewModeControls from "./ViewModeControls";
 import ReaderImageArea from "./viewer/ReaderImageArea";
 
 import {
@@ -52,6 +53,7 @@ const GlobalModals: React.FC = () => {
   const images = React.useMemo(() => imagesData || [], [imagesData]);
 
   const [modalUIVisible, setModalUIVisible] = React.useState(true);
+  const [modalShowComparison, setModalShowComparison] = React.useState(false);
 
   const selectedIndex = React.useMemo(() => {
     if (!selectedImage || images.length === 0) return 0;
@@ -148,7 +150,10 @@ const GlobalModals: React.FC = () => {
   );
 
   const closeLightbox = useCallback(
-    () => setSelectedImage(null),
+    () => {
+      setSelectedImage(null);
+      setModalShowComparison(false);
+    },
     [setSelectedImage],
   );
 
@@ -255,19 +260,15 @@ const GlobalModals: React.FC = () => {
           actions={
             modalUIVisible ? (
               <>
-                {selectedImage.translatedUrl && (
-                  <SegmentedControl<ViewMode>
-                    label="Compare mode"
-                    size="sm"
-                    value={modalCompareMode}
-                    onChange={setModalCompareMode}
-                    options={[
-                      { value: "slider", label: "Slider" },
-                      { value: "side-by-side", label: "Split" },
-                      { value: "toggle", label: "Toggle" },
-                    ]}
-                  />
-                )}
+                <ViewModeControls
+                  showComparison={modalShowComparison}
+                  onToggleComparison={() =>
+                    setModalShowComparison((visible) => !visible)
+                  }
+                  comparisonMode={modalCompareMode}
+                  onChangeMode={setModalCompareMode}
+                  hasTranslation={!!selectedImage.translatedUrl}
+                />
                 <Button
                   variant="secondary"
                   size="sm"
@@ -285,7 +286,7 @@ const GlobalModals: React.FC = () => {
               images={images}
               currentIndex={selectedIndex}
               onIndexChange={handleIndexChange}
-              showComparison={!!selectedImage.translatedUrl}
+              showComparison={modalShowComparison}
               comparisonMode={modalCompareMode}
               onToggleUI={() => setModalUIVisible(!modalUIVisible)}
               isUIVisible={modalUIVisible}

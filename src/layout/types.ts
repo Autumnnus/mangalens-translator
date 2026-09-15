@@ -161,7 +161,7 @@ export const pageLayoutSchema = z.object({
     createdAt: z.string(),
     updatedAt: z.string(),
     source: z.enum(REGION_SOURCES).optional(),
-    /** e.g. "gemini:gemini-2.5-flash", "paddleocr", "legacy-bubbles". */
+    /** e.g. "gemini:gemini-3-flash-preview", "paddleocr", "legacy-bubbles". */
     detector: z.string().max(200).optional(),
     targetLanguage: z.string().max(100).optional(),
   }),

@@ -102,8 +102,9 @@ export const createBatchJobs = async ({
   const { settings, keys } = await getUserSettingsAndKeys(userId);
   if (keys.length === 0) throw new Error("No Gemini API key available");
 
-  const model = settings.model || "gemini-2.5-flash-lite";
-  const fallbackModel = settings.fallbackModel || "gemini-2.5-flash";
+  const resolvedSettings = resolvePipelineSettings(settings);
+  const model = resolvedSettings.model;
+  const fallbackModel = resolvedSettings.fallbackModel;
   const qualityFallback = settings.enableQualityFallback !== false;
   const prompt = buildDetectionPrompt();
   const itemLimit = Math.min(MAX_BATCH_ITEMS, Math.max(1, settings.batchSize || MAX_BATCH_ITEMS));
@@ -331,12 +332,12 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
     const usageEntries: UsageBreakdown[] = [];
     const pageJob = await pageJobFor(storedJob, imageId);
     let detection: ParsedDetection | null = null;
-    let detectionModel = storedJob.model;
+    let detectionModel = pipelineSettings.model;
     let fallbackUsed = false;
     let failure: string | undefined;
 
     if (pageJob && !["detecting", "queued"].includes(pageJob.stage)) {
-      results.push({ imageId, usage: combineUsage([], storedJob.model, false), error: "Job cancelled" });
+      results.push({ imageId, usage: combineUsage([], pipelineSettings.model, false), error: "Job cancelled" });
       continue;
     }
 
@@ -353,7 +354,7 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
       let readRegionsResult: DetectedRegion[] | null = null;
       try {
         if (!inline?.response) throw new Error(inline?.error?.message || "Empty Batch response");
-        usageEntries.push(usageFromResponse(inline.response, storedJob.model, "batch"));
+        usageEntries.push(usageFromResponse(inline.response, pipelineSettings.model, "batch"));
         if (!inline.response.text) throw new Error(inline?.error?.message || "Empty Batch response");
         if (blocks.length > 0) {
           const read = parseReadResponse(inline.response.text, blocks);
@@ -376,19 +377,19 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
         !detection ||
         (pipelineSettings.enableQualityFallback &&
           detection.shouldFallback &&
-          storedJob.fallbackModel !== storedJob.model);
+          pipelineSettings.fallbackModel !== pipelineSettings.model);
       if (needsFallback) {
         try {
           const modelImage = await prepareModelImage(original);
           const better = await runWithKeyPool({
             userId: storedJob.userId,
             keys,
-            modelName: storedJob.fallbackModel,
+            modelName: pipelineSettings.fallbackModel,
             usageEntries,
             run: async (apiKey) => {
               const result = await detectRegions({
                 apiKey,
-                modelName: storedJob.fallbackModel,
+                modelName: pipelineSettings.fallbackModel,
                 base64Image: modelImage.base64,
                 mimeType: modelImage.mimeType,
                 width,
@@ -399,7 +400,7 @@ export const checkBatchJob = async (storedJob: TranslationJobRow): Promise<Trans
           });
           if (!detection || better.regions.length > 0) {
             detection = better;
-            detectionModel = storedJob.fallbackModel;
+            detectionModel = pipelineSettings.fallbackModel;
             fallbackUsed = true;
             failure = undefined;
           }

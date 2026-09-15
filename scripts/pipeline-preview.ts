@@ -3,7 +3,7 @@
  * Gemini detection -> text translation -> server render. Uses
  * NEXT_PUBLIC_GEMINI_API_KEY from .env.local and bills two small calls.
  *
- *   npx tsx scripts/pipeline-preview.ts --image page.jpg --out out.jpg [--model gemini-2.5-flash] [--lang Turkish] [--debug]
+ *   npx tsx scripts/pipeline-preview.ts --image page.jpg --out out.jpg [--model gemini-3-flash-preview] [--lang Turkish] [--debug]
  */
 import * as dotenv from "dotenv";
 import { readFile, writeFile } from "node:fs/promises";
@@ -21,6 +21,10 @@ import { loadServerFonts } from "../src/server/render/fonts";
 import { renderPage } from "../src/server/render/renderPage";
 import { calculateGeminiCost } from "../src/utils/cost";
 import { combineUsage } from "../src/server/gemini/common";
+import {
+  DEFAULT_GEMINI_MODEL,
+  isSupportedGeminiModel,
+} from "../src/types";
 
 dotenv.config({ path: ".env.local" });
 
@@ -63,7 +67,12 @@ const main = async () => {
   if (!apiKey) throw new Error("NEXT_PUBLIC_GEMINI_API_KEY is not set");
   const imagePath = str("image");
   const outPath = str("out");
-  const modelName = str("model", "gemini-2.5-flash-lite");
+  const modelName = str("model", DEFAULT_GEMINI_MODEL);
+  if (!isSupportedGeminiModel(modelName)) {
+    throw new Error(
+      "Unsupported Gemini model. Use gemini-3-flash-preview or gemini-3.1-flash-lite.",
+    );
+  }
   const targetLanguage = str("lang", "Turkish");
 
   const original = await readFile(imagePath);

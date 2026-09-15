@@ -8,7 +8,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSeriesImagesQuery } from "../../hooks/useSeriesQueries";
 import { ProcessedImage } from "../../types";
 import { cn } from "../../utils/cn";
-import { getViewImageUrl } from "../../utils/url";
 import { FullscreenShell, IconButton, Mono } from "../ui";
 
 interface SeriesIconProps {
@@ -42,11 +41,7 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
       const loadedImages = fullSeriesImages?.length ? fullSeriesImages : images;
       const urls = loadedImages.length
         ? loadedImages.map(
-            (image) =>
-              getViewImageUrl(
-                image.translatedKey,
-                image.translatedUrl,
-              ) || getViewImageUrl(image.originalKey, image.originalUrl),
+            (image) => image.translatedUrl || image.originalUrl,
           )
         : previewImages || [];
 

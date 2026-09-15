@@ -84,7 +84,7 @@ const makeImage = (
           candidatesTokenCount: 410,
           thoughtsTokenCount: 0,
           totalTokenCount: 2230,
-          modelUsed: "gemini-2.5-flash-lite",
+          modelUsed: "gemini-3.1-flash-lite",
         }
       : undefined,
   ...extra,

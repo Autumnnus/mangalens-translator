@@ -4,13 +4,7 @@ export interface TextBubble {
   render_box_2d?: [number, number, number, number];
   original_text: string;
   translated_text: string;
-  type:
-    | "speech"
-    | "caption"
-    | "sfx"
-    | "label"
-    | "dialogue"
-    | "environmental";
+  type: "speech" | "caption" | "sfx" | "label" | "dialogue" | "environmental";
   /** Model confidence normalized to 0-1. Used only as a fallback signal. */
   confidence?: number;
   refinement?: "local-mask" | "model-box";
@@ -91,7 +85,11 @@ export interface LocalOcrBubble {
   type?: TextBubble["type"] | "thought";
 }
 
-export type PageJobProvider = "gemini" | "gemini_batch" | "local_ocr" | "migration";
+export type PageJobProvider =
+  | "gemini"
+  | "gemini_batch"
+  | "local_ocr"
+  | "migration";
 export type PageJobStage =
   | "queued"
   | "detecting"
@@ -111,7 +109,14 @@ export interface PageJobOptions {
   /** Batch jobs: detector blocks the numbered overlay was built from. */
   detection?: {
     mode: "read" | "detect";
-    blocks?: Array<{ box: { x: number; y: number; w: number; h: number }; lines: Array<{ box: { x: number; y: number; w: number; h: number }; score: number }>; score: number }>;
+    blocks?: Array<{
+      box: { x: number; y: number; w: number; h: number };
+      lines: Array<{
+        box: { x: number; y: number; w: number; h: number };
+        score: number;
+      }>;
+      score: number;
+    }>;
   };
 }
 
@@ -164,22 +169,13 @@ export interface GeminiModel {
 
 export const GEMINI_MODELS: GeminiModel[] = [
   {
-    id: "gemini-2.5-flash-lite",
-    name: "Gemini 2.5 Flash-Lite",
-    inputCostPer1k: 0.0001,
-    outputCostPer1k: 0.0004,
+    id: "gemini-3.1-flash-lite",
+    name: "Gemini 3.1 Flash-Lite",
+    inputCostPer1k: 0.00025,
+    outputCostPer1k: 0.0005,
     batchInputCostPer1k: 0.00005,
     batchOutputCostPer1k: 0.0002,
     description: "Default low-cost model for high-volume comic translation.",
-  },
-  {
-    id: "gemini-2.5-flash",
-    name: "Gemini 2.5 Flash",
-    inputCostPer1k: 0.0003,
-    outputCostPer1k: 0.0025,
-    batchInputCostPer1k: 0.00015,
-    batchOutputCostPer1k: 0.00125,
-    description: "Quality fallback for uncertain pages.",
   },
   {
     id: "gemini-3-flash-preview",
@@ -191,6 +187,14 @@ export const GEMINI_MODELS: GeminiModel[] = [
     description: "Preview model with stronger output quality.",
   },
 ];
+
+export const DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview";
+export const DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.1-flash-lite";
+
+export const isSupportedGeminiModel = (
+  model: unknown,
+): model is string =>
+  typeof model === "string" && GEMINI_MODELS.some((entry) => entry.id === model);
 
 export interface TranslationSettings {
   targetLanguage: string;
