@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSeriesImagesQuery } from "../../hooks/useSeriesQueries";
 import { ProcessedImage } from "../../types";
 import { cn } from "../../utils/cn";
+import { resolveImageUrl } from "../../utils/url";
 import { FullscreenShell, IconButton, Mono } from "../ui";
 
 interface SeriesIconProps {
@@ -41,9 +42,9 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
       const loadedImages = fullSeriesImages?.length ? fullSeriesImages : images;
       const urls = loadedImages.length
         ? loadedImages.map(
-            (image) => image.translatedUrl || image.originalUrl,
+            (image) => resolveImageUrl(image.translatedUrl || image.originalUrl),
           )
-        : previewImages || [];
+        : (previewImages || []).map((url) => resolveImageUrl(url));
 
       return urls.filter(Boolean).filter((url, index, all) => all.indexOf(url) === index);
     },
