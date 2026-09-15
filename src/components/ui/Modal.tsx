@@ -206,6 +206,8 @@ export interface FullscreenShellProps {
   /** Dark theater ground instead of paper (lightboxes). */
   theater?: boolean;
   layer?: "fullscreen" | "lightbox";
+  /** Render as a contained image modal while keeping the underlying workspace mounted. */
+  presentation?: "fullscreen" | "modal";
   closeLabel?: string;
 }
 
@@ -219,6 +221,7 @@ export const FullscreenShell: React.FC<FullscreenShellProps> = ({
   children,
   theater = false,
   layer = "fullscreen",
+  presentation = "fullscreen",
   closeLabel = "Close (Esc)",
 }) => {
   const panelRef = useDialogBehaviour(open, onClose);
@@ -235,56 +238,82 @@ export const FullscreenShell: React.FC<FullscreenShellProps> = ({
       aria-labelledby={titleId}
       tabIndex={-1}
       className={cn(
-        "fixed inset-0 flex flex-col outline-none animate-fade-in",
+        "fixed inset-0 outline-none animate-fade-in",
         layer === "lightbox" ? "z-(--z-lightbox)" : "z-(--z-fullscreen)",
-        theater ? "bg-theater text-theater-ink" : "bg-paper text-ink",
+        presentation === "modal"
+          ? "flex items-center justify-center p-2 sm:p-4"
+          : "flex flex-col",
       )}
     >
-      <header
+      {presentation === "modal" && (
+        <div
+          aria-hidden="true"
+          onClick={onClose}
+          className="absolute inset-0 bg-scrim backdrop-blur-[2px]"
+        />
+      )}
+      <div
         className={cn(
-          "flex h-12 shrink-0 items-center gap-3 border-b px-3",
-          theater ? "border-theater-line bg-theater" : "border-line bg-page",
+          "relative flex min-h-0 flex-col",
+          presentation === "fullscreen" && "h-full w-full",
+          presentation === "modal" &&
+            "h-[min(92dvh,900px)] max-h-[calc(100dvh-1rem)] w-full max-w-6xl overflow-hidden rounded-panel border shadow-pop",
+          theater
+            ? "border-theater-line bg-theater text-theater-ink"
+            : "border-line bg-paper text-ink",
         )}
+        onClick={
+          presentation === "modal"
+            ? (event) => event.stopPropagation()
+            : undefined
+        }
       >
-        {icon && (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-control [&_svg]:h-4 [&_svg]:w-4",
-              theater ? "text-theater-ink-2" : "bg-npb text-action",
-            )}
-          >
-            {icon}
-          </span>
-        )}
-        <div className="min-w-0">
-          <h2 id={titleId} className="truncate text-sm font-semibold leading-5">
-            {title}
-          </h2>
-          {subtitle && (
-            <p
+        <header
+          className={cn(
+            "flex h-12 shrink-0 items-center gap-3 border-b px-3",
+            theater ? "border-theater-line bg-theater" : "border-line bg-page",
+          )}
+        >
+          {icon && (
+            <span
+              aria-hidden="true"
               className={cn(
-                "truncate text-xs leading-4",
-                theater ? "text-theater-ink-2" : "text-ink-3",
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-control [&_svg]:h-4 [&_svg]:w-4",
+                theater ? "text-theater-ink-2" : "bg-npb text-action",
               )}
             >
-              {subtitle}
-            </p>
+              {icon}
+            </span>
           )}
-        </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          {actions}
-          <IconButton
-            label={closeLabel}
-            onClick={onClose}
-            data-dismiss
-            className={cn("ml-1", theater && "text-theater-ink-2 hover:bg-theater-hover hover:text-theater-ink")}
-          >
-            <X />
-          </IconButton>
-        </div>
-      </header>
-      <div className="flex min-h-0 flex-1">{children}</div>
+          <div className="min-w-0">
+            <h2 id={titleId} className="truncate text-sm font-semibold leading-5">
+              {title}
+            </h2>
+            {subtitle && (
+              <p
+                className={cn(
+                  "truncate text-xs leading-4",
+                  theater ? "text-theater-ink-2" : "text-ink-3",
+                )}
+              >
+                {subtitle}
+              </p>
+            )}
+          </div>
+          <div className="ml-auto flex items-center gap-1.5">
+            {actions}
+            <IconButton
+              label={closeLabel}
+              onClick={onClose}
+              data-dismiss
+              className={cn("ml-1", theater && "text-theater-ink-2 hover:bg-theater-hover hover:text-theater-ink")}
+            >
+              <X />
+            </IconButton>
+          </div>
+        </header>
+        <div className="flex min-h-0 flex-1">{children}</div>
+      </div>
     </div>,
     target,
   );

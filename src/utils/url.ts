@@ -45,3 +45,18 @@ export const getThumbnailUrl = (
 
   return `/api/images/thumbnail?${params.toString()}`;
 };
+
+/**
+ * Load a page through the authenticated app origin when its storage key is
+ * available. This keeps private/internal MinIO endpoints out of browser URLs.
+ */
+export const getViewImageUrl = (
+  key: string | null | undefined,
+  fallbackUrl: string | null,
+): string => {
+  if (key) {
+    return `/api/images/file?key=${encodeURIComponent(key)}`;
+  }
+
+  return resolveImageUrl(fallbackUrl);
+};

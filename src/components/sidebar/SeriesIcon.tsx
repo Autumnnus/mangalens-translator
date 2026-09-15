@@ -4,12 +4,15 @@ import {
   Expand,
   Image as ImageIcon,
 } from "lucide-react";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useSeriesImagesQuery } from "../../hooks/useSeriesQueries";
 import { ProcessedImage } from "../../types";
 import { cn } from "../../utils/cn";
+import { getViewImageUrl } from "../../utils/url";
 import { FullscreenShell, IconButton, Mono } from "../ui";
 
 interface SeriesIconProps {
+  seriesId: string;
   images: ProcessedImage[];
   previewImages?: string[];
   seriesName: string;
@@ -17,10 +20,11 @@ interface SeriesIconProps {
 }
 
 /**
- * Three stacked page thumbnails. Click opens a full-screen quick preview
- * with arrow-key navigation.
+ * Three stacked page thumbnails. Click opens a modal quick preview with
+ * arrow-key and touch navigation.
  */
 const SeriesIcon: React.FC<SeriesIconProps> = ({
+  seriesId,
   images,
   previewImages,
   seriesName,
@@ -28,16 +32,27 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activePreviewIndex, setActivePreviewIndex] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+
+  const { data: fullSeriesImages, isLoading: isLoadingFullSeries } =
+    useSeriesImagesQuery(seriesId, isExpanded);
 
   const displayImages = useMemo(
-    () =>
-      [
-        ...(previewImages || []),
-        ...images.map((image) => image.translatedUrl || image.originalUrl),
-      ]
-        .filter(Boolean)
-        .filter((url, index, all) => all.indexOf(url) === index),
-    [images, previewImages],
+    () => {
+      const loadedImages = fullSeriesImages?.length ? fullSeriesImages : images;
+      const urls = loadedImages.length
+        ? loadedImages.map(
+            (image) =>
+              getViewImageUrl(
+                image.translatedKey,
+                image.translatedUrl,
+              ) || getViewImageUrl(image.originalKey, image.originalUrl),
+          )
+        : previewImages || [];
+
+      return urls.filter(Boolean).filter((url, index, all) => all.indexOf(url) === index);
+    },
+    [fullSeriesImages, images, previewImages],
   );
 
   useEffect(() => {
@@ -116,8 +131,9 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
         onClose={() => setIsExpanded(false)}
         theater
         layer="lightbox"
+        presentation="modal"
         title={seriesName}
-        subtitle={`Quick preview · ${pageCount} page${pageCount === 1 ? "" : "s"}`}
+        subtitle={`${isLoadingFullSeries ? "Loading pages… · " : "Quick preview · "}${pageCount} page${pageCount === 1 ? "" : "s"}`}
         icon={<ImageIcon />}
         closeLabel="Close preview (Esc)"
         actions={
@@ -127,7 +143,29 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
         }
       >
         <div className="flex min-h-0 flex-1 flex-col">
-          <main className="relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8">
+          <main
+            className="relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8"
+            style={{ touchAction: "pan-y" }}
+            onTouchStart={(event) => {
+              touchStartX.current = event.changedTouches[0]?.clientX ?? null;
+            }}
+            onTouchEnd={(event) => {
+              const startX = touchStartX.current;
+              const endX = event.changedTouches[0]?.clientX;
+              touchStartX.current = null;
+              if (startX === null || endX === undefined) return;
+
+              const deltaX = endX - startX;
+              if (Math.abs(deltaX) < 40) return;
+              if (deltaX < 0) {
+                setActivePreviewIndex((index) =>
+                  Math.min(displayImages.length - 1, index + 1),
+                );
+              } else {
+                setActivePreviewIndex((index) => Math.max(0, index - 1));
+              }
+            }}
+          >
             <IconButton
               label="Previous page"
               size="lg"

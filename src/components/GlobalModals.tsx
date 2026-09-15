@@ -244,6 +244,7 @@ const GlobalModals: React.FC = () => {
           onClose={closeLightbox}
           theater
           layer="lightbox"
+          presentation="modal"
           icon={<ImageIcon />}
           title={selectedImage.fileName}
           subtitle={

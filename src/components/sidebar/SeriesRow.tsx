@@ -71,6 +71,7 @@ const SeriesRow: React.FC<SeriesRowProps> = ({
       )}
     >
       <SeriesIcon
+        seriesId={series.id}
         images={series.images}
         previewImages={series.previewImages}
         seriesName={series.name}

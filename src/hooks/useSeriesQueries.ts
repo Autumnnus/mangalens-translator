@@ -20,11 +20,14 @@ export const useSeriesQuery = (page = 1, pageSize = 1000) => {
   });
 };
 
-export const useSeriesImagesQuery = (seriesId: string | null) => {
+export const useSeriesImagesQuery = (
+  seriesId: string | null,
+  enabled = true,
+) => {
   return useQuery({
     queryKey: seriesKeys.images(seriesId || ""),
     queryFn: () => seriesService.getSeriesImages(seriesId!),
-    enabled: !!seriesId,
+    enabled: !!seriesId && enabled,
     // Cache data for 30 minutes to keep signed URLs stable
     staleTime: 1000 * 60 * 30,
     gcTime: 1000 * 60 * 45,

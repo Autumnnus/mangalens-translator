@@ -83,8 +83,8 @@ const ReaderHeader: React.FC<ReaderHeaderProps> = ({
         {onOpenSeriesList && (
           <IconButton
             label="Series list"
-            size="sm"
-            className={`${theaterButton} md:hidden`}
+            size="lg"
+            className={`${theaterButton} h-11 w-11 touch-manipulation md:hidden`}
             onClick={onOpenSeriesList}
           >
             <Menu />
