@@ -164,6 +164,8 @@ export const detectedFromLocalOcr = (
     sourceText: bubble.original_text,
     confidence: bubble.confidence,
     order: index,
+    // The worker's boxes come from PaddleOCR's pixel detector.
+    precise: true,
   }));
 
 const boxIou = (a: Region["textBox"], b: Region["textBox"]) => {

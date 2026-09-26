@@ -116,6 +116,7 @@ export interface PageJobOptions {
         score: number;
       }>;
       score: number;
+      separatedFrom?: number[];
     }>;
   };
 }

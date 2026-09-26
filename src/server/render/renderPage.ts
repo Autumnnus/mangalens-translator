@@ -1,11 +1,12 @@
 import sharp from "sharp";
 import { scaleLayout } from "@/layout/defaults";
-import { polygonShape } from "@/layout/typeset";
+import { polygonShape, polygonSpans } from "@/layout/typeset";
 import { FontSet } from "@/layout/fontEngine";
 import { planRegion, RegionPlan, ResolvedRegionFacts } from "@/layout/plan";
 import { buildOverlaySvg } from "@/layout/svg";
 import {
   Box,
+  insetBox,
   isContainerKind,
   Mask,
   PageLayout,
@@ -17,9 +18,14 @@ import {
   fillEllipse,
   fillPolygon,
   fillRoundedRect,
+  findInteriorByFlood,
+  hexToRgb,
+  InteriorResult,
+  polygonArea,
   RawImage,
   sampleBoxColor,
   sampleRingColor,
+  sampleTextBackground,
   snapTextBoxToInk,
 } from "./mask";
 
@@ -51,12 +57,8 @@ export interface RenderPageResult {
 
 const MAX_INPUT_PIXELS = 120_000_000;
 
-const expandBox = (box: Box, rx: number, ry: number): Box => ({
-  x: box.x - box.w * rx,
-  y: box.y - box.h * ry,
-  w: box.w * (1 + rx * 2),
-  h: box.h * (1 + ry * 2),
-});
+/** An interior this many times larger than its text has spread into artwork. */
+const MAX_INTERIOR_TO_TEXT = 10;
 
 const shouldClean = (region: Region) =>
   !region.hidden &&
@@ -64,16 +66,84 @@ const shouldClean = (region: Region) =>
   region.fill.mode !== "none" &&
   region.mask.type !== "none";
 
+const luma = (hex: string) => {
+  const [r, g, b] = hexToRgb(hex);
+  return r * 0.299 + g * 0.587 + b * 0.114;
+};
+
 /**
- * Geometric fallback when no closed interior is found around the text. It
- * stays close to the source glyphs on purpose: painting the detector's whole
- * balloon box would cover outlines and artwork.
+ * Detector boxes (DB unclip) reach past the glyphs, often onto the balloon
+ * outline. Seeds, coverage checks and patches use the glyph core instead.
  */
-const fallbackMask = (region: Region): Mask => {
-  if (region.kind === "speech" || region.kind === "thought") {
-    return { type: "rect", box: expandBox(region.textBox, 0.07, 0.1), radius: 0.4 };
-  }
-  return { type: "rect", box: expandBox(region.textBox, 0.04, 0.06), radius: 0.08 };
+export const glyphCore = (region: Region): Box => {
+  if (!region.textBoxPrecise) return region.textBox;
+  const margin = (region.sourceLineHeight ?? region.textBox.h / 3) * 0.3;
+  return insetBox(
+    region.textBox,
+    Math.min(margin, region.textBox.w * 0.15),
+    Math.min(margin, region.textBox.h * 0.2),
+  );
+};
+
+/**
+ * Bubble painted behind the translation when no container was found (text
+ * on artwork, open or broken balloons, captions without a border). The v1
+ * renderer did the same with a white rounded rectangle; it reads as a clean
+ * balloon, while leaving the source text in place does not.
+ */
+const fallbackMask = (region: Region, glyphHeight?: number): Mask => {
+  const core = glyphCore(region);
+  const round = region.kind === "speech" || region.kind === "thought";
+  const unit = glyphHeight ?? (region.sourceLineHeight ? region.sourceLineHeight * 0.6 : undefined);
+  const padX = unit ? unit * (round ? 0.9 : 0.5) : core.w * (round ? 0.07 : 0.04);
+  const padY = unit ? unit * (round ? 0.7 : 0.4) : core.h * (round ? 0.1 : 0.06);
+  const box = { x: core.x - padX, y: core.y - padY, w: core.w + padX * 2, h: core.h + padY * 2 };
+  // The rounded corners must not cut into the glyph core.
+  const shorter = Math.max(1, Math.min(box.w, box.h));
+  const radius = Math.min(shorter * (round ? 0.45 : 0.12), 3.3 * Math.min(padX, padY));
+  return { type: "rect", box, radius: Math.max(0, radius / shorter) };
+};
+
+/**
+ * Container interior around the text. The permissive flood fill goes first
+ * because glyph gaps do not stop it; the outline search (erosion, several
+ * seeds) handles dashed, hatched and dark balloons the flood reports as leaks.
+ */
+const findInterior = (
+  raw: RawImage,
+  region: Region,
+  diagnostics: string[],
+): InteriorResult | null => {
+  const core = glyphCore(region);
+  const accept = (result: InteriorResult | null, label: string) => {
+    if (!result) return null;
+    const area = polygonArea(result.polygon);
+    const limit = region.bubbleBox
+      ? region.bubbleBox.w * region.bubbleBox.h * 2.6
+      : region.textBox.w * region.textBox.h * MAX_INTERIOR_TO_TEXT;
+    if (area > limit) {
+      diagnostics.push(`${label}: rejected, interior is ${Math.round(area / Math.max(1, core.w * core.h))}x the text`);
+      return null;
+    }
+    // The interior has to hold the text, not sit next to it.
+    const centre = core.x + core.w / 2;
+    const holdsText = polygonSpans(result.polygon, core.y + core.h / 2).some(
+      (span) => span.left <= centre && centre <= span.right,
+    );
+    if (!holdsText) {
+      diagnostics.push(`${label}: rejected, interior does not contain the text`);
+      return null;
+    }
+    diagnostics.push(`${label}: interior found`);
+    return result;
+  };
+  return (
+    accept(findInteriorByFlood(raw, core, { diagnostics }), "flood") ||
+    accept(
+      detectBubbleInterior(raw, region.textBox, { hint: region.bubbleBox, diagnostics }),
+      "outline search",
+    )
+  );
 };
 
 export const resolveRegionMask = (
@@ -85,86 +155,87 @@ export const resolveRegionMask = (
     return { region, facts: { surfaceLuma: surface.luma } };
   }
 
-  if (region.mask.type === "auto") {
-    const diagnostics: string[] = [];
-    // Detector boxes drift on real scans: align the box with the glyphs first.
-    // Boxes the user placed by hand (manual source, or already snapped once)
-    // are left alone.
-    let working = region;
-    if (
-      region.source !== "manual" &&
-      !region.detectorBox &&
-      !region.textBoxPrecise &&
-      !region.locked &&
-      (isContainerKind(region.kind) || region.kind === "label")
-    ) {
-      const snapped = snapTextBoxToInk(raw, region.textBox, diagnostics);
-      if (snapped) {
-        working = { ...region, textBox: snapped.box, detectorBox: region.textBox };
-        diagnostics.push(
-          `text box snapped to ink (${Math.round(snapped.box.x - region.textBox.x)}, ${Math.round(snapped.box.y - region.textBox.y)} px, conf ${snapped.confidence.toFixed(2)})`,
-        );
-      }
+  if (region.mask.type !== "auto") {
+    const ring = sampleRingColor(raw, region.textBox);
+    const fillColor =
+      region.fill.mode === "color" && region.fill.color ? region.fill.color : ring.color;
+    return { region, facts: { fillColor, surfaceLuma: ring.luma } };
+  }
+
+  const diagnostics: string[] = [];
+  const colorOverride =
+    region.fill.mode === "color" && region.fill.color ? region.fill.color : undefined;
+  // Model boxes drift on real scans: align the box with the glyphs first.
+  // Boxes the user placed by hand (manual source, or already snapped once)
+  // and pixel-accurate detector boxes are left alone.
+  let working = region;
+  let glyphHeight: number | undefined;
+  let snapped = false;
+  if (
+    region.source !== "manual" &&
+    !region.detectorBox &&
+    !region.textBoxPrecise &&
+    !region.locked &&
+    (isContainerKind(region.kind) || region.kind === "label")
+  ) {
+    const snap = snapTextBoxToInk(raw, region.textBox, diagnostics);
+    if (snap) {
+      working = { ...region, textBox: snap.box, detectorBox: region.textBox };
+      glyphHeight = snap.glyphHeight;
+      snapped = true;
+      diagnostics.push(
+        `text box snapped to ink (${Math.round(snap.box.x - region.textBox.x)}, ${Math.round(snap.box.y - region.textBox.y)} px, conf ${snap.confidence.toFixed(2)})`,
+      );
     }
-    const detected =
-      isContainerKind(working.kind) || working.kind === "label"
-        ? detectBubbleInterior(raw, working.textBox, {
-            hint: working.bubbleBox,
-            diagnostics,
-          })
-        : null;
-    if (detected) {
-      const fillColor =
-        working.fill.mode === "color" && working.fill.color
-          ? working.fill.color
-          : detected.fillColor;
+  }
+
+  if (isContainerKind(working.kind) || working.kind === "label") {
+    const interior = findInterior(raw, working, diagnostics);
+    if (interior) {
+      const fillColor = colorOverride || interior.fillColor;
       return {
-        region: { ...working, mask: { type: "polygon", points: detected.polygon } },
+        region: { ...working, mask: { type: "polygon", points: interior.polygon } },
         facts: {
           fillColor,
-          surfaceLuma: detected.luma,
-          maskConfidence: detected.confidence,
+          surfaceLuma: colorOverride ? luma(colorOverride) : interior.luma,
+          maskConfidence: interior.confidence,
           maskDiagnostics: diagnostics,
         },
       };
     }
-    const ring = sampleRingColor(raw, working.textBox);
-    // Only paint a geometric fallback on paper-like, uniform surroundings.
-    // Anything else (artwork, tone) is left untouched and the text is drawn
-    // with a contrasting stroke instead of a coloured block.
-    const paperLike = ring.luma >= 200 && ring.brightFraction >= 0.65;
-    if (!paperLike) {
-      diagnostics.push(
-        `no fallback paint: surroundings are not paper (luma ${ring.luma.toFixed(0)}, bright ${(ring.brightFraction * 100).toFixed(0)}%)`,
-      );
-      return {
-        region: { ...working, mask: { type: "none" }, maskSource: "fallback" },
-        facts: { surfaceLuma: ring.luma, maskConfidence: 0, maskDiagnostics: diagnostics },
-      };
-    }
-    const fillColor =
-      working.fill.mode === "color" && working.fill.color
-        ? working.fill.color
-        : ring.color;
-    return {
-      region: { ...working, mask: fallbackMask(working), maskSource: "fallback" },
-      facts: {
-        fillColor,
-        surfaceLuma: ring.luma,
-        maskConfidence: 0.25,
-        maskDiagnostics: diagnostics,
-      },
-    };
   }
 
-  const ring = sampleRingColor(raw, region.textBox);
+  // No closed container. A box that is known to sit on lettering (pixel
+  // detector, OCR worker, ink snap, hand edit) gets a bubble behind the
+  // translation. An unverified model box over artwork may be off the text
+  // entirely, so it is left alone and the text gets a contrasting stroke.
+  const ring = sampleRingColor(raw, working.textBox);
+  const paperLike = ring.luma >= 200 && ring.brightFraction >= 0.65;
+  const onLettering =
+    !!working.textBoxPrecise || snapped || working.source === "manual" || !!working.locked;
+  if (!onLettering && !paperLike) {
+    diagnostics.push(
+      `no fallback paint: unverified box over artwork (luma ${ring.luma.toFixed(0)}, bright ${(ring.brightFraction * 100).toFixed(0)}%)`,
+    );
+    return {
+      region: { ...working, mask: { type: "none" }, maskSource: "fallback" },
+      facts: { surfaceLuma: ring.luma, maskConfidence: 0, maskDiagnostics: diagnostics },
+    };
+  }
+  // Flat surroundings (caption boxes, plain balloons) keep their colour;
+  // busy artwork gets a white bubble.
+  const background = sampleTextBackground(raw, glyphCore(working));
   const fillColor =
-    region.fill.mode === "color" && region.fill.color
-      ? region.fill.color
-      : ring.color;
+    colorOverride || (background.spread <= 40 ? background.color : "#ffffff");
+  diagnostics.push(`no container found; bubble painted (${fillColor})`);
   return {
-    region,
-    facts: { fillColor, surfaceLuma: ring.luma },
+    region: { ...working, mask: fallbackMask(working, glyphHeight), maskSource: "fallback" },
+    facts: {
+      fillColor,
+      surfaceLuma: luma(fillColor),
+      maskConfidence: 0.25,
+      maskDiagnostics: diagnostics,
+    },
   };
 };
 
@@ -232,18 +303,28 @@ export const renderPage = async (
     const fill = facts.get(region.id)?.fillColor;
     if (!shouldClean(region) || !fill) continue;
     applyFill(raw, region.mask, fill);
-    // A found interior that stops short of the text box (leaky outline, tail)
-    // would leave glyph fragments; the text box itself is always safe to paint.
-    if (region.mask.type === "polygon" && !polygonCoversBox(region.mask.points, region.textBox)) {
-      fillRoundedRect(raw, expandBox(region.textBox, 0.06, 0.1), 0.25, fill);
-      facts.get(region.id)?.maskDiagnostics?.push("interior did not cover the text box; text box painted too");
+    // A found interior that stops short of the glyphs (leaky outline, tail)
+    // would leave fragments; the glyph core itself is safe to paint. The
+    // whole detector box is not: it often reaches onto the outline.
+    const core = glyphCore(region);
+    if (region.mask.type === "polygon" && !polygonCoversBox(region.mask.points, core)) {
+      fillRoundedRect(
+        raw,
+        { x: core.x - core.w * 0.03, y: core.y - core.h * 0.06, w: core.w * 1.06, h: core.h * 1.12 },
+        0.25,
+        fill,
+      );
+      facts.get(region.id)?.maskDiagnostics?.push("interior did not cover the glyphs; glyph core painted too");
     }
   }
 
   // Pass 2: typeset.
   const plans: RegionPlan[] = resolved
     .filter((region) => !region.hidden && region.translatedText.trim())
-    .map((region) => planRegion(region, layout, options.fonts, facts.get(region.id)));
+    // Plans see the resolved neighbours: regions sharing a container split it.
+    .map((region) =>
+      planRegion(region, { ...layout, regions: resolved }, options.fonts, facts.get(region.id)),
+    );
 
   const svg = buildOverlaySvg({
     width: raw.width,

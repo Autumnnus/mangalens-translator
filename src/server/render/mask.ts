@@ -20,6 +20,8 @@ export interface InteriorResult {
   /** 0-255 luminance of the fill colour. */
   luma: number;
   confidence: number;
+  /** Share of the row hull the interior fills. */
+  compactness?: number;
 }
 
 const clamp = (value: number, min: number, max: number) =>
@@ -573,12 +575,362 @@ const detectInteriorOnce = (
 };
 
 // ---------------------------------------------------------------------------
+// Flood-fill interior
+
+export interface FloodInteriorOptions {
+  /** Search margins around the text box, as fractions of its size. */
+  expandSteps?: number[];
+  /** Longest side of the analysis raster. */
+  analysisSize?: number;
+  /** Largest RGB distance from the seed colour that still counts as interior. */
+  colorTolerance?: number;
+  /** Smallest share of the row hull the interior may fill (balloons are compact). */
+  minCompactness?: number;
+  diagnostics?: string[];
+}
+
+type FloodAttempt =
+  | { kind: "found"; result: InteriorResult; touchedEdges: number }
+  | { kind: "leak" }
+  | { kind: "none" };
+
+/**
+ * Permissive interior search, the approach of the pre-v2 browser renderer:
+ * flood from light pixels in and around the text box through similar light
+ * pixels, with no erosion. Glyph gaps do not block it, so it finds the whole
+ * balloon where `detectBubbleInterior` often stops at the text block. It is
+ * weak on dashed or hatched outlines, which it reports as leaks; the caller
+ * then falls back to the stricter search.
+ */
+export const findInteriorByFlood = (
+  image: RawImage,
+  textBox: Box,
+  options: FloodInteriorOptions = {},
+): InteriorResult | null => {
+  const steps = options.expandSteps ?? [0.38, 0.8, 1.5, 2.4, 4, 6];
+  // Everything is compared with the paper between the glyphs, not with the
+  // seed pixel: a seed can land on an anti-aliased edge or, past the balloon
+  // outline, on the artwork.
+  // Small lettering is mostly ink and anti-aliasing: sample a margin
+  // around it too.
+  const margin = Math.min(textBox.w, textBox.h) * 0.25;
+  const paper = sampleTextBackground(image, {
+    x: textBox.x - margin,
+    y: textBox.y - margin,
+    w: textBox.w + margin * 2,
+    h: textBox.h + margin * 2,
+  });
+  if (paper.luma < 150) {
+    options.diagnostics?.push("flood: text sits on a dark or mid-tone surface");
+    return null;
+  }
+  // Touching one side of the window can mean the balloon continues past it,
+  // or that it is cut by a panel or page border. Widen until it stops
+  // touching; keep the one-sided result in case the wider windows leak.
+  let oneSided: InteriorResult | null = null;
+  let touchedTwo = false;
+  for (const expand of steps) {
+    const attempt = floodOnce(image, textBox, expand, paper.rgb, options);
+    if (attempt.kind === "none") return oneSided;
+    if (attempt.kind === "leak") continue;
+    if (attempt.touchedEdges === 0) return attempt.result;
+    if (attempt.touchedEdges === 1) oneSided = attempt.result;
+    else touchedTwo = true;
+  }
+  if (oneSided) return oneSided;
+  options.diagnostics?.push(
+    touchedTwo
+      ? "flood: interior keeps touching the search window (spreading into artwork)"
+      : "flood: every component leaks",
+  );
+  return null;
+};
+
+const floodOnce = (
+  image: RawImage,
+  textBox: Box,
+  expand: number,
+  paper: readonly [number, number, number],
+  options: FloodInteriorOptions,
+): FloodAttempt => {
+  const note = (message: string) => options.diagnostics?.push(`flood expand=${expand}: ${message}`);
+  // A wide, short text block sits in a balloon that is much taller than the
+  // text; grow the window at least half as fast vertically as horizontally.
+  const expandX = Math.max(12, textBox.w * expand);
+  const expandY = Math.max(12, textBox.h * expand, expandX * 0.5);
+  const searchLeft = Math.floor(clamp(textBox.x - expandX, 0, image.width));
+  const searchTop = Math.floor(clamp(textBox.y - expandY, 0, image.height));
+  const searchRight = Math.ceil(clamp(textBox.x + textBox.w + expandX, 0, image.width));
+  const searchBottom = Math.ceil(clamp(textBox.y + textBox.h + expandY, 0, image.height));
+  const searchWidth = searchRight - searchLeft;
+  const searchHeight = searchBottom - searchTop;
+  if (searchWidth < 8 || searchHeight < 8) {
+    note("window too small");
+    return { kind: "none" };
+  }
+
+  const analysisSize = options.analysisSize ?? 260;
+  const scale = Math.min(1, analysisSize / Math.max(searchWidth, searchHeight));
+  const width = Math.max(8, Math.round(searchWidth * scale));
+  const height = Math.max(8, Math.round(searchHeight * scale));
+  const scaleX = searchWidth / width;
+  const scaleY = searchHeight / height;
+  const pixels = new Uint8ClampedArray(width * height * 3);
+  for (let y = 0; y < height; y += 1) {
+    const sy0 = searchTop + Math.floor(y * scaleY);
+    const sy1 = Math.max(sy0 + 1, Math.min(searchBottom, searchTop + Math.floor((y + 1) * scaleY)));
+    for (let x = 0; x < width; x += 1) {
+      const sx0 = searchLeft + Math.floor(x * scaleX);
+      const sx1 = Math.max(sx0 + 1, Math.min(searchRight, searchLeft + Math.floor((x + 1) * scaleX)));
+      let r = 0;
+      let g = 0;
+      let b = 0;
+      let count = 0;
+      for (let sy = sy0; sy < sy1; sy += 1) {
+        for (let sx = sx0; sx < sx1; sx += 1) {
+          const offset = (sy * image.width + sx) * image.channels;
+          r += image.data[offset];
+          g += image.data[offset + 1];
+          b += image.data[offset + 2];
+          count += 1;
+        }
+      }
+      const target = (y * width + x) * 3;
+      pixels[target] = r / count;
+      pixels[target + 1] = g / count;
+      pixels[target + 2] = b / count;
+    }
+  }
+
+  const relative = {
+    x: (textBox.x - searchLeft) / scaleX,
+    y: (textBox.y - searchTop) / scaleY,
+    w: textBox.w / scaleX,
+    h: textBox.h / scaleY,
+  };
+
+  const [pr, pg, pb] = paper;
+  const colorTolerance = options.colorTolerance ?? 60;
+  const threshold = Math.max(138, luminance(pr, pg, pb) - 52);
+  const distanceToPaper = (offset: number) =>
+    Math.sqrt((pixels[offset] - pr) ** 2 + (pixels[offset + 1] - pg) ** 2 + (pixels[offset + 2] - pb) ** 2);
+  const isInterior = (offset: number) =>
+    luminance(pixels[offset], pixels[offset + 1], pixels[offset + 2]) >= threshold &&
+    distanceToPaper(offset) <= colorTolerance;
+
+  // Seeds on a grid inside the box and on a ring just outside it. One seed
+  // can sit inside a letter's counter, so several are tried and the best
+  // enclosing component wins.
+  const seeds: number[] = [];
+  const pushSeed = (fx: number, fy: number) => {
+    const x = Math.round(clamp(fx, 0, width - 1));
+    const y = Math.round(clamp(fy, 0, height - 1));
+    const offset = (y * width + x) * 3;
+    if (isInterior(offset) && distanceToPaper(offset) <= 40) seeds.push(y * width + x);
+  };
+  for (let gy = 0; gy <= 4; gy += 1) {
+    for (let gx = 0; gx <= 6; gx += 1) {
+      pushSeed(relative.x + (relative.w * gx) / 6, relative.y + (relative.h * gy) / 4);
+    }
+  }
+  for (let t = 0; t <= 6; t += 1) {
+    pushSeed(relative.x + (relative.w * t) / 6, relative.y - 2);
+    pushSeed(relative.x + (relative.w * t) / 6, relative.y + relative.h + 2);
+    pushSeed(relative.x - 2, relative.y + (relative.h * t) / 6);
+    pushSeed(relative.x + relative.w + 2, relative.y + (relative.h * t) / 6);
+  }
+  if (seeds.length === 0) {
+    note("no light pixel in or around the text box");
+    return { kind: "none" };
+  }
+
+  const textArea = Math.max(1, relative.w * relative.h);
+  const claimed = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let best: { component: Uint8Array; count: number; touchedEdges: number } | null = null;
+  let leaks = 0;
+  let floods = 0;
+  for (const seed of seeds) {
+    if (claimed[seed] || floods >= 8) continue;
+    floods += 1;
+    const visited = new Uint8Array(width * height);
+    const component = new Uint8Array(width * height);
+    let head = 0;
+    let tail = 0;
+    let count = 0;
+    let edgeFlags = 0;
+    queue[tail++] = seed;
+    visited[seed] = 1;
+    while (head < tail) {
+      const index = queue[head++];
+      if (!isInterior(index * 3)) continue;
+      component[index] = 1;
+      claimed[index] = 1;
+      count += 1;
+      const x = index % width;
+      const y = (index - x) / width;
+      if (x === 0) edgeFlags |= 1;
+      if (x === width - 1) edgeFlags |= 2;
+      if (y === 0) edgeFlags |= 4;
+      if (y === height - 1) edgeFlags |= 8;
+      const neighbours = [
+        x > 0 ? index - 1 : -1,
+        x < width - 1 ? index + 1 : -1,
+        y > 0 ? index - width : -1,
+        y < height - 1 ? index + width : -1,
+      ];
+      for (const next of neighbours) {
+        if (next >= 0 && !visited[next]) {
+          visited[next] = 1;
+          queue[tail++] = next;
+        }
+      }
+    }
+    if (count < textArea * 0.28) continue;
+    const touchedEdges = [1, 2, 4, 8].filter((flag) => edgeFlags & flag).length;
+    if (count / (width * height) > 0.86 || touchedEdges >= 3) {
+      leaks += 1;
+      continue;
+    }
+    if (
+      !best ||
+      touchedEdges < best.touchedEdges ||
+      (touchedEdges === best.touchedEdges && count > best.count)
+    ) {
+      best = { component, count, touchedEdges };
+    }
+  }
+  if (!best) {
+    note(leaks ? `${leaks} component(s) leak out of the window` : "components smaller than the text");
+    return leaks ? { kind: "leak" } : { kind: "none" };
+  }
+
+  // Row spans: a glyph inside a row is covered as long as the interior
+  // reaches both sides of it.
+  const rows: { y: number; left: number; right: number }[] = [];
+  const rs: number[] = [];
+  const gs: number[] = [];
+  const bs: number[] = [];
+  const sampleStep = Math.max(1, Math.floor(best.count / 4000));
+  let seen = 0;
+  for (let y = 0; y < height; y += 1) {
+    let left = width;
+    let right = -1;
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      if (!best.component[index]) continue;
+      if (x < left) left = x;
+      if (x > right) right = x;
+      seen += 1;
+      if (seen % sampleStep === 0) {
+        rs.push(pixels[index * 3]);
+        gs.push(pixels[index * 3 + 1]);
+        bs.push(pixels[index * 3 + 2]);
+      }
+    }
+    if (right >= left) rows.push({ y, left, right });
+  }
+  if (rows.length < 3) {
+    note("degenerate component");
+    return { kind: "none" };
+  }
+  const hull = rows.reduce((sum, row) => sum + row.right - row.left + 1, 0);
+  const compactness = best.count / Math.max(1, hull);
+  if (compactness < (options.minCompactness ?? 0.6)) {
+    note(`not compact (${compactness.toFixed(2)}): spreading into artwork`);
+    return { kind: "leak" };
+  }
+  const fr = median(rs);
+  const fg = median(gs);
+  const fb = median(bs);
+  // Most of a balloon looks like the paper next to its text. A component
+  // whose typical colour is something else escaped into the artwork.
+  const drift = Math.sqrt((fr - pr) ** 2 + (fg - pg) ** 2 + (fb - pb) ** 2);
+  if (drift > 40) {
+    note(`interior colour drifts from the text background (${drift.toFixed(0)}): spreading into artwork`);
+    return { kind: "leak" };
+  }
+  const leftEdge: Point[] = rows.map((row) => [row.left, row.y]);
+  const rightEdge: Point[] = rows.map((row) => [row.right + 1, row.y + 1]);
+  const toImage = ([x, y]: Point): Point => [
+    Math.round((searchLeft + x * scaleX) * 10) / 10,
+    Math.round((searchTop + y * scaleY) * 10) / 10,
+  ];
+  const polygon = [
+    ...simplifyPolyline(leftEdge, 0.9),
+    ...simplifyPolyline(rightEdge.reverse(), 0.9),
+  ].map(toImage);
+  return {
+    kind: "found",
+    touchedEdges: best.touchedEdges,
+    result: {
+      polygon,
+      fillColor: toHex(fr, fg, fb),
+      luma: luminance(fr, fg, fb),
+      confidence: clamp(0.62 - best.touchedEdges * 0.12, 0, 1),
+      compactness,
+    },
+  };
+};
+
+/**
+ * Colour behind the glyphs, sampled inside the text box. The ring around a
+ * tight detector box is often the balloon outline or artwork, the pixels
+ * between the letters are not. Light surfaces use the brightest 30% (paper
+ * between dark glyphs), dark surfaces the darkest 30%.
+ */
+export const sampleTextBackground = (image: RawImage, box: Box) => {
+  const x0 = clamp(Math.floor(box.x), 0, image.width - 1);
+  const y0 = clamp(Math.floor(box.y), 0, image.height - 1);
+  const x1 = clamp(Math.ceil(box.x + box.w), x0 + 1, image.width);
+  const y1 = clamp(Math.ceil(box.y + box.h), y0 + 1, image.height);
+  const step = Math.max(1, Math.floor(Math.max(x1 - x0, y1 - y0) / 96));
+  const samples: [number, number, number, number][] = [];
+  for (let y = y0; y < y1; y += step) {
+    for (let x = x0; x < x1; x += step) {
+      const offset = (y * image.width + x) * image.channels;
+      const r = image.data[offset];
+      const g = image.data[offset + 1];
+      const b = image.data[offset + 2];
+      samples.push([luminance(r, g, b), r, g, b]);
+    }
+  }
+  samples.sort((a, b) => a[0] - b[0]);
+  const light = samples[Math.floor(samples.length / 2)][0] >= 128;
+  const share = Math.max(1, Math.floor(samples.length * 0.3));
+  const band = light ? samples.slice(samples.length - share) : samples.slice(0, share);
+  const r = median(band.map((sample) => sample[1]));
+  const g = median(band.map((sample) => sample[2]));
+  const b = median(band.map((sample) => sample[3]));
+  return {
+    color: toHex(r, g, b),
+    rgb: [r, g, b] as const,
+    luma: luminance(r, g, b),
+    /** Luminance spread (p90 - p10) of the band; small on flat paper. */
+    spread: band[Math.floor(band.length * 0.9)][0] - band[Math.floor(band.length * 0.1)][0],
+  };
+};
+
+/** Shoelace area of a polygon. */
+export const polygonArea = (points: Point[]) => {
+  let area = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    area += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(area / 2);
+};
+
+// ---------------------------------------------------------------------------
 // Text box snapping
 
 export interface SnapResult {
   box: Box;
   /** 0-1: how well the ink blob matched the detector's box. */
   confidence: number;
+  /** Median glyph height in image pixels. */
+  glyphHeight: number;
 }
 
 /**
@@ -787,7 +1139,11 @@ export const snapTextBoxToInk = (
     w: Math.max(4, (blob.maxX - blob.minX + 1 - 2 * rx) * scaleX + padX * 2),
     h: Math.max(4, (blob.maxY - blob.minY + 1 - 2 * ry) * scaleY + padY * 2),
   };
-  return { box: snapped, confidence: clamp(0.5 + best.score / 3, 0, 1) };
+  return {
+    box: snapped,
+    confidence: clamp(0.5 + best.score / 3, 0, 1),
+    glyphHeight: glyphHeight * scaleY,
+  };
 };
 
 // ---------------------------------------------------------------------------

@@ -19,6 +19,12 @@ export interface TextBlock {
   box: Box;
   lines: TextLine[];
   score: number;
+  /**
+   * Indices (into the returned block list) of neighbouring blocks that an
+   * outline or border separates from this one. The reading model's
+   * "same balloon" merges are refused for these.
+   */
+  separatedFrom?: number[];
 }
 
 export interface DetectorOptions {
@@ -177,7 +183,9 @@ export const detectTextLines = async (
 const overlap = (a0: number, a1: number, b0: number, b1: number) =>
   Math.max(0, Math.min(a1, b1) - Math.max(a0, b0));
 
-const linesTouch = (a: Box, b: Box) => {
+type Relation = "stacked" | "inline" | null;
+
+const relationOf = (a: Box, b: Box): Relation => {
   const overlapX = overlap(a.x, a.x + a.w, b.x, b.x + b.w) / Math.max(1, Math.min(a.w, b.w));
   const overlapY = overlap(a.y, a.y + a.h, b.y, b.y + b.h) / Math.max(1, Math.min(a.h, b.h));
   const gapY = Math.max(0, Math.max(a.y, b.y) - Math.min(a.y + a.h, b.y + b.h));
@@ -185,11 +193,162 @@ const linesTouch = (a: Box, b: Box) => {
   const minH = Math.min(a.h, b.h);
   const minW = Math.min(a.w, b.w);
   // Stacked lines of one balloon, or words of one line split by the detector.
-  return (overlapX >= 0.2 && gapY <= minH * 0.9) || (overlapY >= 0.4 && gapX <= minW * 0.6);
+  if (overlapX >= 0.2 && gapY <= minH * 0.9) return "stacked";
+  if (overlapY >= 0.4 && gapX <= minW * 0.6) return "inline";
+  return null;
 };
 
-/** Groups lines into balloon/caption blocks (union-find on proximity). */
-export const groupTextLines = (lines: TextLine[]): TextBlock[] => {
+/** Raw RGB(A) pixels of the page, used to look for outlines between lines. */
+export interface PagePixels {
+  data: Uint8Array | Uint8ClampedArray;
+  width: number;
+  height: number;
+  channels: number;
+}
+
+const lumaAt = (image: PagePixels, x: number, y: number) => {
+  const offset = (y * image.width + x) * image.channels;
+  return (
+    image.data[offset] * 0.299 + image.data[offset + 1] * 0.587 + image.data[offset + 2] * 0.114
+  );
+};
+
+/** The glyph band of a line: its box without the unclip margin across the line. */
+const lineCore = (box: Box): Box =>
+  box.w >= box.h
+    ? { x: box.x, y: box.y + box.h * 0.25, w: box.w, h: box.h * 0.5 }
+    : { x: box.x + box.w * 0.25, y: box.y, w: box.w * 0.5, h: box.h };
+
+const MAX_WINDOW_PIXELS = 4_000_000;
+
+/**
+ * Whether the background around line `a` reaches line `b` without crossing
+ * dark pixels, inside the pair's bounding box. Lines of one balloon are
+ * always connected through the leading between them; lines of two balloons
+ * are not, because each balloon is closed by its outline (or a panel
+ * border). Returns null when the test says nothing: dark backgrounds (white
+ * lettering) or huge windows.
+ */
+export const backgroundConnected = (image: PagePixels, a: Box, b: Box): boolean | null => {
+  const x0 = Math.max(0, Math.floor(Math.min(a.x, b.x)));
+  const y0 = Math.max(0, Math.floor(Math.min(a.y, b.y)));
+  const x1 = Math.min(image.width - 1, Math.ceil(Math.max(a.x + a.w, b.x + b.w)));
+  const y1 = Math.min(image.height - 1, Math.ceil(Math.max(a.y + a.h, b.y + b.h)));
+  const width = x1 - x0 + 1;
+  const height = y1 - y0 + 1;
+  if (width < 3 || height < 3 || width * height > MAX_WINDOW_PIXELS) return null;
+
+  const lumas = new Float32Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) lumas[y * width + x] = lumaAt(image, x0 + x, y0 + y);
+  }
+  const sample: number[] = [];
+  const step = Math.max(1, Math.floor(lumas.length / 4000));
+  for (let i = 0; i < lumas.length; i += step) sample.push(lumas[i]);
+  sample.sort((p, q) => p - q);
+  const background = sample[Math.floor(sample.length / 2)];
+  if (background < 128) return null;
+  const threshold = Math.max(140, background - 60);
+
+  const inBox = (box: Box, x: number, y: number) =>
+    x >= box.x && x < box.x + box.w && y >= box.y && y < box.y + box.h;
+  const coreA = lineCore(a);
+  const coreB = lineCore(b);
+  const visited = new Uint8Array(width * height);
+  const queue = new Int32Array(width * height);
+  let head = 0;
+  let tail = 0;
+  for (let y = Math.max(y0, Math.floor(coreA.y)); y < Math.min(y1 + 1, coreA.y + coreA.h); y += 1) {
+    for (let x = Math.max(x0, Math.floor(coreA.x)); x < Math.min(x1 + 1, coreA.x + coreA.w); x += 1) {
+      const index = (y - y0) * width + (x - x0);
+      if (lumas[index] >= threshold && !visited[index]) {
+        visited[index] = 1;
+        queue[tail++] = index;
+      }
+    }
+  }
+  if (tail === 0) return null;
+  while (head < tail) {
+    const index = queue[head++];
+    const x = index % width;
+    const y = (index - x) / width;
+    if (inBox(coreB, x0 + x, y0 + y) && !inBox(coreA, x0 + x, y0 + y)) return true;
+    const neighbours = [
+      x > 0 ? index - 1 : -1,
+      x < width - 1 ? index + 1 : -1,
+      y > 0 ? index - width : -1,
+      y < height - 1 ? index + width : -1,
+    ];
+    for (const next of neighbours) {
+      if (next >= 0 && !visited[next] && lumas[next] >= threshold) {
+        visited[next] = 1;
+        queue[tail++] = next;
+      }
+    }
+  }
+  return false;
+};
+
+/** Median luminance of a line's glyph band. */
+const bandLuma = (image: PagePixels, box: Box) => {
+  const core = lineCore(box);
+  const x0 = Math.max(0, Math.floor(core.x));
+  const y0 = Math.max(0, Math.floor(core.y));
+  const x1 = Math.min(image.width, Math.ceil(core.x + core.w));
+  const y1 = Math.min(image.height, Math.ceil(core.y + core.h));
+  const stepX = Math.max(1, Math.floor((x1 - x0) / 240));
+  const stepY = Math.max(1, Math.floor((y1 - y0) / 240));
+  const values: number[] = [];
+  for (let y = y0; y < y1; y += stepY) {
+    for (let x = x0; x < x1; x += stepX) values.push(lumaAt(image, x, y));
+  }
+  if (values.length === 0) return 255;
+  values.sort((p, q) => p - q);
+  return values[Math.floor(values.length / 2)];
+};
+
+/**
+ * Gap between the glyph bands of two stacked lines, in multiples of the
+ * glyph band height. Leading inside a balloon is well under one band; two
+ * balloons joined by a connector, or a paragraph break, leave more.
+ */
+export const stackedGapRatio = (image: PagePixels, a: Box, b: Box): number | null => {
+  const [upper, lower] = a.y <= b.y ? [a, b] : [b, a];
+  const x0 = Math.max(upper.x, lower.x);
+  const x1 = Math.min(upper.x + upper.w, lower.x + lower.w);
+  const inset = (x1 - x0) * 0.05;
+  const left = Math.max(0, Math.round(x0 + inset));
+  const right = Math.min(image.width - 1, Math.round(x1 - inset));
+  const top = Math.max(0, Math.round(upper.y + upper.h / 2));
+  const bottom = Math.min(image.height - 1, Math.round(lower.y + lower.h / 2));
+  if (right - left < 4 || bottom - top < 3) return null;
+  const width = right - left + 1;
+  const inked: boolean[] = [];
+  for (let y = top; y <= bottom; y += 1) {
+    let dark = 0;
+    for (let x = left; x <= right; x += 1) if (lumaAt(image, x, y) < 100) dark += 1;
+    inked.push(dark / width >= 0.04);
+  }
+  let upperBand = 0;
+  while (upperBand < inked.length && inked[upperBand]) upperBand += 1;
+  let lowerBand = 0;
+  while (lowerBand < inked.length - upperBand && inked[inked.length - 1 - lowerBand]) lowerBand += 1;
+  const gap = inked.length - upperBand - lowerBand;
+  // Each walk covers half a band (from the line centre outwards).
+  const band = upperBand + lowerBand;
+  if (band < 2) return null;
+  return gap / band;
+};
+
+/**
+ * Groups lines into balloon/caption blocks (union-find on proximity). With
+ * the page pixels, two lines are only merged when they sit on the same kind
+ * of surface and their backgrounds connect (no outline or border between
+ * them), stacked lines must not leave more
+ * than a line of empty space, and lines of very different lettering size (a
+ * caption next to a sound effect) stay apart.
+ */
+export const groupTextLines = (lines: TextLine[], image?: PagePixels): TextBlock[] => {
   const parents = lines.map((_, index) => index);
   const find = (index: number): number => {
     while (parents[index] !== index) {
@@ -198,39 +357,79 @@ export const groupTextLines = (lines: TextLine[]): TextBlock[] => {
     }
     return index;
   };
+  const thickness = (box: Box) => Math.max(1, Math.min(box.w, box.h));
+  // Lines of one balloon share a surface: light paper or a dark balloon. A
+  // "line" found in dark artwork next to a white balloon (hatching, rain)
+  // must not bridge it to the next balloon. Only clear cases count; small
+  // anti-aliased lettering sits in between.
+  const bands = image ? lines.map((line) => bandLuma(image, line.box)) : [];
+  const surfacesDiffer = (i: number, j: number) =>
+    (bands[i] >= 160 && bands[j] < 110) || (bands[j] >= 160 && bands[i] < 110);
+  const walls: [number, number][] = [];
   for (let i = 0; i < lines.length; i += 1) {
     for (let j = i + 1; j < lines.length; j += 1) {
-      if (linesTouch(lines[i].box, lines[j].box)) {
-        const a = find(i);
-        const b = find(j);
-        if (a !== b) parents[b] = a;
+      const a = lines[i].box;
+      const b = lines[j].box;
+      const relation = relationOf(a, b);
+      if (!relation) continue;
+      if (Math.max(thickness(a), thickness(b)) / Math.min(thickness(a), thickness(b)) > 1.6) continue;
+      if (image) {
+        if (surfacesDiffer(i, j) || backgroundConnected(image, a, b) === false) {
+          walls.push([i, j]);
+          continue;
+        }
+        if (relation === "stacked" && (stackedGapRatio(image, a, b) ?? 0) > 1.25) continue;
       }
+      const rootA = find(i);
+      const rootB = find(j);
+      if (rootA !== rootB) parents[rootB] = rootA;
     }
   }
-  const groups = new Map<number, TextLine[]>();
-  lines.forEach((line, index) => {
+  const groups = new Map<number, number[]>();
+  lines.forEach((_, index) => {
     const root = find(index);
     if (!groups.has(root)) groups.set(root, []);
-    groups.get(root)!.push(line);
+    groups.get(root)!.push(index);
   });
-  const blocks: TextBlock[] = [];
-  for (const group of groups.values()) {
+  const drafts = [...groups.values()].map((members) => {
+    const group = members.map((index) => lines[index]);
     const sorted = [...group].sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
     const minX = Math.min(...sorted.map((line) => line.box.x));
     const minY = Math.min(...sorted.map((line) => line.box.y));
     const maxX = Math.max(...sorted.map((line) => line.box.x + line.box.w));
     const maxY = Math.max(...sorted.map((line) => line.box.y + line.box.h));
-    blocks.push({
-      box: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
-      lines: sorted,
-      score: sorted.reduce((sum, line) => sum + line.score, 0) / sorted.length,
-    });
-  }
+    return {
+      members,
+      block: {
+        box: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+        lines: sorted,
+        score: sorted.reduce((sum, line) => sum + line.score, 0) / sorted.length,
+      } as TextBlock,
+    };
+  });
   // Reading order for the overlay numbering: top to bottom, then left to right.
-  return blocks.sort((a, b) => a.box.y - b.box.y || a.box.x - b.box.x);
+  drafts.sort((a, b) => a.block.box.y - b.block.box.y || a.block.box.x - b.block.box.x);
+  const blockOfLine = new Map<number, number>();
+  drafts.forEach((draft, blockIndex) => draft.members.forEach((line) => blockOfLine.set(line, blockIndex)));
+  for (const [i, j] of walls) {
+    const a = blockOfLine.get(i)!;
+    const b = blockOfLine.get(j)!;
+    if (a === b) continue;
+    for (const [from, to] of [[a, b], [b, a]]) {
+      const block = drafts[from].block;
+      block.separatedFrom = [...new Set([...(block.separatedFrom ?? []), to])].sort((p, q) => p - q);
+    }
+  }
+  return drafts.map((draft) => draft.block);
 };
 
 export const detectTextBlocks = async (original: Buffer, options?: DetectorOptions) => {
   const result = await detectTextLines(original, options);
-  return { ...result, blocks: groupTextLines(result.lines) };
+  const { data, info } = await sharp(original, { limitInputPixels: 120_000_000 })
+    .rotate()
+    .removeAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const pixels: PagePixels = { data, width: info.width, height: info.height, channels: info.channels };
+  return { ...result, blocks: groupTextLines(result.lines, pixels) };
 };

@@ -3,9 +3,13 @@
  * Gemini detection -> text translation -> server render. Uses
  * NEXT_PUBLIC_GEMINI_API_KEY from .env.local and bills two small calls.
  *
- *   npx tsx scripts/pipeline-preview.ts --image page.jpg --out out.jpg [--model gemini-3-flash-preview] [--lang Turkish] [--debug]
+ *   npx tsx scripts/pipeline-preview.ts --image page.jpg --out out.jpg [--model gemini-3-flash-preview] [--lang Turkish] [--debug] [--cache page.json]
+ *
+ * --cache stores the detection and translation results in a JSON file and
+ * reuses them on the next run, so render changes can be compared for free.
  */
 import * as dotenv from "dotenv";
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { createLayout, createRegion } from "../src/layout/defaults";
@@ -83,59 +87,75 @@ const main = async () => {
     `Model input: ${modelImage.modelWidth}x${modelImage.modelHeight} (${Math.round(modelImage.bytes / 1024)} KB) from ${modelImage.width}x${modelImage.height}`,
   );
 
+  type PreviewCache = {
+    regions: DetectedRegion[];
+    sourceLanguage?: string;
+    translations: Record<string, string>;
+  };
+  const cachePath = typeof args.get("cache") === "string" ? (args.get("cache") as string) : undefined;
+  const cached: PreviewCache | null =
+    cachePath && existsSync(cachePath) ? JSON.parse(await readFile(cachePath, "utf8")) : null;
+
   const stageUsage: import("../src/types").UsageBreakdown[] = [];
   let detectedRegions: DetectedRegion[] = [];
   let sourceLanguage: string | undefined;
-  const detected = args.get("no-detector") ? { blocks: [], durationMs: 0 } : await detectTextBlocks(original);
-  console.log(`Local detector: ${detected.blocks.length} blocks in ${detected.durationMs}ms`);
-  if (detected.blocks.length > 0) {
-    const overlay = await buildNumberedOverlay(original, modelImage.width, modelImage.height, detected.blocks);
-    if (args.get("debug")) {
-      await writeFile(outPath.replace(/\.[a-z0-9]+$/i, "") + "_overlay.jpg", Buffer.from(overlay.base64, "base64"));
-    }
-    const readStarted = Date.now();
-    const read = await readRegions({ apiKey, modelName, overlay, blocks: detected.blocks });
-    stageUsage.push(read.usage);
-    detectedRegions = read.result.regions;
-    sourceLanguage = read.result.sourceLanguage;
-    console.log(
-      `Reading (${modelName}): ${read.result.regions.length} regions from ${detected.blocks.length} boxes, language=${sourceLanguage ?? "?"}, tokens=${read.usage.totalTokenCount}, ${Date.now() - readStarted}ms`,
-    );
-    for (const region of read.result.regions) {
-      console.log(
-        `  [${region.kind}] ${JSON.stringify(region.sourceText)} box=${[region.textBox.x, region.textBox.y, region.textBox.w, region.textBox.h].map(Math.round).join(",")} c=${region.confidence.toFixed(2)}`,
-      );
-    }
+  const detected =
+    args.get("no-detector") || cached ? { blocks: [], durationMs: 0 } : await detectTextBlocks(original);
+  if (cached) {
+    detectedRegions = cached.regions;
+    sourceLanguage = cached.sourceLanguage;
+    console.log(`Using cached detection and translation from ${cachePath}`);
   } else {
-    const detection = await detectRegions({
-      apiKey,
-      modelName,
-      base64Image: modelImage.base64,
-      mimeType: modelImage.mimeType,
-      width: modelImage.width,
-      height: modelImage.height,
-    });
-    stageUsage.push(detection.usage);
-    sourceLanguage = detection.parsed.sourceLanguage;
-    console.log(
-      `Detection (${modelName}): ${detection.parsed.regions.length} regions, tokens=${detection.usage.totalTokenCount}, ${Date.now() - started}ms`,
-    );
-    const refinement = args.get("no-refine")
-      ? null
-      : await refineRegions({
-          apiKey,
-          modelName,
-          original,
-          width: modelImage.width,
-          height: modelImage.height,
-          regions: detection.parsed.regions,
-        });
-    if (refinement) stageUsage.push(refinement.usage);
-    detectedRegions = refinement ? refinement.regions : detection.parsed.regions;
-    for (const region of detectedRegions) {
+    console.log(`Local detector: ${detected.blocks.length} blocks in ${detected.durationMs}ms`);
+    if (detected.blocks.length > 0) {
+      const overlay = await buildNumberedOverlay(original, modelImage.width, modelImage.height, detected.blocks);
+      if (args.get("debug")) {
+        await writeFile(outPath.replace(/\.[a-z0-9]+$/i, "") + "_overlay.jpg", Buffer.from(overlay.base64, "base64"));
+      }
+      const readStarted = Date.now();
+      const read = await readRegions({ apiKey, modelName, overlay, blocks: detected.blocks });
+      stageUsage.push(read.usage);
+      detectedRegions = read.result.regions;
+      sourceLanguage = read.result.sourceLanguage;
       console.log(
-        `  [${region.kind}] ${JSON.stringify(region.sourceText)} box=${[region.textBox.x, region.textBox.y, region.textBox.w, region.textBox.h].map(Math.round).join(",")} c=${region.confidence.toFixed(2)}`,
+        `Reading (${modelName}): ${read.result.regions.length} regions from ${detected.blocks.length} boxes, language=${sourceLanguage ?? "?"}, tokens=${read.usage.totalTokenCount}, ${Date.now() - readStarted}ms`,
       );
+      for (const region of read.result.regions) {
+        console.log(
+          `  [${region.kind}] ${JSON.stringify(region.sourceText)} box=${[region.textBox.x, region.textBox.y, region.textBox.w, region.textBox.h].map(Math.round).join(",")} c=${region.confidence.toFixed(2)}`,
+        );
+      }
+    } else {
+      const detection = await detectRegions({
+        apiKey,
+        modelName,
+        base64Image: modelImage.base64,
+        mimeType: modelImage.mimeType,
+        width: modelImage.width,
+        height: modelImage.height,
+      });
+      stageUsage.push(detection.usage);
+      sourceLanguage = detection.parsed.sourceLanguage;
+      console.log(
+        `Detection (${modelName}): ${detection.parsed.regions.length} regions, tokens=${detection.usage.totalTokenCount}, ${Date.now() - started}ms`,
+      );
+      const refinement = args.get("no-refine")
+        ? null
+        : await refineRegions({
+            apiKey,
+            modelName,
+            original,
+            width: modelImage.width,
+            height: modelImage.height,
+            regions: detection.parsed.regions,
+          });
+      if (refinement) stageUsage.push(refinement.usage);
+      detectedRegions = refinement ? refinement.regions : detection.parsed.regions;
+      for (const region of detectedRegions) {
+        console.log(
+          `  [${region.kind}] ${JSON.stringify(region.sourceText)} box=${[region.textBox.x, region.textBox.y, region.textBox.w, region.textBox.h].map(Math.round).join(",")} c=${region.confidence.toFixed(2)}`,
+        );
+      }
     }
   }
 
@@ -155,23 +175,38 @@ const main = async () => {
     }),
   );
 
-  const translateStarted = Date.now();
-  const translation = await translateItems({
-    apiKey,
-    modelName,
-    targetLanguage,
-    context: { sourceLanguage },
-    items: regions.map((region) => ({
-      id: region.id,
-      kind: region.kind,
-      text: region.sourceText,
-    })),
-  });
-  console.log(
-    `Translation (${modelName}): tokens=${translation.usage.totalTokenCount}, ${Date.now() - translateStarted}ms`,
-  );
+  let translations: Map<string, string>;
+  if (cached) {
+    translations = new Map(Object.entries(cached.translations));
+  } else {
+    const translateStarted = Date.now();
+    const translation = await translateItems({
+      apiKey,
+      modelName,
+      targetLanguage,
+      context: { sourceLanguage },
+      items: regions.map((region) => ({
+        id: region.id,
+        kind: region.kind,
+        text: region.sourceText,
+      })),
+    });
+    stageUsage.push(translation.usage);
+    translations = translation.translations;
+    console.log(
+      `Translation (${modelName}): tokens=${translation.usage.totalTokenCount}, ${Date.now() - translateStarted}ms`,
+    );
+    if (cachePath) {
+      const cache: PreviewCache = {
+        regions: detectedRegions,
+        sourceLanguage,
+        translations: Object.fromEntries(translations),
+      };
+      await writeFile(cachePath, JSON.stringify(cache, null, 2));
+    }
+  }
   for (const region of regions) {
-    region.translatedText = translation.translations.get(region.id) || "";
+    region.translatedText = translations.get(region.id) || "";
     console.log(`  ${region.id}: ${JSON.stringify(region.translatedText)}`);
   }
 
@@ -196,7 +231,7 @@ const main = async () => {
     await writeFile(`${base}_debug.jpg`, debug);
   }
 
-  const usage = combineUsage([...stageUsage, translation.usage], modelName, false);
+  const usage = combineUsage(stageUsage, modelName, false);
   console.log(
     `Total: ${usage.totalTokenCount} tokens (prompt ${usage.promptTokenCount}, output ${usage.candidatesTokenCount}), estimated cost $${calculateGeminiCost(usage, modelName).toFixed(5)}, ${Date.now() - started}ms`,
   );

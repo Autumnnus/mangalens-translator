@@ -39,7 +39,8 @@ export const defaultStyleForKind = (kind: RegionKind): RegionStyle => {
     italic: false,
     uppercase: false,
     letterSpacing: 0,
-    padding: 0.07,
+    // Fraction of the cleaned container kept free next to its outline.
+    padding: 0.06,
     shape: "auto",
     rotation: 0,
   };
@@ -47,9 +48,9 @@ export const defaultStyleForKind = (kind: RegionKind): RegionStyle => {
     case "thought":
       return { ...base, italic: true };
     case "caption":
-      return { ...base, weight: "bold", padding: 0.08, lineHeight: 1.18 };
+      return { ...base, weight: "bold", padding: 0.05, lineHeight: 1.15 };
     case "label":
-      return { ...base, padding: 0.06 };
+      return { ...base, padding: 0.05 };
     case "sfx":
       return {
         ...base,

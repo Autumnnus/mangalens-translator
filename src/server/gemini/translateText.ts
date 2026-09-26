@@ -75,6 +75,7 @@ export const buildTranslationPrompt = ({
     "- Items are in reading order and belong to the same page; use the surrounding items as context.",
     '- "sfx" items are onomatopoeia: give a short target-language sound word, not a description.',
     "- Captions and labels stay concise. Do not add explanations, notes or quotation marks.",
+    "- The translation replaces the lettering in the same balloon, so space is limited: keep each item about as long as the source and prefer natural, compact phrasing over literal, wordy renderings.",
     "- Return exactly one translation per id. Never merge, split, add or omit items.",
     "- Do not insert line breaks; the typesetter wraps text to the balloon.",
     custom ? `Additional instructions from the editor:\n${custom}` : "",

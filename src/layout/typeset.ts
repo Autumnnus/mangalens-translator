@@ -31,6 +31,22 @@ export const rectShape = (box: Box): Shape => ({
       : { left: box.x, right: box.x + box.w },
 });
 
+/** Rectangle with rounded corners; `radius` is a fraction of the shorter side. */
+export const roundedRectShape = (box: Box, radius: number): Shape => {
+  const r = Math.min(box.w, box.h) * Math.min(0.5, Math.max(0, radius));
+  return {
+    bounds: box,
+    chordAt: (y) => {
+      if (y < box.y || y > box.y + box.h) return null;
+      const d = Math.min(y - box.y, box.y + box.h - y);
+      const inset = d < r ? r - Math.sqrt(Math.max(0, r * r - (r - d) ** 2)) : 0;
+      const left = box.x + inset;
+      const right = box.x + box.w - inset;
+      return right > left ? { left, right } : null;
+    },
+  };
+};
+
 export const ellipseShape = (box: Box): Shape => {
   const cx = box.x + box.w / 2;
   const cy = box.y + box.h / 2;
@@ -62,30 +78,36 @@ const polygonBoundsOf = (points: Point[]): Box => {
   return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 };
 
+/** Every inside span of a polygon on the scanline `y`, left to right. */
+export const polygonSpans = (points: Point[], y: number): Chord[] => {
+  const xs: number[] = [];
+  for (let i = 0; i < points.length; i += 1) {
+    const [x1, y1] = points[i];
+    const [x2, y2] = points[(i + 1) % points.length];
+    if (y1 === y2) continue;
+    const inRange = y1 < y2 ? y >= y1 && y < y2 : y >= y2 && y < y1;
+    if (!inRange) continue;
+    xs.push(x1 + ((y - y1) * (x2 - x1)) / (y2 - y1));
+  }
+  xs.sort((a, b) => a - b);
+  const spans: Chord[] = [];
+  for (let i = 0; i + 1 < xs.length; i += 2) spans.push({ left: xs[i], right: xs[i + 1] });
+  return spans;
+};
+
 /**
  * Scanline intersection. For concave outlines (a bubble with a tail) the span
- * that contains the horizontal centre wins, falling back to the widest one.
+ * that contains `focusX` (default: the horizontal centre) wins, falling back
+ * to the widest one.
  */
-export const polygonShape = (points: Point[]): Shape => {
+export const polygonShape = (points: Point[], focusX?: number): Shape => {
   const bounds = polygonBoundsOf(points);
-  const cx = bounds.x + bounds.w / 2;
+  const cx = focusX ?? bounds.x + bounds.w / 2;
   return {
     bounds,
     chordAt: (y) => {
-      const xs: number[] = [];
-      for (let i = 0; i < points.length; i += 1) {
-        const [x1, y1] = points[i];
-        const [x2, y2] = points[(i + 1) % points.length];
-        if (y1 === y2) continue;
-        const inRange = y1 < y2 ? y >= y1 && y < y2 : y >= y2 && y < y1;
-        if (!inRange) continue;
-        xs.push(x1 + ((y - y1) * (x2 - x1)) / (y2 - y1));
-      }
-      if (xs.length < 2) return null;
-      xs.sort((a, b) => a - b);
       let best: Chord | null = null;
-      for (let i = 0; i + 1 < xs.length; i += 2) {
-        const span = { left: xs[i], right: xs[i + 1] };
+      for (const span of polygonSpans(points, y)) {
         if (span.left <= cx && cx <= span.right) return span;
         if (!best || span.right - span.left > best.right - best.left) {
           best = span;
@@ -151,6 +173,36 @@ export interface TypesetOptions {
   locale?: string;
 }
 
+const LOCALE_BY_LANGUAGE: Record<string, string> = {
+  turkish: "tr",
+  türkçe: "tr",
+  english: "en",
+  german: "de",
+  french: "fr",
+  spanish: "es",
+  italian: "it",
+  portuguese: "pt",
+  "brazilian portuguese": "pt",
+  russian: "ru",
+  polish: "pl",
+  dutch: "nl",
+  azerbaijani: "az",
+  indonesian: "id",
+  vietnamese: "vi",
+};
+
+/**
+ * BCP-47 tag for a target language name ("Turkish" -> "tr"). Casing and
+ * hyphenation depend on it; Turkish is the default because it is the
+ * application's default target.
+ */
+export const localeForLanguage = (language?: string | null) => {
+  const key = language?.trim().toLowerCase();
+  if (!key) return "tr";
+  if (LOCALE_BY_LANGUAGE[key]) return LOCALE_BY_LANGUAGE[key];
+  return /^[a-z]{2,3}(-[a-z0-9]+)*$/.test(key) ? key : "und";
+};
+
 const WHITESPACE = /\s+/;
 
 const tokenize = (text: string): string[][] =>
@@ -159,29 +211,70 @@ const tokenize = (text: string): string[][] =>
     .split("\n")
     .map((paragraph) => paragraph.split(WHITESPACE).filter(Boolean));
 
+const TURKISH_VOWELS = new Set(Array.from("aeıioöuüâîûAEIİOÖUÜÂÎÛ"));
+const isLetter = (character: string) => /\p{L}/u.test(character);
+const letterCount = (characters: string[]) => characters.filter(isLetter).length;
+
+/**
+ * Positions a hyphen may go before. Turkish syllables start with at most one
+ * consonant ("ya-pıl-ma-mış", "Türk-çe"), which makes the rule exact for
+ * native words. Other languages fall back to any position. Either way both
+ * sides keep at least two letters, so "ER-EN" style splits cannot happen.
+ */
+export const hyphenationPoints = (word: string, locale = "tr"): number[] => {
+  const characters = Array.from(word);
+  let candidates: number[];
+  if (locale.toLowerCase().startsWith("tr")) {
+    const vowels = characters
+      .map((character, index) => (TURKISH_VOWELS.has(character) ? index : -1))
+      .filter((index) => index >= 0);
+    candidates = [];
+    for (let k = 0; k + 1 < vowels.length; k += 1) {
+      const between = characters.slice(vowels[k] + 1, vowels[k + 1]);
+      if (!between.every(isLetter)) continue;
+      candidates.push(between.length === 0 ? vowels[k + 1] : vowels[k + 1] - 1);
+    }
+  } else {
+    candidates = characters.map((_, index) => index).slice(1);
+  }
+  return candidates.filter(
+    (index) =>
+      isLetter(characters[index - 1]) &&
+      isLetter(characters[index]) &&
+      letterCount(characters.slice(0, index)) >= 2 &&
+      letterCount(characters.slice(index)) >= 2,
+  );
+};
+
 /** Splits a word that cannot fit on any line into hyphenated chunks. */
 const splitWord = (
   word: string,
   maxWidth: number,
   measure: (text: string) => number,
+  locale?: string,
 ): string[] => {
   if (measure(word) <= maxWidth) return [word];
-  const chunks: string[] = [];
   const characters = Array.from(word);
-  let current = "";
-  for (let i = 0; i < characters.length; i += 1) {
-    const character = characters[i];
-    const isLast = i === characters.length - 1;
-    const candidate = current + character + (isLast ? "" : "-");
-    if (current && measure(candidate) > maxWidth) {
-      chunks.push(current + "-");
-      current = character;
-    } else {
-      current += character;
+  const points = hyphenationPoints(word, locale);
+  if (points.length === 0) return [word];
+  const chunks: string[] = [];
+  let start = 0;
+  for (;;) {
+    const rest = characters.slice(start).join("");
+    const next = points.filter((index) => index > start);
+    if (measure(rest) <= maxWidth || next.length === 0) {
+      chunks.push(rest);
+      return chunks;
     }
+    // Longest piece that still fits; the first break point if none does.
+    let chosen = next[0];
+    for (const index of next) {
+      if (measure(characters.slice(start, index).join("") + "-") <= maxWidth) chosen = index;
+      else break;
+    }
+    chunks.push(characters.slice(start, chosen).join("") + "-");
+    start = chosen;
   }
-  if (current) chunks.push(current);
-  return chunks;
 };
 
 type LinePlan = { widths: number[]; tops: number[]; centers: number[] };
@@ -305,10 +398,19 @@ const layoutAtSize = (
   const needsSplit = paragraphs.some((paragraph) =>
     paragraph.some((word) => measure(word) > widestChord),
   );
-  if (needsSplit && !allowSplit) return null;
-  const words = paragraphs.map((paragraph) =>
-    paragraph.flatMap((word) => splitWord(word, widestChord, measure)),
+  // At the overflow fallback a word that may not be split simply overflows.
+  if (needsSplit && !allowSplit && !allowOverflow) return null;
+  const pieces = paragraphs.map((paragraph) =>
+    paragraph.map((word) =>
+      allowSplit ? splitWord(word, widestChord, measure, options.locale) : [word],
+    ),
   );
+  // One hyphen per word at most while a size is still being searched: a
+  // word chopped into three lines reads worse than slightly smaller text.
+  if (!allowOverflow && pieces.some((paragraph) => paragraph.some((parts) => parts.length > 2))) {
+    return null;
+  }
+  const words = pieces.map((paragraph) => paragraph.flat());
   const forcedBreaks = words.length - 1;
   const totalWords = words.reduce((sum, list) => sum + list.length, 0);
   if (totalWords === 0) return null;
@@ -489,7 +591,8 @@ export const typesetText = (options: TypesetOptions): TypesetResult | null => {
   // (a single very long word in a narrow balloon).
   const unsplit = search(false);
   const longestWord = paragraphs.reduce(
-    (max, paragraph) => paragraph.reduce((inner, word) => Math.max(inner, Array.from(word).length), max),
+    (max, paragraph) =>
+      paragraph.reduce((inner, word) => Math.max(inner, letterCount(Array.from(word))), max),
     0,
   );
   // Short words never get hyphenated: "TEŞ-EKK-ÜR" is worse than a smaller size.
@@ -498,5 +601,5 @@ export const typesetText = (options: TypesetOptions): TypesetResult | null => {
     return split;
   }
   if (unsplit) return unsplit;
-  return layoutAtSize(paragraphs, min, options, true);
+  return layoutAtSize(paragraphs, min, options, true, longestWord >= 10);
 };

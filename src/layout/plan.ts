@@ -1,10 +1,14 @@
 import { fontSizeBounds } from "./defaults";
 import { FontSet, LoadedFont } from "./fontEngine";
 import {
+  Chord,
   ellipseShape,
   insetShape,
+  localeForLanguage,
   polygonShape,
+  polygonSpans,
   rectShape,
+  roundedRectShape,
   Shape,
   typesetText,
   TypesetResult,
@@ -16,6 +20,7 @@ import {
   isContainerKind,
   maskBounds,
   PageLayout,
+  Point,
   Region,
   RegionRenderInfo,
 } from "./types";
@@ -63,66 +68,195 @@ const LABEL_GAP_RATIO = 0.012;
 const contrastingText = (luma: number) => (luma >= 128 ? "#111111" : "#ffffff");
 const contrastingStroke = (luma: number) => (luma >= 128 ? "#ffffff" : "#111111");
 
+const percentile = (values: number[], ratio: number) => {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.round((sorted.length - 1) * Math.min(1, Math.max(0, ratio)))];
+};
+
+/**
+ * Usable text rectangle inside a cleaned interior: the body of the lobe that
+ * holds `focus` (the region's text), without tails, pointed ends or a
+ * connector to a linked balloon. Rows narrower than 55% of the lobe's widest
+ * are ignored and the inner percentiles of the remaining edges are used, as
+ * the v1 renderer did.
+ */
+export const interiorTextArea = (points: Point[], focus?: Point): Box | null => {
+  const b = polygonShape(points).bounds;
+  const fx = focus?.[0] ?? b.x + b.w / 2;
+  const fy = focus?.[1] ?? b.y + b.h / 2;
+  const samples = 64;
+  type Row = Chord & { y: number };
+  const distance = (chord: Chord) => Math.min(Math.abs(chord.left - fx), Math.abs(chord.right - fx));
+  const rows: (Row | null)[] = [];
+  for (let i = 0; i <= samples; i += 1) {
+    const y = b.y + (b.h * i) / samples;
+    const spans = polygonSpans(points, y);
+    // The span holding the text, or the nearest one on rows it misses.
+    const span =
+      spans.find((candidate) => candidate.left <= fx && fx <= candidate.right) ||
+      spans.reduce<Chord | null>(
+        (nearest, candidate) => (!nearest || distance(candidate) < distance(nearest) ? candidate : nearest),
+        null,
+      );
+    rows.push(span && span.right > span.left ? { y, ...span } : null);
+  }
+  const width = (index: number) => rows[index]!.right - rows[index]!.left;
+  let start = Math.round(((fy - b.y) / Math.max(1, b.h)) * samples);
+  start = Math.min(samples, Math.max(0, start));
+  if (!rows[start]) {
+    const nearest = rows.findIndex((row, index) => row && Math.abs(index - start) <= 3);
+    if (nearest < 0) return null;
+    start = nearest;
+  }
+  // Grow the lobe while rows stay wider than 40% of the widest seen: a neck
+  // to a linked balloon or a tail is far narrower than the body.
+  let top = start;
+  let bottom = start;
+  let widest = width(start);
+  for (let grew = true; grew; ) {
+    grew = false;
+    if (top > 0 && rows[top - 1] && width(top - 1) >= widest * 0.4) {
+      top -= 1;
+      widest = Math.max(widest, width(top));
+      grew = true;
+    }
+    if (bottom < samples && rows[bottom + 1] && width(bottom + 1) >= widest * 0.4) {
+      bottom += 1;
+      widest = Math.max(widest, width(bottom));
+      grew = true;
+    }
+  }
+  const body = rows
+    .slice(top, bottom + 1)
+    .filter((row): row is Row => !!row)
+    .filter((row) => row.right - row.left >= widest * 0.55);
+  if (body.length < 3) return null;
+  const left = percentile(body.map((row) => row.left), 0.68);
+  const right = percentile(body.map((row) => row.right), 0.32);
+  const areaTop = body[0].y;
+  const areaBottom = body[body.length - 1].y;
+  if (right <= left || areaBottom <= areaTop) return null;
+  // A hair off the outline; the style padding adds the real margin.
+  const padX = (right - left) * 0.02;
+  const padY = (areaBottom - areaTop) * 0.02;
+  return {
+    x: left + padX,
+    y: areaTop + padY,
+    w: right - left - padX * 2,
+    h: areaBottom - areaTop - padY * 2,
+  };
+};
+
+/** Polygon chords limited to a rectangle, from the span that overlaps it most. */
+const clippedPolygonShape = (points: Point[], box: Box): Shape => ({
+  bounds: box,
+  chordAt: (y) => {
+    if (y < box.y || y > box.y + box.h) return null;
+    let best: Chord | null = null;
+    for (const span of polygonSpans(points, y)) {
+      const left = Math.max(span.left, box.x);
+      const right = Math.min(span.right, box.x + box.w);
+      if (right > left && (!best || right - left > best.right - best.left)) best = { left, right };
+    }
+    return best;
+  },
+});
+
+/** A shape's chords limited to a rectangle. */
+const clippedShape = (shape: Shape, box: Box): Shape => ({
+  bounds: box,
+  chordAt: (y) => {
+    if (y < box.y || y > box.y + box.h) return null;
+    const chord = shape.chordAt(y);
+    if (!chord) return null;
+    const left = Math.max(chord.left, box.x);
+    const right = Math.min(chord.right, box.x + box.w);
+    return right > left ? { left, right } : null;
+  },
+});
+
+const centreOf = (box: Box): Point => [box.x + box.w / 2, box.y + box.h / 2];
+
+/**
+ * Two regions can share one container (a balloon the detector split in two,
+ * or two blocks the reading model kept apart). Each then gets the part of
+ * the room on its side of the midline between the two texts, so the
+ * translations never overlap.
+ */
+const shareRoom = (region: Region, room: Box, layout: PageLayout): Box => {
+  const box = { ...room };
+  const own = region.textBox;
+  const [ox, oy] = centreOf(own);
+  for (const other of layout.regions) {
+    if (
+      other.id === region.id ||
+      other.hidden ||
+      other.placement !== "inside" ||
+      !other.translatedText.trim()
+    ) {
+      continue;
+    }
+    const t = other.textBox;
+    const [tx, ty] = centreOf(t);
+    if (tx < box.x || tx > box.x + box.w || ty < box.y || ty > box.y + box.h) continue;
+    const dx = tx - ox;
+    const dy = ty - oy;
+    if (Math.abs(dy) * box.w >= Math.abs(dx) * box.h) {
+      const cut = dy > 0 ? (own.y + own.h + t.y) / 2 : (t.y + t.h + own.y) / 2;
+      if (cut <= box.y || cut >= box.y + box.h) continue;
+      if (dy > 0) box.h = cut - box.y;
+      else {
+        box.h = box.y + box.h - cut;
+        box.y = cut;
+      }
+    } else {
+      const cut = dx > 0 ? (own.x + own.w + t.x) / 2 : (t.x + t.w + own.x) / 2;
+      if (cut <= box.x || cut >= box.x + box.w) continue;
+      if (dx > 0) box.w = cut - box.x;
+      else {
+        box.w = box.x + box.w - cut;
+        box.x = cut;
+      }
+    }
+  }
+  return box;
+};
+
+/**
+ * Wrapping silhouette. Automatic shapes follow the cleaned container, so
+ * lines get shorter towards the top and bottom of a round balloon; an
+ * ellipse inscribed in a box would waste a fifth of the room.
+ */
 const shapeFor = (region: Region, base: Box): Shape => {
   const { style, mask } = region;
-  const wantsEllipse =
-    style.shape === "ellipse" ||
-    (style.shape === "auto" && (region.kind === "speech" || region.kind === "thought"));
-  if (region.textArea) {
-    return wantsEllipse ? ellipseShape(base) : rectShape(base);
+  if (style.shape === "ellipse") return ellipseShape(base);
+  if (style.shape === "rect" || region.textArea || region.placement !== "inside") {
+    return rectShape(base);
   }
-  if (
-    style.shape === "auto" &&
-    region.placement === "inside" &&
-    region.maskSource !== "fallback" &&
-    !region.textBoxPrecise
-  ) {
-    if (mask.type === "polygon") return polygonShape(mask.points);
-    if (mask.type === "ellipse") return ellipseShape(mask.box);
-    if (mask.type === "rect") return rectShape(mask.box);
-  }
-  return wantsEllipse ? ellipseShape(base) : rectShape(base);
+  if (mask.type === "polygon") return clippedPolygonShape(mask.points, base);
+  if (mask.type === "ellipse") return clippedShape(ellipseShape(mask.box), base);
+  if (mask.type === "rect") return clippedShape(roundedRectShape(mask.box, mask.radius ?? 0), base);
+  return rectShape(base);
 };
 
 /** The box text is fitted into before padding. */
 export const baseAreaFor = (region: Region, layout: PageLayout): Box => {
   if (region.placement === "inside") {
     if (region.textArea) return clampBox(region.textArea, layout.width, layout.height);
-    // A pixel-accurate source box: keep the translation where the letterer put
-    // the text, with some room to grow, but never past the cleaned interior.
-    if (region.textBoxPrecise) {
-      const grown = {
-        x: region.textBox.x - region.textBox.w * 0.3,
-        y: region.textBox.y - region.textBox.h * 0.3,
-        w: region.textBox.w * 1.6,
-        h: region.textBox.h * 1.6,
-      };
-      const bounds = maskBounds(region.mask);
-      const limited = bounds
-        ? {
-            x: Math.max(grown.x, bounds.x),
-            y: Math.max(grown.y, bounds.y),
-            w: Math.min(grown.x + grown.w, bounds.x + bounds.w) - Math.max(grown.x, bounds.x),
-            h: Math.min(grown.y + grown.h, bounds.y + bounds.h) - Math.max(grown.y, bounds.y),
-          }
-        : grown;
-      // A found interior that is smaller than the text itself is not the
-      // balloon (a letter counter, a stray white patch): ignore it.
-      const usable =
-        limited.w > 4 &&
-        limited.h > 4 &&
-        limited.w * limited.h >= region.textBox.w * region.textBox.h * 0.6;
-      return clampBox(usable ? limited : grown, layout.width, layout.height);
+    // The cleaned container is the room the translation has.
+    if (region.mask.type === "polygon") {
+      const body = interiorTextArea(region.mask.points, centreOf(region.textBox));
+      if (body) return clampBox(shareRoom(region, body, layout), layout.width, layout.height);
     }
-    // A geometric fallback mask only covers the source text; the detector's
-    // balloon bounds are a better estimate of the room the translation has.
+    const bounds = maskBounds(region.mask);
+    if (bounds) return clampBox(shareRoom(region, bounds, layout), layout.width, layout.height);
+    // Not cleaned: the text goes over the artwork where the source was, or
+    // into the balloon bounds a model reported.
     const area =
-      (region.maskSource === "fallback" && region.bubbleBox
+      (region.bubbleBox
         ? insetBox(region.bubbleBox, region.bubbleBox.w * 0.06, region.bubbleBox.h * 0.08)
-        : null) ||
-      maskBounds(region.mask) ||
-      region.bubbleBox ||
-      region.textBox;
+        : null) || region.textBox;
     return clampBox(area, layout.width, layout.height);
   }
   const { min, max } = fontSizeBounds(region, layout.width);
@@ -167,6 +301,7 @@ export const planRegion = (
     metrics: font.metrics,
     minFontSize: bounds.min,
     maxFontSize: bounds.max,
+    locale: localeForLanguage(layout.meta.targetLanguage),
   });
 
   const cleaned =
