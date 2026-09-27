@@ -78,8 +78,7 @@ const percentile = (values: number[], ratio: number) => {
  * Usable text rectangle inside a cleaned interior: the body of the lobe that
  * holds `focus` (the region's text), without tails, pointed ends or a
  * connector to a linked balloon. Rows narrower than 55% of the lobe's widest
- * are ignored and the inner percentiles of the remaining edges are used, as
- * the v1 renderer did.
+ * are ignored.
  */
 export const interiorTextArea = (points: Point[], focus?: Point): Box | null => {
   const b = polygonShape(points).bounds;
@@ -132,8 +131,11 @@ export const interiorTextArea = (points: Point[], focus?: Point): Box | null => 
     .filter((row): row is Row => !!row)
     .filter((row) => row.right - row.left >= widest * 0.55);
   if (body.length < 3) return null;
-  const left = percentile(body.map((row) => row.left), 0.68);
-  const right = percentile(body.map((row) => row.right), 0.32);
+  // Wrapping follows the container's chords (clippedPolygonShape), so the
+  // rectangle only needs to drop outliers, not the curvature: trimming to
+  // the inner edges starves tall, narrow manga balloons.
+  const left = percentile(body.map((row) => row.left), 0.15);
+  const right = percentile(body.map((row) => row.right), 0.85);
   const areaTop = body[0].y;
   const areaBottom = body[body.length - 1].y;
   if (right <= left || areaBottom <= areaTop) return null;

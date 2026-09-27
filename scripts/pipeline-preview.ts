@@ -3,10 +3,12 @@
  * Gemini detection -> text translation -> server render. Uses
  * NEXT_PUBLIC_GEMINI_API_KEY from .env.local and bills two small calls.
  *
- *   npx tsx scripts/pipeline-preview.ts --image page.jpg --out out.jpg [--model gemini-3-flash-preview] [--lang Turkish] [--debug] [--cache page.json]
+ *   npx tsx scripts/pipeline-preview.ts --image page.jpg --out out.jpg [--model gemini-3-flash-preview] [--translate-model gemini-3.1-flash-lite] [--lang Turkish] [--debug] [--cache page.json]
  *
- * --cache stores the detection and translation results in a JSON file and
- * reuses them on the next run, so render changes can be compared for free.
+ * --cache stores the detection result as soon as it exists and the
+ * translation after it, and reuses both on the next run, so a failed
+ * translation does not waste the image call and render changes can be
+ * compared for free. --translate-model defaults to --model.
  */
 import * as dotenv from "dotenv";
 import { existsSync } from "node:fs";
@@ -90,8 +92,11 @@ const main = async () => {
   type PreviewCache = {
     regions: DetectedRegion[];
     sourceLanguage?: string;
-    translations: Record<string, string>;
+    /** Missing until the translation stage has run once. */
+    translations?: Record<string, string>;
   };
+  const translateModel = str("translate-model", modelName);
+  if (!isSupportedGeminiModel(translateModel)) throw new Error("Unsupported --translate-model");
   const cachePath = typeof args.get("cache") === "string" ? (args.get("cache") as string) : undefined;
   const cached: PreviewCache | null =
     cachePath && existsSync(cachePath) ? JSON.parse(await readFile(cachePath, "utf8")) : null;
@@ -104,7 +109,9 @@ const main = async () => {
   if (cached) {
     detectedRegions = cached.regions;
     sourceLanguage = cached.sourceLanguage;
-    console.log(`Using cached detection and translation from ${cachePath}`);
+    console.log(
+      `Using cached detection${cached.translations ? " and translation" : ""} from ${cachePath}`,
+    );
   } else {
     console.log(`Local detector: ${detected.blocks.length} blocks in ${detected.durationMs}ms`);
     if (detected.blocks.length > 0) {
@@ -159,6 +166,11 @@ const main = async () => {
     }
   }
 
+  if (cachePath && !cached) {
+    const partial: PreviewCache = { regions: detectedRegions, sourceLanguage };
+    await writeFile(cachePath, JSON.stringify(partial, null, 2));
+  }
+
   const regions = detectedRegions.map((item, index) =>
     createRegion({
       id: `g_${index + 1}`,
@@ -172,17 +184,18 @@ const main = async () => {
       confidence: item.confidence,
       textBoxPrecise: item.precise,
       sourceLineHeight: item.lineHeight,
+      pageLanguage: sourceLanguage,
     }),
   );
 
   let translations: Map<string, string>;
-  if (cached) {
+  if (cached?.translations) {
     translations = new Map(Object.entries(cached.translations));
   } else {
     const translateStarted = Date.now();
     const translation = await translateItems({
       apiKey,
-      modelName,
+      modelName: translateModel,
       targetLanguage,
       context: { sourceLanguage },
       items: regions.map((region) => ({
@@ -194,7 +207,7 @@ const main = async () => {
     stageUsage.push(translation.usage);
     translations = translation.translations;
     console.log(
-      `Translation (${modelName}): tokens=${translation.usage.totalTokenCount}, ${Date.now() - translateStarted}ms`,
+      `Translation (${translateModel}): tokens=${translation.usage.totalTokenCount}, ${Date.now() - translateStarted}ms`,
     );
     if (cachePath) {
       const cache: PreviewCache = {

@@ -211,6 +211,9 @@ const tokenize = (text: string): string[][] =>
     .split("\n")
     .map((paragraph) => paragraph.split(WHITESPACE).filter(Boolean));
 
+/** Shorter words are never hyphenated: "TEŞ-EKKÜR" reads worse than smaller text. */
+const MIN_SPLIT_LETTERS = 10;
+
 const TURKISH_VOWELS = new Set(Array.from("aeıioöuüâîûAEIİOÖUÜÂÎÛ"));
 const isLetter = (character: string) => /\p{L}/u.test(character);
 const letterCount = (characters: string[]) => characters.filter(isLetter).length;
@@ -402,7 +405,9 @@ const layoutAtSize = (
   if (needsSplit && !allowSplit && !allowOverflow) return null;
   const pieces = paragraphs.map((paragraph) =>
     paragraph.map((word) =>
-      allowSplit ? splitWord(word, widestChord, measure, options.locale) : [word],
+      allowSplit && letterCount(Array.from(word)) >= MIN_SPLIT_LETTERS
+        ? splitWord(word, widestChord, measure, options.locale)
+        : [word],
     ),
   );
   // One hyphen per word at most while a size is still being searched: a
@@ -595,11 +600,10 @@ export const typesetText = (options: TypesetOptions): TypesetResult | null => {
       paragraph.reduce((inner, word) => Math.max(inner, letterCount(Array.from(word))), max),
     0,
   );
-  // Short words never get hyphenated: "TEŞ-EKK-ÜR" is worse than a smaller size.
-  const split = longestWord >= 10 ? search(true) : null;
+  const split = longestWord >= MIN_SPLIT_LETTERS ? search(true) : null;
   if (split && (!unsplit || split.fontSize > unsplit.fontSize * 1.35)) {
     return split;
   }
   if (unsplit) return unsplit;
-  return layoutAtSize(paragraphs, min, options, true, longestWord >= 10);
+  return layoutAtSize(paragraphs, min, options, true, longestWord >= MIN_SPLIT_LETTERS);
 };

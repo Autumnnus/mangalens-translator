@@ -66,6 +66,24 @@ export const defaultStyleForKind = (kind: RegionKind): RegionStyle => {
   }
 };
 
+const CJK_SCRIPT = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\uff66-\uff9f]/;
+
+/**
+ * A sound effect in a different script from the page's dialogue (katakana
+ * on an English scanlation) was left in place by the scanlator on purpose.
+ * A translated label next to every one of them only clutters the page, so
+ * such regions start hidden; the editor can show them one by one.
+ */
+export const isUntouchedArtworkSfx = (
+  kind: RegionKind,
+  sourceText: string,
+  pageLanguage?: string | null,
+) =>
+  kind === "sfx" &&
+  CJK_SCRIPT.test(sourceText) &&
+  !!pageLanguage &&
+  !/^(ja|zh|ko)\b/i.test(pageLanguage.trim());
+
 export const defaultMaskForKind = (kind: RegionKind): Mask =>
   kind === "sfx" ? { type: "none" } : { type: "auto" };
 
@@ -117,6 +135,8 @@ export interface CreateRegionInput {
   style?: Partial<RegionStyle>;
   textBoxPrecise?: boolean;
   sourceLineHeight?: number;
+  /** BCP-47 language of the page's dialogue, when the detector reported it. */
+  pageLanguage?: string | null;
 }
 
 export const createRegion = (input: CreateRegionInput): Region => ({
@@ -136,6 +156,7 @@ export const createRegion = (input: CreateRegionInput): Region => ({
   confidence: input.confidence,
   textBoxPrecise: input.textBoxPrecise,
   sourceLineHeight: input.sourceLineHeight,
+  hidden: isUntouchedArtworkSfx(input.kind, input.sourceText, input.pageLanguage) || undefined,
 });
 
 export const createLayout = (

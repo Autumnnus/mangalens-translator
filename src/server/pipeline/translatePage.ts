@@ -127,6 +127,7 @@ const checkpoint = async (hooks: PipelineHooks | undefined, stage: PipelineStage
 export const regionsFromDetection = (
   detected: DetectedRegion[],
   source: Region["source"],
+  pageLanguage?: string,
 ): Region[] =>
   detected.map((item, index) =>
     createRegion({
@@ -141,6 +142,7 @@ export const regionsFromDetection = (
       confidence: item.confidence,
       textBoxPrecise: item.precise,
       sourceLineHeight: item.lineHeight,
+      pageLanguage,
     }),
   );
 
@@ -308,7 +310,7 @@ export const completeDetectedPage = async ({
   const usageEntries: UsageBreakdown[] = [...(detector.usageEntries || [])];
   const merged = mergeWithLocked(
     existingLayout,
-    regionsFromDetection(detected, source),
+    regionsFromDetection(detected, source, sourceLanguage || context?.sourceLanguage || undefined),
   );
   const translated = await translateRegions({
     userId,
