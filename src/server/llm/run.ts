@@ -185,6 +185,16 @@ const callOnce = async (
   throw lastError;
 };
 
+const STAGE_LABEL: Record<AiStage, string> = { reading: "Reading", translation: "Translation" };
+const STAGE_PREFIX = /^(Reading|Translation): /;
+
+/** Refusals name the stage, so the page card says whether the image or the text was refused. */
+const labelStage = (error: unknown, stage: AiStage) => {
+  if (error instanceof ModelCallError && error.blocked && !STAGE_PREFIX.test(error.message)) {
+    error.message = `${STAGE_LABEL[stage]}: ${error.message}`;
+  }
+};
+
 export const callModel = async ({
   ai,
   choice,
@@ -203,8 +213,11 @@ export const callModel = async ({
   try {
     return { json: await callOnce(ai, choice, stage, request, usage), model: choice.model, fallbackUsed: false };
   } catch (error) {
+    labelStage(error, stage);
     const sameModel = fallback?.model === choice.model && fallback?.providerId === choice.providerId;
-    if (!fallback || sameModel || (error as ModelCallError).blocked) throw error;
+    // A refusal is where a second model helps most: providers filter adult
+    // content very differently.
+    if (!fallback || sameModel) throw error;
     try {
       return { json: await callOnce(ai, fallback, stage, request, usage), model: fallback.model, fallbackUsed: true };
     } catch (fallbackError) {

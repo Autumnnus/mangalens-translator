@@ -9,6 +9,9 @@ const SAFETY_SETTINGS = [
   HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
 ].map((category) => ({ category, threshold: HarmBlockThreshold.BLOCK_NONE }));
 
+/** Finish reasons that mean a filter stopped the answer, not the model. */
+const BLOCKING_FINISH = new Set(["SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT"]);
+
 const statusOf = (error: unknown) => {
   const candidate = error as { status?: unknown; code?: unknown };
   const value = candidate?.status ?? candidate?.code;
@@ -62,13 +65,22 @@ export const callGemini = async (
     reasoningTokens: meta?.thoughtsTokenCount || 0,
   };
   const blockReason = response.promptFeedback?.blockReason;
-  const finishReason = response.candidates?.[0]?.finishReason;
+  const candidate = response.candidates?.[0];
+  const finishReason = candidate?.finishReason;
   if (!response.text) {
+    const blocked = !!blockReason || (!!finishReason && BLOCKING_FINISH.has(finishReason));
+    // Say which filter fired: SAFETY and friends follow the settings above,
+    // PROHIBITED_CONTENT and IMAGE_* are Google's own and cannot be turned off.
+    const categories = [...(response.promptFeedback?.safetyRatings || []), ...(candidate?.safetyRatings || [])]
+      .filter((rating) => rating.blocked)
+      .map((rating) => String(rating.category || "").replace("HARM_CATEGORY_", ""));
+    const reason = [
+      blockReason ? `input ${blockReason}` : `answer ${finishReason}`,
+      ...new Set(categories),
+    ].join(", ");
     throw new ModelCallError(
-      blockReason || finishReason === "SAFETY"
-        ? "The provider refused this page (safety filter)"
-        : "The model returned an empty answer",
-      { usage, blocked: !!blockReason || finishReason === "SAFETY" },
+      blocked ? `Gemini refused this page (safety filter: ${reason})` : "The model returned an empty answer",
+      { usage, blocked },
     );
   }
   try {

@@ -264,6 +264,8 @@ const SETTINGS: TranslationSettings = {
 export default function DevAiPage() {
   const queryClient = useQueryClient();
   const [ready] = useState(() => {
+    // Mock data must never reach a real session's query cache.
+    if (process.env.NODE_ENV === "production") return false;
     queryClient.setQueryData(aiUsageKeys.summary, SUMMARY);
     queryClient.setQueryDefaults(aiUsageKeys.summary, { staleTime: Infinity, refetchInterval: false });
     return true;

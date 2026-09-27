@@ -81,7 +81,7 @@ export const callOpenAiCompatible = async (
   if (!text.trim()) {
     throw new ModelCallError(
       choice?.finish_reason === "content_filter"
-        ? "The provider refused this page (content filter)"
+        ? "The provider refused this page (content filter: answer content_filter)"
         : "The model returned an empty answer",
       { usage, limits, blocked: choice?.finish_reason === "content_filter" },
     );
