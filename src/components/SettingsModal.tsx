@@ -1,20 +1,23 @@
 import {
   Button,
-  Chip,
   Field,
-  IconButton,
   Input,
   Modal,
-  Mono,
   SectionLabel,
   Select,
   Switch,
   Textarea,
 } from "@/components/ui";
-import { catalogModel, presetById, PROVIDER_PRESETS } from "@/lib/aiCatalog";
+import { useAiUsage } from "@/hooks/useAiUsage";
+import { presetById, PROVIDER_PRESETS, SetupRecipe } from "@/lib/aiCatalog";
 import { useSettingsStore } from "@/stores/useSettingsStore";
-import { Plus, Trash2 } from "lucide-react";
+import { useUIStore } from "@/stores/useUIStore";
+import { Gauge, Plus } from "lucide-react";
 import React, { useEffect, useState } from "react";
+import ModelPicker from "./ai/ModelPicker";
+import ProviderCard, { SYSTEM_PROVIDER_ID } from "./ai/ProviderCard";
+import SetupRecipes from "./ai/SetupRecipes";
+import { CapacityBanner } from "./ai/UsageModal";
 import { AiModelChoice, AiProviderConfig, AiSettings, TranslationSettings } from "../types";
 
 /* ----------------------------------------------------------------------------
@@ -138,166 +141,56 @@ const Section: React.FC<{
 );
 
 /* ----------------------------------------------------------------------------
-   AI providers and models
+   AI helpers
    --------------------------------------------------------------------------- */
-
-const SYSTEM_PROVIDER_ID = "system-gemini";
 
 const newId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID().slice(0, 12)
     : `p-${Date.now().toString(36)}`;
 
-const ProviderCard: React.FC<{
-  provider: AiProviderConfig;
-  onChange: (provider: AiProviderConfig) => void;
-  onRemove?: () => void;
-}> = ({ provider, onChange, onRemove }) => {
-  const preset = presetById(provider.preset);
-  const isSystem = provider.id === SYSTEM_PROVIDER_ID;
-  return (
-    <li className="flex flex-col gap-2 rounded-control border border-line p-3">
-      <div className="flex items-center gap-2">
-        <Input
-          inputSize="sm"
-          aria-label="Provider name"
-          value={provider.name}
-          onChange={(e) => onChange({ ...provider, name: e.target.value })}
-          className="min-w-0 flex-1"
-        />
-        <Chip tone="neutral">{preset?.label || provider.preset}</Chip>
-        {onRemove && (
-          <IconButton size="sm" variant="danger" label="Remove provider" onClick={onRemove}>
-            <Trash2 />
-          </IconButton>
-        )}
-      </div>
-      {provider.kind === "openai" && (
-        <Input
-          inputSize="sm"
-          mono
-          aria-label="Base URL"
-          placeholder="https://…/v1"
-          value={provider.baseUrl ?? preset?.baseUrl ?? ""}
-          onChange={(e) => onChange({ ...provider, baseUrl: e.target.value })}
-        />
-      )}
-      <Textarea
-        aria-label="API keys"
-        className="min-h-16 font-mono text-xs"
-        placeholder={
-          isSystem
-            ? "Empty: the server's Gemini key is used. Add your own keys, one per line."
-            : `API keys, one per line (${preset?.keyHint || "…"}). Rotated on rate limits.`
-        }
-        value={provider.apiKeys.join("\n")}
-        onChange={(e) =>
-          onChange({ ...provider, apiKeys: e.target.value.split("\n").map((key) => key.trim()).filter(Boolean) })
-        }
-      />
-    </li>
-  );
+const providerFromPreset = (presetId: string, freeTier?: boolean): AiProviderConfig | null => {
+  const preset = presetById(presetId);
+  if (!preset) return null;
+  return {
+    id: newId(),
+    name: preset.label,
+    preset: preset.id,
+    kind: preset.kind,
+    baseUrl: preset.kind === "openai" ? preset.baseUrl : undefined,
+    apiKeys: [],
+    freeTier: freeTier || undefined,
+  };
 };
 
-const ModelPicker: React.FC<{
-  label: string;
-  hint: string;
-  providers: AiProviderConfig[];
-  value?: AiModelChoice;
-  optional?: boolean;
-  needsVision?: boolean;
-  onChange: (choice?: AiModelChoice) => void;
-}> = ({ label, hint, providers, value, optional, needsVision, onChange }) => {
-  const provider = providers.find((entry) => entry.id === value?.providerId);
-  const preset = provider ? presetById(provider.preset) : undefined;
-  const models = (preset?.models || []).filter((model) => !needsVision || model.vision);
-  const known = value ? catalogModel(value.model) : undefined;
-  const listId = `models-${label.replace(/\W+/g, "-")}`;
-  return (
-    <Field label={label} hint={hint}>
-      {() => (
-        <div className="flex flex-col gap-2">
-          <div className="flex gap-2">
-            <Select
-              aria-label={`${label} provider`}
-              value={value?.providerId || ""}
-              onChange={(e) => {
-                const next = e.target.value;
-                if (!next) return onChange(undefined);
-                const nextPreset = presetById(providers.find((entry) => entry.id === next)?.preset || "");
-                const first = nextPreset?.models.find((model) => !needsVision || model.vision);
-                onChange({ providerId: next, model: first?.id || value?.model || "" });
-              }}
-              className="w-44 shrink-0"
-            >
-              {optional && <option value="">None</option>}
-              {providers.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </Select>
-            <Input
-              mono
-              aria-label={`${label} model`}
-              list={listId}
-              placeholder="model id"
-              disabled={!value}
-              value={value?.model || ""}
-              onChange={(e) => value && onChange({ ...value, model: e.target.value })}
-              className="min-w-0 flex-1"
-            />
-            <datalist id={listId}>
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                  {model.inputPer1M !== undefined ? ` · $${model.inputPer1M}/$${model.outputPer1M} per 1M` : ""}
-                </option>
-              ))}
-            </datalist>
-          </div>
-          {value && !known && (
-            <div className="flex items-center gap-2 text-xs text-ink-3">
-              <span>Price per 1M tokens (for cost tracking):</span>
-              <Input
-                inputSize="sm"
-                mono
-                type="number"
-                min={0}
-                step="0.01"
-                aria-label="Input price"
-                placeholder="input"
-                value={value.inputPer1M ?? ""}
-                onChange={(e) =>
-                  onChange({ ...value, inputPer1M: e.target.value === "" ? undefined : Number(e.target.value) })
-                }
-                className="w-24"
-              />
-              <Input
-                inputSize="sm"
-                mono
-                type="number"
-                min={0}
-                step="0.01"
-                aria-label="Output price"
-                placeholder="output"
-                value={value.outputPer1M ?? ""}
-                onChange={(e) =>
-                  onChange({ ...value, outputPer1M: e.target.value === "" ? undefined : Number(e.target.value) })
-                }
-                className="w-24"
-              />
-            </div>
-          )}
-          {value && known && known.inputPer1M !== undefined && (
-            <Mono className="text-xs text-ink-3">
-              ${known.inputPer1M} in · ${known.outputPer1M} out per 1M tokens{known.note ? ` · ${known.note}` : ""}
-            </Mono>
-          )}
-        </div>
-      )}
-    </Field>
-  );
+/**
+ * Applies a ready-made setup: reuses a provider of each needed preset
+ * (preferring one with keys) and adds the missing ones with empty keys.
+ */
+const applyRecipe = (ai: AiSettings, recipe: SetupRecipe) => {
+  const providers = [...ai.providers];
+  const added: string[] = [];
+  const providerFor = (presetId: string) => {
+    const candidates = providers.filter((provider) => provider.preset === presetId);
+    const existing =
+      candidates.find((provider) => provider.apiKeys.length > 0 || provider.id === SYSTEM_PROVIDER_ID) || candidates[0];
+    if (existing) return existing.id;
+    const created = providerFromPreset(presetId, recipe.free);
+    if (!created) return providers[0].id;
+    providers.push(created);
+    added.push(created.name);
+    return created.id;
+  };
+  const choice = (stage?: [string, string]): AiModelChoice | undefined =>
+    stage ? { providerId: providerFor(stage[0]), model: stage[1] } : undefined;
+  const next: AiSettings = {
+    providers,
+    reader: choice(recipe.reader)!,
+    translator: choice(recipe.translator)!,
+    readerFallback: choice(recipe.readerFallback),
+    translatorFallback: choice(recipe.translatorFallback),
+  };
+  return { next, added };
 };
 
 /* ----------------------------------------------------------------------------
@@ -315,14 +208,18 @@ const TARGET_LANGUAGES = ["Turkish", "English", "Spanish", "Japanese", "French",
 
 const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings }) => {
   const initializeSettings = useSettingsStore((state) => state.initializeSettings);
+  const toggleUsageModal = useUIStore((state) => state.toggleUsageModal);
   const [local, setLocal] = useState<TranslationSettings>(settings);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [newPreset, setNewPreset] = useState("openai");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [newPreset, setNewPreset] = useState("mistral");
+  const { data: usage } = useAiUsage(isOpen);
 
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
+    setNotice(null);
     // Always edit the server's view: it carries the resolved providers.
     void fetch("/api/settings", { cache: "no-store", credentials: "same-origin" })
       .then((response) => (response.ok ? response.json() : null))
@@ -333,18 +230,15 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings }) => {
   const ai: AiSettings | undefined = local.ai;
   const setAi = (next: AiSettings) => setLocal((prev) => ({ ...prev, ai: next }));
 
+  const limitFor = (choice?: AiModelChoice) =>
+    choice
+      ? usage?.limits.find((entry) => entry.providerId === choice.providerId && entry.model === choice.model)
+      : undefined;
+
   const addProvider = () => {
     if (!ai) return;
-    const preset = presetById(newPreset);
-    if (!preset) return;
-    const provider: AiProviderConfig = {
-      id: newId(),
-      name: preset.label,
-      preset: preset.id,
-      kind: preset.kind,
-      baseUrl: preset.kind === "openai" ? preset.baseUrl : undefined,
-      apiKeys: [],
-    };
+    const provider = providerFromPreset(newPreset, !!presetById(newPreset)?.freeTier && newPreset !== "deepseek");
+    if (!provider) return;
     setAi({ ...ai, providers: [...ai.providers, provider] });
   };
 
@@ -360,7 +254,19 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings }) => {
       reader: fallbackChoice(ai.reader) || { providerId: first.id, model: "" },
       translator: fallbackChoice(ai.translator) || { providerId: first.id, model: "" },
       readerFallback: fallbackChoice(ai.readerFallback),
+      translatorFallback: fallbackChoice(ai.translatorFallback),
     });
+  };
+
+  const pickRecipe = (recipe: SetupRecipe) => {
+    if (!ai) return;
+    const { next, added } = applyRecipe(ai, recipe);
+    setAi(next);
+    setNotice(
+      added.length
+        ? `${recipe.label} selected. Added ${added.join(" and ")} below: paste the API key there, then save.`
+        : `${recipe.label} selected. Save to use it.`,
+    );
   };
 
   const handleSave = async () => {
@@ -389,13 +295,22 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings }) => {
     }
   };
 
+  const modelsOf = (providerId: string) =>
+    ai
+      ? [...new Set(
+          [ai.reader, ai.translator, ai.readerFallback, ai.translatorFallback]
+            .filter((choice): choice is AiModelChoice => !!choice && choice.providerId === providerId && !!choice.model)
+            .map((choice) => choice.model),
+        )]
+      : [];
+
   return (
     <Modal
       open={isOpen}
       onClose={onClose}
-      size="lg"
+      size="xl"
       title="Settings"
-      description="Translation, AI providers and account"
+      description="Translation, AI models and providers, account"
       footer={
         <>
           {error && <span className="mr-auto text-xs text-shu">{error}</span>}
@@ -440,6 +355,97 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings }) => {
 
         {ai && (
           <Section
+            label="How pages are translated"
+            aside={
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Gauge />}
+                onClick={() => {
+                  onClose();
+                  toggleUsageModal(true);
+                }}
+              >
+                Usage & limits
+              </Button>
+            }
+          >
+            <ol className="grid gap-2 text-xs leading-relaxed text-ink-2 sm:grid-cols-3">
+              <li className="rounded-control border border-line bg-page-2 px-3 py-2">
+                <span className="font-medium text-ink">1. Find text</span> · on this server from the page pixels. Free,
+                no model involved.
+              </li>
+              <li className="rounded-control border border-line bg-page-2 px-3 py-2">
+                <span className="font-medium text-ink">2. Read</span> · a vision model writes down the original text of
+                every balloon. One call per page, most of the tokens.
+              </li>
+              <li className="rounded-control border border-line bg-page-2 px-3 py-2">
+                <span className="font-medium text-ink">3. Translate</span> · any text model translates the page in one
+                call. Then the page is typeset here, free.
+              </li>
+            </ol>
+            {usage && <CapacityBanner summary={usage} />}
+          </Section>
+        )}
+
+        {ai && (
+          <Section label="Quick setups">
+            <SetupRecipes ai={ai} onApply={pickRecipe} />
+            {notice && (
+              <p role="status" className="text-xs leading-relaxed text-action">
+                {notice}
+              </p>
+            )}
+          </Section>
+        )}
+
+        {ai && (
+          <Section label="Models">
+            <ModelPicker
+              label="Reading"
+              hint="Looks at the page and writes down the original text of every balloon. Must read images; the biggest share of the cost."
+              providers={ai.providers}
+              value={ai.reader}
+              needsVision
+              stage="reading"
+              limit={limitFor(ai.reader)}
+              onChange={(choice) => choice && setAi({ ...ai, reader: choice })}
+            />
+            <ModelPicker
+              label="Reading fallback"
+              hint="Takes over reading when the main reader fails, e.g. its free quota is used up. Best on another provider."
+              providers={ai.providers}
+              value={ai.readerFallback}
+              optional
+              needsVision
+              stage="reading"
+              limit={limitFor(ai.readerFallback)}
+              onChange={(choice) => setAi({ ...ai, readerFallback: choice })}
+            />
+            <ModelPicker
+              label="Translation"
+              hint="Translates the read text into your language. Text only, so any model works (DeepSeek too)."
+              providers={ai.providers}
+              value={ai.translator}
+              stage="translation"
+              limit={limitFor(ai.translator)}
+              onChange={(choice) => choice && setAi({ ...ai, translator: choice })}
+            />
+            <ModelPicker
+              label="Translation fallback"
+              hint="Takes over translation when the main translator fails."
+              providers={ai.providers}
+              value={ai.translatorFallback}
+              optional
+              stage="translation"
+              limit={limitFor(ai.translatorFallback)}
+              onChange={(choice) => setAi({ ...ai, translatorFallback: choice })}
+            />
+          </Section>
+        )}
+
+        {ai && (
+          <Section
             label="AI providers"
             aside={
               <>
@@ -466,6 +472,8 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings }) => {
                 <ProviderCard
                   key={provider.id}
                   provider={provider}
+                  models={modelsOf(provider.id)}
+                  limits={usage?.limits.filter((entry) => entry.providerId === provider.id) || []}
                   onChange={(next) =>
                     setAi({
                       ...ai,
@@ -477,38 +485,9 @@ const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings }) => {
               ))}
             </ul>
             <p className="text-xs leading-relaxed text-ink-3">
-              Text boxes are always found from the page pixels; models only read and translate. Any
-              OpenAI-compatible API works (OpenAI, OpenRouter, DeepSeek, GLM, Qwen, local servers).
+              Any OpenAI-compatible API works (OpenAI, OpenRouter, DeepSeek, GLM, Qwen, local servers). Several keys of
+              one provider are rotated; on free plans each key usually has its own daily quota.
             </p>
-          </Section>
-        )}
-
-        {ai && (
-          <Section label="Models">
-            <ModelPicker
-              label="Reading"
-              hint="Reads the lettering from page crops. Needs a vision model."
-              providers={ai.providers}
-              value={ai.reader}
-              needsVision
-              onChange={(choice) => choice && setAi({ ...ai, reader: choice })}
-            />
-            <ModelPicker
-              label="Translation"
-              hint="Translates the transcribed text. Any text model."
-              providers={ai.providers}
-              value={ai.translator}
-              onChange={(choice) => choice && setAi({ ...ai, translator: choice })}
-            />
-            <ModelPicker
-              label="Reading fallback"
-              hint="Used when the reading model keeps failing (outage, rate limits)."
-              providers={ai.providers}
-              value={ai.readerFallback}
-              optional
-              needsVision
-              onChange={(choice) => setAi({ ...ai, readerFallback: choice })}
-            />
           </Section>
         )}
 

@@ -58,7 +58,7 @@ const NewSeriesModal: React.FC<Props> = ({
   initialAuthor = "",
   initialGroup = "",
   initialOriginalTitle = "",
-  initialContentMode = "standard",
+  initialContentMode = "adult_verified",
 }) => {
   const [name, setName] = useState(initialName);
   const [categoryName, setCategoryName] = useState(
@@ -263,8 +263,8 @@ const NewSeriesModal: React.FC<Props> = ({
         <Checkbox
           checked={adultVerified}
           onChange={(event) => setAdultVerified(event.target.checked)}
-          label="Verified adult content"
-          description="I confirm that the sexual content in this series depicts adults only."
+          label="Adult mode"
+          description="I confirm that the sexual content in this series depicts adults only. Pages are translated in an uncensored, erotic register."
         />
 
         {!isAddingCategory ? (

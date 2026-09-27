@@ -5,6 +5,7 @@ interface UIState {
   // Modal States
   isSidebarOpen: boolean;
   isSettingsModalOpen: boolean;
+  isUsageModalOpen: boolean;
   isCategoryModalOpen: boolean;
   isNewSeriesModalOpen: boolean;
 
@@ -27,6 +28,7 @@ interface UIState {
   // Actions
   toggleSidebar: (value?: boolean) => void;
   toggleSettingsModal: (value?: boolean) => void;
+  toggleUsageModal: (value?: boolean) => void;
   toggleCategoryModal: (
     value?: boolean,
     initialParentId?: string | null,
@@ -64,6 +66,7 @@ const MAX_TOASTS = 4;
 export const useUIStore = create<UIState>((set) => ({
   isSidebarOpen: false,
   isSettingsModalOpen: false,
+  isUsageModalOpen: false,
   isCategoryModalOpen: false,
   isNewSeriesModalOpen: false,
 
@@ -89,6 +92,10 @@ export const useUIStore = create<UIState>((set) => ({
   toggleSettingsModal: (value) =>
     set((state) => ({
       isSettingsModalOpen: value ?? !state.isSettingsModalOpen,
+    })),
+  toggleUsageModal: (value) =>
+    set((state) => ({
+      isUsageModalOpen: value ?? !state.isUsageModalOpen,
     })),
   toggleCategoryModal: (value, initialParentId = null) =>
     set((state) => ({

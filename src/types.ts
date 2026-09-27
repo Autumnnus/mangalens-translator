@@ -155,6 +155,11 @@ export interface AiProviderConfig {
   baseUrl?: string;
   /** Rotated on rate limits. */
   apiKeys: string[];
+  /**
+   * The keys are on a free plan: calls are tracked against the free limits
+   * and cost nothing. Absent on accounts saved before this existed (paid).
+   */
+  freeTier?: boolean;
 }
 
 /** A model picked for one pipeline stage. */
@@ -174,6 +179,8 @@ export interface AiSettings {
   translator: AiModelChoice;
   /** Tried when the reader keeps failing (rate limits, outages). */
   readerFallback?: AiModelChoice;
+  /** Tried when the translator keeps failing. */
+  translatorFallback?: AiModelChoice;
 }
 
 export interface TranslationSettings {

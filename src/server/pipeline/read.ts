@@ -1,9 +1,13 @@
+import { catalogModel } from "@/lib/aiCatalog";
 import { Box, RegionKind, REGION_KINDS } from "@/layout/types";
 import { TextBlock } from "@/server/detect/textDetector";
 import { callModel } from "@/server/llm/run";
 import { ModelRequest, MessagePart } from "@/server/llm/types";
-import { AiSettings, UsageBreakdown } from "@/types";
+import { AiModelChoice, AiSettings, UsageBreakdown } from "@/types";
 import sharp from "sharp";
+
+/** Known text-only models are never sent page images; unknown ids are trusted. */
+const canReadImages = (choice?: AiModelChoice) => !!choice && catalogModel(choice.model)?.vision !== false;
 
 /**
  * Reading stage. The local detector has already found every block of
@@ -26,6 +30,8 @@ export interface DetectedRegion {
   lineHeight?: number;
   /** The box comes from the pixel detector (always true for this stage). */
   precise?: boolean;
+  /** Who says it: a name or a short visual description. */
+  speaker?: string;
 }
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -34,6 +40,11 @@ const normalizeConfidence = (value: unknown) => {
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) return 0.5;
   return clamp(numeric > 1 ? numeric / 100 : numeric, 0, 1);
+};
+
+const cleanLine = (value: unknown, max: number) => {
+  const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  return text ? text.slice(0, max) : undefined;
 };
 
 const isKind = (value: unknown): value is RegionKind =>
@@ -148,6 +159,8 @@ export interface ReadResult {
   hasText: boolean;
   pageConfidence: number;
   sourceLanguage?: string;
+  /** What happens on the page, for the translator, which never sees the image. */
+  scene?: string;
 }
 
 const unionBox = (a: Box, b: Box): Box => {
@@ -201,6 +214,7 @@ type ReadDraft = {
   texts: Map<number, string>;
   confidence: number;
   order: number;
+  speaker?: string;
 };
 
 /**
@@ -247,11 +261,13 @@ export const parseReadAnswer = (answer: unknown, blocks: TextBlock[]): ReadResul
     text?: unknown;
     same_balloon_as?: unknown;
     confidence?: unknown;
+    speaker?: unknown;
   };
   const decoded = (answer || {}) as {
     has_text?: unknown;
     page_confidence?: unknown;
     source_language?: unknown;
+    scene?: unknown;
     items?: RawItem[];
   };
   const items = Array.isArray(decoded.items) ? decoded.items : [];
@@ -297,6 +313,7 @@ export const parseReadAnswer = (answer: unknown, blocks: TextBlock[]): ReadResul
     draft.indices.push(index);
     draft.texts.set(index, textValue);
     draft.confidence = Math.min(draft.confidence, normalizeConfidence(item?.confidence));
+    draft.speaker ||= cleanLine(item?.speaker, 120);
     drafts.set(root, draft);
   });
 
@@ -328,6 +345,7 @@ export const parseReadAnswer = (answer: unknown, blocks: TextBlock[]): ReadResul
       order: regions.length,
       precise: true,
       lineHeight: lineHeights[Math.floor(lineHeights.length / 2)],
+      speaker: draft.speaker,
     });
   }
 
@@ -340,6 +358,7 @@ export const parseReadAnswer = (answer: unknown, blocks: TextBlock[]): ReadResul
     hasText: decoded.has_text === true || regions.length > 0,
     pageConfidence: normalizeConfidence(decoded.page_confidence),
     sourceLanguage,
+    scene: cleanLine(decoded.scene, 1500),
   };
 };
 
@@ -381,7 +400,7 @@ export const buildBlockCrops = async (original: Buffer, width: number, height: n
 
 export const READ_SYSTEM = [
   "You transcribe lettering in comic, manga and webtoon pages for a translation tool.",
-  "You never translate, summarise or censor; you copy the text exactly as printed.",
+  "You never translate or censor; you copy the text exactly as printed, moans, stutters and hearts included.",
 ].join(" ");
 
 export const buildReadInstructions = (count: number) =>
@@ -394,9 +413,11 @@ export const buildReadInstructions = (count: number) =>
     '- kind: "speech" (spoken balloon), "thought" (cloud or dashed balloon), "caption" (narration box), "sfx" (onomatopoeia drawn as artwork), "label" (signs, screens, notes).',
     "- text: the exact lettering of that box only, lines joined with single spaces, punctuation kept. Read vertical Japanese top-to-bottom, right-to-left. A crop may show pieces of neighbouring balloons at its edges; ignore them.",
     "- same_balloon_as: only when this box and another box lie inside the very same balloon outline (the detector split one balloon), that box's number. A sentence continuing in another balloon is not the same balloon.",
+    "- speaker: who says or thinks it. Use a name when the page shows one, otherwise a short visual tag (\"blonde woman\", \"man in glasses\") and keep the same tag for the same character on this page. \"narrator\" for captions; empty for sfx and labels.",
     "- confidence: 0-100.",
     "List items in the natural reading order of the page (right-to-left for manga).",
     'Also give has_text, page_confidence (0-100) and source_language as a BCP-47 tag such as "ja", "en" or "ko".',
+    "Finally give scene: two or three plain English sentences on what happens on this page: who is present, how they relate, the mood, and what they are doing, intimate or sexual acts included on adult pages. The translator never sees the image, so this is its only picture of the scene; describe, do not judge.",
   ].join("\n");
 
 export const READ_SCHEMA = {
@@ -405,6 +426,7 @@ export const READ_SCHEMA = {
     has_text: { type: "boolean" },
     page_confidence: { type: "integer" },
     source_language: { type: "string" },
+    scene: { type: "string" },
     items: {
       type: "array",
       items: {
@@ -415,13 +437,14 @@ export const READ_SCHEMA = {
           kind: { type: "string", enum: [...REGION_KINDS] },
           text: { type: "string" },
           same_balloon_as: { type: "integer" },
+          speaker: { type: "string" },
           confidence: { type: "integer" },
         },
-        required: ["index", "is_text", "kind", "text", "confidence"],
+        required: ["index", "is_text", "kind", "text", "speaker", "confidence"],
       },
     },
   },
-  required: ["has_text", "page_confidence", "items"],
+  required: ["has_text", "page_confidence", "scene", "items"],
 };
 
 /** The request for a page; exported so previews and tests can inspect it. */
@@ -460,6 +483,6 @@ export const readBlocks = async ({
   usage: UsageBreakdown[];
 }): Promise<ReadResult & { model: string; fallbackUsed: boolean }> => {
   const request = await buildReadRequest(original, width, height, blocks);
-  const answer = await callModel({ ai, choice: ai.reader, fallback: ai.readerFallback, request, usage });
+  const answer = await callModel({ ai, choice: ai.reader, fallback: canReadImages(ai.readerFallback) ? ai.readerFallback : undefined, stage: "reading", request, usage });
   return { ...parseReadAnswer(answer.json, blocks), model: answer.model, fallbackUsed: answer.fallbackUsed };
 };

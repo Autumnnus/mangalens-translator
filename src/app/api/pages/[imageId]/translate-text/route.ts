@@ -3,11 +3,13 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { images, series, users } from "@/db/schema";
 import { pageLayoutSchema } from "@/layout/types";
+import { trackModelCalls } from "@/server/llm/run";
 import { aiSettingsProblem } from "@/server/llm/settings";
 import { ModelCallError } from "@/server/llm/types";
 import { combineUsage } from "@/server/llm/usage";
 import { getOwnedImage } from "@/server/pages/layoutService";
-import { resolvePageSettings, translateRegions } from "@/server/pipeline/translatePage";
+import { ledgerRecorder } from "@/server/usage/ledger";
+import { loadStoryContext, resolvePageSettings, translateRegions } from "@/server/pipeline/translatePage";
 import { TranslationSettings, UsageBreakdown } from "@/types";
 import { calculateUsageCost } from "@/utils/cost";
 import { eq } from "drizzle-orm";
@@ -55,7 +57,7 @@ export async function POST(request: Request, context: Context) {
     if (problem) return NextResponse.json({ error: problem }, { status: 400 });
     const seriesRow = await db.query.series.findFirst({
       where: eq(series.id, image.seriesId),
-      columns: { name: true, originalTitle: true, author: true },
+      columns: { name: true, originalTitle: true, author: true, contentMode: true },
     });
 
     const { layout, regionIds } = parsed.data;
@@ -69,18 +71,29 @@ export async function POST(request: Request, context: Context) {
       return NextResponse.json({ layout, usage: combineUsage([], settings.ai.translator.model, false), cost: 0 });
     }
 
+    const targetIds = new Set(targets.map((region) => region.id));
+    const story = await loadStoryContext(image);
     const usageEntries: UsageBreakdown[] = [];
-    const translated = await translateRegions({
-      settings,
-      context: {
-        seriesTitle: seriesRow?.name,
-        originalTitle: seriesRow?.originalTitle,
-        author: seriesRow?.author,
-        sourceLanguage: null,
-      },
-      regions: targets,
-      usage: usageEntries,
-    });
+    const recorder = ledgerRecorder({ userId, imageId: image.id });
+    const translated = await trackModelCalls(recorder.observe, () =>
+      translateRegions({
+        settings,
+        context: {
+          seriesTitle: seriesRow?.name,
+          originalTitle: seriesRow?.originalTitle,
+          author: seriesRow?.author,
+          sourceLanguage: null,
+          adult: seriesRow?.contentMode === "adult_verified",
+          scene: layout.meta.scene,
+          story,
+          pageLines: layout.regions
+            .filter((region) => !targetIds.has(region.id) && region.sourceText.trim() && region.translatedText.trim())
+            .map((region) => ({ speaker: region.speaker, source: region.sourceText, translation: region.translatedText })),
+        },
+        regions: targets,
+        usage: usageEntries,
+      }),
+    ).finally(recorder.flush);
     const byId = new Map(translated.regions.map((region) => [region.id, region.translatedText]));
     const nextLayout = {
       ...layout,
@@ -90,7 +103,7 @@ export async function POST(request: Request, context: Context) {
       meta: { ...layout.meta, updatedAt: new Date().toISOString() },
     };
 
-    const usage = combineUsage(usageEntries, translated.model, false);
+    const usage = combineUsage(usageEntries, translated.model, translated.fallbackUsed);
     const cost = calculateUsageCost(usage);
     // Bill the page: append to its usage record.
     const previous = image.usage as typeof usage | null;

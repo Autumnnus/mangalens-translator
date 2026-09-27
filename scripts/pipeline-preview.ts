@@ -4,7 +4,7 @@
  *
  *   npx tsx scripts/pipeline-preview.ts --image page.jpg --out out.png [--debug] [--cache page.json]
  *     [--provider gemini|openai] [--base-url https://…/v1] [--key-env ENV_NAME]
- *     [--model reader-model] [--translate-model text-model] [--lang Turkish]
+ *     [--model reader-model] [--translate-model text-model] [--lang Turkish] [--adult]
  *
  * Defaults: Gemini with GEMINI_API_KEY / NEXT_PUBLIC_GEMINI_API_KEY from
  * .env.local. --cache stores the reading as soon as it exists and the
@@ -65,7 +65,12 @@ const debugSvg = (layout: PageLayout) =>
     })
     .join("")}</svg>`;
 
-type PreviewCache = { regions: DetectedRegion[]; sourceLanguage?: string; translations?: Record<string, string> };
+type PreviewCache = {
+  regions: DetectedRegion[];
+  sourceLanguage?: string;
+  scene?: string;
+  translations?: Record<string, string>;
+};
 
 const main = async () => {
   const kind = str("provider", "gemini") === "openai" ? "openai" : "gemini";
@@ -116,12 +121,13 @@ const main = async () => {
     }
     const read = detection.blocks.length
       ? await readBlocks({ ai, original, width, height, blocks: detection.blocks, usage })
-      : { regions: [], sourceLanguage: undefined, model: reader };
+      : { regions: [], sourceLanguage: undefined, scene: undefined, model: reader };
     console.log(`Reading (${read.model}): ${read.regions.length} regions, language=${read.sourceLanguage ?? "?"}`);
+    if (read.scene) console.log(`Scene: ${read.scene}`);
     for (const region of read.regions) {
-      console.log(`  [${region.kind}] ${JSON.stringify(region.sourceText)}`);
+      console.log(`  [${region.kind}${region.speaker ? ` · ${region.speaker}` : ""}] ${JSON.stringify(region.sourceText)}`);
     }
-    reading = { regions: read.regions, sourceLanguage: read.sourceLanguage };
+    reading = { regions: read.regions, sourceLanguage: read.sourceLanguage, scene: read.scene };
     if (cachePath) await writeFile(cachePath, JSON.stringify(reading, null, 2));
   }
 
@@ -130,8 +136,8 @@ const main = async () => {
     const { translations } = await translateItems({
       ai,
       targetLanguage,
-      context: { sourceLanguage: reading.sourceLanguage },
-      items: regions.map((region) => ({ id: region.id, kind: region.kind, text: region.sourceText })),
+      context: { sourceLanguage: reading.sourceLanguage, scene: reading.scene, adult: !!args.get("adult") },
+      items: regions.map((region) => ({ id: region.id, kind: region.kind, text: region.sourceText, speaker: region.speaker })),
       usage,
     });
     reading.translations = Object.fromEntries(translations);
@@ -139,7 +145,8 @@ const main = async () => {
   }
   for (const region of regions) region.translatedText = reading.translations[region.id] || "";
 
-  const layout = createLayout(width, height, regions, { source: "ai", targetLanguage });
+  for (const region of regions) console.log(`  ${region.id}: ${JSON.stringify(region.translatedText)}`);
+  const layout = createLayout(width, height, regions, { source: "ai", targetLanguage, scene: reading.scene });
   const rendered = await renderPage({ original, layout, fonts: await loadServerFonts(), format: "auto" });
   await writeFile(outPath, rendered.image);
   await writeFile(`${base}.layout.json`, JSON.stringify(rendered.layout, null, 2));

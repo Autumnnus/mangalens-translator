@@ -1,9 +1,11 @@
 import { db } from "@/db";
 import { images, pageJobs, series, users } from "@/db/schema";
+import { trackModelCalls } from "@/server/llm/run";
 import { aiSettingsProblem } from "@/server/llm/settings";
 import { isRetryable, ModelCallError } from "@/server/llm/types";
 import { combineUsage } from "@/server/llm/usage";
 import { getOwnedImage } from "@/server/pages/layoutService";
+import { ledgerRecorder } from "@/server/usage/ledger";
 import {
   PipelineCancelledError,
   PipelineHooks,
@@ -275,12 +277,13 @@ const executeAiJob = async (jobId: string) => {
   }
   const seriesRow = await db.query.series.findFirst({
     where: eq(series.id, job.seriesId),
-    columns: { name: true, originalTitle: true, author: true },
+    columns: { name: true, originalTitle: true, author: true, contentMode: true },
   });
   const context = {
     seriesTitle: seriesRow?.name,
     originalTitle: seriesRow?.originalTitle,
     author: seriesRow?.author,
+    adult: seriesRow?.contentMode === "adult_verified",
   };
   const hooks: PipelineHooks = {
     onStage: (stage) => setPageJobStage(job.id, stage),
@@ -291,7 +294,10 @@ const executeAiJob = async (jobId: string) => {
   for (;;) {
     try {
       await db.update(pageJobs).set({ attempts: attempt, updatedAt: new Date() }).where(eq(pageJobs.id, job.id));
-      const completed = await translatePage({ image, settings, context, hooks });
+      const recorder = ledgerRecorder({ userId: job.userId, imageId: image.id, jobId: job.id });
+      const completed = await trackModelCalls(recorder.observe, () =>
+        translatePage({ image, settings, context, hooks }),
+      ).finally(recorder.flush);
       await completePageJob(job.id, { usage: completed.usage, cost: completed.cost });
       return;
     } catch (error) {

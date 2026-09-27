@@ -11,6 +11,7 @@ import LayoutEditorModal from "./layout-editor/LayoutEditorModal";
 import MigrationModal from "./MigrationModal";
 import NewSeriesModal from "./NewSeriesModal";
 import SettingsModal from "./SettingsModal";
+import UsageModal from "./ai/UsageModal";
 import ToastViewport from "./ToastViewport";
 import { Button, FullscreenShell } from "./ui";
 import ViewModeControls from "./ViewModeControls";
@@ -37,6 +38,8 @@ const GlobalModals: React.FC = () => {
     toggleNewSeriesModal,
     isSettingsModalOpen,
     toggleSettingsModal,
+    isUsageModalOpen,
+    toggleUsageModal,
     confirmConfig,
     categoryInitialParentId,
     editingSeriesId,
@@ -115,7 +118,7 @@ const GlobalModals: React.FC = () => {
         author: metadata?.author,
         groupName: metadata?.group,
         originalTitle: metadata?.originalTitle,
-        contentMode: metadata?.contentMode || "standard",
+        contentMode: metadata?.contentMode || "adult_verified",
       };
 
       if (editingSeriesId) {
@@ -229,7 +232,7 @@ const GlobalModals: React.FC = () => {
         initialContentMode={
           editingSeriesId
             ? seriesItems.find((s) => s.id === editingSeriesId)?.contentMode
-            : "standard"
+            : "adult_verified"
         }
       />
 
@@ -239,6 +242,8 @@ const GlobalModals: React.FC = () => {
         settings={settings}
         onSettingsChange={updateSettings}
       />
+
+      <UsageModal open={isUsageModalOpen} onClose={() => toggleUsageModal(false)} />
 
       <MigrationModal />
       <LayoutEditorModal />

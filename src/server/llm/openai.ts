@@ -1,3 +1,4 @@
+import { parseOpenAiQuota, parseRateLimitHeaders, parseResetMs } from "./limits";
 import { ModelCallError, ModelRequest, ModelResponse, parseJsonAnswer, ProviderEndpoint } from "./types";
 
 /**
@@ -40,8 +41,10 @@ export const callOpenAiCompatible = async (
     throw new ModelCallError(error instanceof Error ? error.message : String(error));
   }
   const raw = await response.text();
+  const limits = parseRateLimitHeaders(response.headers, endpoint.preset);
   if (!response.ok) {
-    const retryAfter = Number(response.headers.get("retry-after"));
+    const retryHeader = response.headers.get("retry-after");
+    const retryAfterMs = retryHeader ? parseResetMs(retryHeader) : undefined;
     let message = raw.slice(0, 500);
     try {
       const parsed = JSON.parse(raw) as { error?: { message?: string } | string };
@@ -49,9 +52,12 @@ export const callOpenAiCompatible = async (
     } catch {
       // keep raw text
     }
+    const quota = parseOpenAiQuota(response.status, `${message} ${raw.slice(0, 1000)}`, endpoint.preset, limits, retryAfterMs);
     throw new ModelCallError(`${response.status}: ${message}`, {
       status: response.status,
-      retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : undefined,
+      retryAfterMs: retryAfterMs && retryAfterMs > 0 ? retryAfterMs : undefined,
+      quota,
+      limits,
     });
   }
   const data = JSON.parse(raw) as {
@@ -77,12 +83,12 @@ export const callOpenAiCompatible = async (
       choice?.finish_reason === "content_filter"
         ? "The provider refused this page (content filter)"
         : "The model returned an empty answer",
-      { usage, blocked: choice?.finish_reason === "content_filter" },
+      { usage, limits, blocked: choice?.finish_reason === "content_filter" },
     );
   }
   try {
-    return { json: parseJsonAnswer(text), usage };
+    return { json: parseJsonAnswer(text), usage, limits };
   } catch (error) {
-    throw new ModelCallError(error instanceof Error ? error.message : String(error), { usage });
+    throw new ModelCallError(error instanceof Error ? error.message : String(error), { usage, limits });
   }
 };

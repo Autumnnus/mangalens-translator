@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+  boolean,
   index,
   integer,
   jsonb,
@@ -10,6 +11,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { PageLayout } from "../layout/types";
+import { CallLimits } from "../lib/aiUsage";
 import {
   BatchTranslationItemResult,
   LocalOcrBubble,
@@ -79,7 +81,7 @@ export const series = pgTable("series", {
   updatedAt: timestamp("updated_at").defaultNow(),
   // Legacy/Fallback string fields if strict relation not possible during migration (but we are starting fresh)
   categoryName: text("category_name"),
-  contentMode: text("content_mode").default("standard").notNull(),
+  contentMode: text("content_mode").default("adult_verified").notNull(),
 });
 
 export const images = pgTable("images", {
@@ -196,6 +198,45 @@ export const pageJobs = pgTable(
     index("page_jobs_image_idx").on(table.imageId),
     index("page_jobs_series_stage_idx").on(table.seriesId, table.stage),
   ],
+);
+
+/**
+ * Usage ledger: one row per model call attempt, successful or not. The usage
+ * screen and the limit indicators are built from it. Keys are stored only as
+ * a masked hint ("…a1B2").
+ */
+export const aiCalls = pgTable(
+  "ai_calls",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    imageId: uuid("image_id").references(() => images.id, { onDelete: "set null" }),
+    jobId: uuid("job_id"),
+    /** reading | translation */
+    stage: text("stage").notNull(),
+    providerId: text("provider_id").notNull(),
+    providerName: text("provider_name").notNull(),
+    preset: text("preset").notNull(),
+    model: text("model").notNull(),
+    keyHint: text("key_hint"),
+    freeTier: boolean("free_tier").default(false).notNull(),
+    /** ok | rate_limited | quota_exhausted | blocked | error */
+    status: text("status").notNull(),
+    error: text("error"),
+    inputTokens: integer("input_tokens").default(0).notNull(),
+    outputTokens: integer("output_tokens").default(0).notNull(),
+    reasoningTokens: integer("reasoning_tokens").default(0).notNull(),
+    /** Charged estimate (0 on free-tier providers). */
+    costUsd: real("cost_usd").default(0).notNull(),
+    /** List price of the call. */
+    listCostUsd: real("list_cost_usd").default(0).notNull(),
+    durationMs: integer("duration_ms"),
+    limits: jsonb("limits").$type<CallLimits>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("ai_calls_user_created_idx").on(table.userId, table.createdAt)],
 );
 
 export const localOcrWorkers = pgTable("local_ocr_workers", {

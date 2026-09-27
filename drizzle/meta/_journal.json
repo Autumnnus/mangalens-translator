@@ -64,6 +64,20 @@
       "when": 1788689376517,
       "tag": "0008_page_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790514874349,
+      "tag": "0009_ai_calls",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790520752170,
+      "tag": "0010_adult_mode_default",
+      "breakpoints": true
     }
   ]
 }

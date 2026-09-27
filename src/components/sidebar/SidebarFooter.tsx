@@ -1,4 +1,4 @@
-import { Archive, Download, LogOut, Settings, Tags, Upload } from "lucide-react";
+import { Archive, Download, Gauge, LogOut, Settings, Tags, Upload } from "lucide-react";
 import { signOut } from "next-auth/react";
 import React, { useCallback, useRef, useState } from "react";
 import { useConfirm } from "../../hooks/useConfirm";
@@ -11,7 +11,7 @@ interface SidebarFooterProps {
   isViewOnly: boolean;
 }
 
-/** Sidebar footer: Categories, Settings, Backup (export / import) and Sign out. */
+/** Sidebar footer: Categories, Settings, AI usage, Backup (export / import) and Sign out. */
 const SidebarFooter: React.FC<SidebarFooterProps> = ({
   isSidebarCollapsed,
   isViewOnly,
@@ -23,6 +23,7 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
   const showToast = useUIStore((state) => state.showToast);
   const toggleCategoryModal = useUIStore((state) => state.toggleCategoryModal);
   const toggleSettingsModal = useUIStore((state) => state.toggleSettingsModal);
+  const toggleUsageModal = useUIStore((state) => state.toggleUsageModal);
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -127,6 +128,9 @@ const SidebarFooter: React.FC<SidebarFooterProps> = ({
           </IconButton>
           <IconButton label="Settings" onClick={() => toggleSettingsModal(true)}>
             <Settings />
+          </IconButton>
+          <IconButton label="AI usage & limits" onClick={() => toggleUsageModal(true)}>
+            <Gauge />
           </IconButton>
           <Menu
             align="left"

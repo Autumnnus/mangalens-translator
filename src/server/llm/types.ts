@@ -1,3 +1,5 @@
+import { LimitWindow, QuotaHit } from "@/lib/aiUsage";
+
 /**
  * Provider-neutral model calls. The pipeline only speaks this interface; each
  * provider adapter translates it to its own wire format.
@@ -39,6 +41,8 @@ export interface ModelResponse {
   /** Parsed JSON answer. */
   json: unknown;
   usage: ModelUsage;
+  /** Rate-limit windows the provider reported with the answer. */
+  limits?: LimitWindow[];
 }
 
 export interface ProviderEndpoint {
@@ -47,6 +51,8 @@ export interface ProviderEndpoint {
   /** OpenAI-compatible providers only. */
   baseUrl?: string;
   model: string;
+  /** Catalog preset, for provider-specific header meanings. */
+  preset: string;
 }
 
 export class ModelCallError extends Error {
@@ -55,6 +61,9 @@ export class ModelCallError extends Error {
   usage?: ModelUsage;
   /** The provider refused the content (safety filters). */
   blocked?: boolean;
+  /** A quota the provider said was exceeded. */
+  quota?: QuotaHit;
+  limits?: LimitWindow[];
   constructor(message: string, init: Partial<ModelCallError> = {}) {
     super(message);
     this.name = "ModelCallError";
@@ -64,6 +73,8 @@ export class ModelCallError extends Error {
 
 /** Rate limits, overload and transient server errors: worth another try. */
 export const isRetryable = (error: unknown) => {
+  // A daily quota does not come back within any sensible retry window.
+  if ((error as ModelCallError)?.quota?.scope === "day") return false;
   const status = (error as ModelCallError)?.status;
   if (status === 408 || status === 409 || status === 429 || (status !== undefined && status >= 500)) {
     return true;

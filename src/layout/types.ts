@@ -154,6 +154,8 @@ export const regionSchema = z.object({
   /** Keep the region for reference but render nothing. */
   hidden: z.boolean().optional(),
   notes: z.string().max(2000).optional(),
+  /** Who says it, as the reader saw it: a name or a short description. Translation context only. */
+  speaker: z.string().max(120).optional(),
   /** Written by the renderer; informational only. */
   render: regionRenderInfoSchema.optional(),
 });
@@ -173,6 +175,8 @@ export const pageLayoutSchema = z.object({
     /** e.g. "gemini:gemini-3-flash-preview", "paddleocr", "legacy-bubbles". */
     detector: z.string().max(200).optional(),
     targetLanguage: z.string().max(100).optional(),
+    /** The reader's short description of the page, reused as translation context. */
+    scene: z.string().max(1500).optional(),
   }),
 });
 export type PageLayout = z.infer<typeof pageLayoutSchema>;

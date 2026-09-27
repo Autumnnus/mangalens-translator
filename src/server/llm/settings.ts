@@ -48,7 +48,8 @@ export const resolveAiSettings = (stored: Partial<TranslationSettings> = {}): Ai
         ? { providerId: reader.providerId, model: stored.fallbackModel }
         : undefined;
   }
-  return { providers, reader, translator, readerFallback };
+  const translatorFallback = valid(saved?.translatorFallback) ? saved!.translatorFallback : undefined;
+  return { providers, reader, translator, readerFallback, translatorFallback };
 };
 
 /** API keys of a provider; the server's own Gemini key backs the system provider. */
@@ -78,5 +79,8 @@ export const aiSettingsProblem = (ai: AiSettings) => {
     }
   }
   if (!ai.reader.model.trim() || !ai.translator.model.trim()) return "Pick a model for reading and translation.";
+  if (catalogModel(ai.reader.model)?.vision === false) {
+    return `${ai.reader.model} cannot read images; pick a vision model for reading.`;
+  }
   return null;
 };

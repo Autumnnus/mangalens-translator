@@ -1,4 +1,5 @@
 import { GoogleGenAI, HarmBlockThreshold, HarmCategory, ThinkingLevel } from "@google/genai";
+import { parseGeminiQuota } from "./limits";
 import { ModelCallError, ModelRequest, ModelResponse, parseJsonAnswer, ProviderEndpoint } from "./types";
 
 const SAFETY_SETTINGS = [
@@ -45,8 +46,13 @@ export const callGemini = async (
       },
     });
   } catch (error) {
-    throw new ModelCallError(error instanceof Error ? error.message : String(error), {
-      status: statusOf(error),
+    const message = error instanceof Error ? error.message : String(error);
+    const status = statusOf(error);
+    const quota = status === 429 || /RESOURCE_EXHAUSTED/.test(message) ? parseGeminiQuota(message) : undefined;
+    throw new ModelCallError(message, {
+      status,
+      quota: quota ? { scope: quota.scope, limit: quota.limit, resetAt: quota.resetAt } : undefined,
+      retryAfterMs: quota?.scope === "day" ? undefined : quota?.retryMs,
     });
   }
   const meta = response.usageMetadata;

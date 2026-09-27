@@ -128,6 +128,28 @@ UI polls `GET /api/jobs?seriesId=` and can cancel a job with
 `src/instrumentation.ts`; it requires a long-running Node server (`next start`),
 not a serverless deployment.
 
+## AI Usage and Limits
+
+Every model call (successful or not) is written to the `ai_calls` ledger with
+its stage, provider, model, masked key (`…a1B2`), tokens, estimated cost and
+whatever the provider reported about its limits (rate-limit headers, Gemini
+quota errors). The table comes from migration `0009_ai_calls`; if a server was
+not migrated, it is created on start-up with the same DDL.
+
+- **Usage & limits** (sidebar gauge icon): cost, pages, calls and tokens for
+  today / 7 / 30 days, a daily chart, a per-model table, recent problems, and
+  for every model of the current setup today's requests against its daily
+  limit, plus "about N more pages today".
+- **Settings**: quick setups (free Gemini-only, free Gemini + Mistral, free
+  OpenRouter, paid Gemini + DeepSeek), reading/translation models each with a
+  fallback, per-model price and page-cost estimates, a *Free plan* switch per
+  provider (calls cost $0 and count against free limits) and *Check keys*,
+  which validates keys without spending tokens (OpenRouter shows its free
+  daily requests, DeepSeek its balance).
+- When a key's daily quota is used up it is parked until the provider's reset
+  (Gemini: Pacific midnight); the next key or the fallback model is used at
+  once instead of retrying. Text-only models are never used for reading.
+
 ## Migrating Old Pages
 
 Pages translated before the layout system keep their flattened render

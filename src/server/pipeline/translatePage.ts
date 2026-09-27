@@ -8,9 +8,9 @@ import { combineUsage } from "@/server/llm/usage";
 import { loadOriginal, OwnedImage, readDimensions, renderImage, RenderResult } from "@/server/pages/layoutService";
 import { AiSettings, TranslationSettings, UsageBreakdown, UsageMetadata } from "@/types";
 import { calculateUsageCost } from "@/utils/cost";
-import { eq } from "drizzle-orm";
+import { and, desc, eq, isNotNull, lt } from "drizzle-orm";
 import { DetectedRegion, readBlocks } from "./read";
-import { TranslationContext, translateItems } from "./translate";
+import { StoryPage, TranslationContext, translateItems } from "./translate";
 
 /**
  * The page pipeline:
@@ -104,9 +104,50 @@ export const regionsFromReading = (detected: DetectedRegion[], pageLanguage?: st
       confidence: item.confidence,
       textBoxPrecise: true,
       sourceLineHeight: item.lineHeight,
+      speaker: item.speaker,
       pageLanguage,
     }),
   );
+
+const STORY_PAGES = 2;
+const STORY_LINES_PER_PAGE = 40;
+const STORY_LINE_CHARS = 240;
+
+/**
+ * The translated pages right before this one in the series, oldest first,
+ * so names, forms of address and the running scene carry across pages.
+ * Pages translated in parallel with this one are not there yet.
+ */
+export const loadStoryContext = async (image: Pick<OwnedImage, "id" | "seriesId" | "sequenceNumber">): Promise<StoryPage[]> => {
+  const rows = await db
+    .select({ layout: images.layout })
+    .from(images)
+    .where(
+      and(
+        eq(images.seriesId, image.seriesId),
+        lt(images.sequenceNumber, image.sequenceNumber ?? 0),
+        isNotNull(images.layout),
+      ),
+    )
+    .orderBy(desc(images.sequenceNumber))
+    .limit(STORY_PAGES);
+  const clip = (text: string) => (text.length > STORY_LINE_CHARS ? `${text.slice(0, STORY_LINE_CHARS)}...` : text);
+  return rows
+    .map((row) => pageLayoutSchema.safeParse(row.layout))
+    .filter((parsed) => parsed.success)
+    .map(({ data }) => ({
+      scene: data!.meta.scene,
+      lines: data!.regions
+        .filter((region) => region.kind !== "sfx" && region.sourceText.trim() && region.translatedText.trim())
+        .slice(0, STORY_LINES_PER_PAGE)
+        .map((region) => ({
+          speaker: region.speaker,
+          source: clip(region.sourceText.trim()),
+          translation: clip(region.translatedText.trim()),
+        })),
+    }))
+    .reverse();
+};
 
 /** Translates every unlocked region that has source text. */
 export const translateRegions = async ({
@@ -122,8 +163,8 @@ export const translateRegions = async ({
 }) => {
   const items = regions
     .filter((region) => !region.locked && region.sourceText.trim())
-    .map((region) => ({ id: region.id, kind: region.kind, text: region.sourceText }));
-  const { translations, model } = await translateItems({
+    .map((region) => ({ id: region.id, kind: region.kind, text: region.sourceText, speaker: region.speaker }));
+  const { translations, model, fallbackUsed } = await translateItems({
     ai: settings.ai,
     targetLanguage: settings.targetLanguage,
     customInstructions: settings.customInstructions,
@@ -133,6 +174,7 @@ export const translateRegions = async ({
   });
   return {
     model,
+    fallbackUsed,
     regions: regions.map((region) =>
       translations.has(region.id) ? { ...region, translatedText: translations.get(region.id)! } : region,
     ),
@@ -162,15 +204,21 @@ export const translatePage = async ({
   const reading =
     detection.blocks.length > 0
       ? await readBlocks({ ai: settings.ai, original, width, height, blocks: detection.blocks, usage })
-      : { regions: [] as DetectedRegion[], sourceLanguage: undefined, model: settings.ai.reader.model, fallbackUsed: false };
+      : { regions: [] as DetectedRegion[], sourceLanguage: undefined, scene: undefined, model: settings.ai.reader.model, fallbackUsed: false };
 
   await checkpoint(hooks, "translating");
   const existing = image.layout ? pageLayoutSchema.safeParse(image.layout) : null;
   const existingLayout = existing?.success ? existing.data : null;
   const regions = mergeWithLocked(existingLayout, regionsFromReading(reading.regions, reading.sourceLanguage));
+  const scene = reading.scene;
   const translated = await translateRegions({
     settings,
-    context: { ...context, sourceLanguage: reading.sourceLanguage || context?.sourceLanguage },
+    context: {
+      ...context,
+      sourceLanguage: reading.sourceLanguage || context?.sourceLanguage,
+      scene,
+      story: context?.story ?? (await loadStoryContext(image)),
+    },
     regions,
     usage,
   });
@@ -179,6 +227,7 @@ export const translatePage = async ({
     source: "ai",
     detector: `ppocr-det+${reading.model}`,
     targetLanguage: settings.targetLanguage,
+    scene,
     createdAt: existingLayout?.meta.createdAt,
   });
 
@@ -201,10 +250,15 @@ export const translatePage = async ({
       fallbackUsed: reading.fallbackUsed,
     },
     translation: {
-      provider: providerName(settings.ai, settings.ai.translator.providerId),
+      provider: providerName(
+        settings.ai,
+        translated.fallbackUsed && settings.ai.translatorFallback
+          ? settings.ai.translatorFallback.providerId
+          : settings.ai.translator.providerId,
+      ),
       model: translated.model,
       inputMode: "text",
-      fallbackUsed: false,
+      fallbackUsed: translated.fallbackUsed,
     },
     completedAt: new Date().toISOString(),
   };

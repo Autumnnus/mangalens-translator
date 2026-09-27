@@ -135,6 +135,7 @@ export interface CreateRegionInput {
   style?: Partial<RegionStyle>;
   textBoxPrecise?: boolean;
   sourceLineHeight?: number;
+  speaker?: string;
   /** BCP-47 language of the page's dialogue, when the detector reported it. */
   pageLanguage?: string | null;
 }
@@ -156,6 +157,7 @@ export const createRegion = (input: CreateRegionInput): Region => ({
   confidence: input.confidence,
   textBoxPrecise: input.textBoxPrecise,
   sourceLineHeight: input.sourceLineHeight,
+  speaker: input.speaker || undefined,
   hidden: isUntouchedArtworkSfx(input.kind, input.sourceText, input.pageLanguage) || undefined,
 });
 

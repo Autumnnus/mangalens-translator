@@ -2,6 +2,7 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
 import { describeError } from "@/server/errors";
+import { catalogModel } from "@/lib/aiCatalog";
 import { resolveAiSettings } from "@/server/llm/settings";
 import { TranslationSettings } from "@/types";
 import { eq } from "drizzle-orm";
@@ -30,6 +31,7 @@ const patchSchema = z.object({
             kind: z.enum(["gemini", "openai"]),
             baseUrl: z.string().trim().max(300).optional(),
             apiKeys: z.array(z.string().trim().min(1).max(500)).max(50),
+            freeTier: z.boolean().optional(),
           }),
         )
         .min(1)
@@ -37,6 +39,7 @@ const patchSchema = z.object({
       reader: choiceSchema,
       translator: choiceSchema,
       readerFallback: choiceSchema.optional(),
+      translatorFallback: choiceSchema.optional(),
     })
     .optional(),
 });
@@ -78,9 +81,22 @@ export async function PATCH(req: NextRequest) {
     const incoming = parsed.data;
     if (incoming.ai) {
       const ids = new Set(incoming.ai.providers.map((provider) => provider.id));
-      const choices = [incoming.ai.reader, incoming.ai.translator, incoming.ai.readerFallback].filter(Boolean);
+      const choices = [
+        incoming.ai.reader,
+        incoming.ai.translator,
+        incoming.ai.readerFallback,
+        incoming.ai.translatorFallback,
+      ].filter(Boolean);
       if (choices.some((choice) => !ids.has(choice!.providerId))) {
         return NextResponse.json({ error: "A model points to a provider that does not exist" }, { status: 400 });
+      }
+      for (const choice of [incoming.ai.reader, incoming.ai.readerFallback]) {
+        if (choice && catalogModel(choice.model)?.vision === false) {
+          return NextResponse.json(
+            { error: `${choice.model} cannot read images, so it cannot be used for reading` },
+            { status: 400 },
+          );
+        }
       }
     }
     // Older fields (Gemini keys, pipeline, batching) stay in the stored JSON
