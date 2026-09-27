@@ -99,7 +99,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
   });
 
   return (
-    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col bg-theater text-theater-ink">
+    <div className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col bg-theater text-theater-ink">
       <style
         dangerouslySetInnerHTML={{
           __html: `
@@ -234,8 +234,7 @@ const ReaderImageArea: React.FC<ReaderImageAreaProps> = ({
                       className="max-h-full max-w-full select-none object-contain"
                       loading={Math.abs(index - currentIndex) <= 1 ? "eager" : "lazy"}
                       decoding="async"
-                      /* @ts-expect-error - fetchpriority is a valid web standard but may not be in all TS versions */
-                      fetchpriority={
+                      fetchPriority={
                         index === currentIndex
                           ? "high"
                           : Math.abs(index - currentIndex) <= 2

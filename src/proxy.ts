@@ -9,16 +9,13 @@ export default auth((req) => {
   const isAuthenticated = Boolean(req.auth?.user);
 
   const isApiAuthRoute = nextUrl.pathname.startsWith("/api/auth");
-  const isWorkerApiRoute = nextUrl.pathname.startsWith(
-    "/api/local-ocr/worker/",
-  );
   // Development-only harness pages and routes (they 404 in production).
   const isDevHarness =
     process.env.NODE_ENV !== "production" &&
     (nextUrl.pathname.startsWith("/dev/") ||
       nextUrl.pathname.startsWith("/api/dev/"));
   const isPublicApiRoute =
-    nextUrl.pathname === "/api/version" || isWorkerApiRoute || isDevHarness;
+    nextUrl.pathname === "/api/version" || isDevHarness;
   const isLoginRoute = nextUrl.pathname.startsWith("/auth/login");
   const isPublicFile = /\.[^/]+$/.test(nextUrl.pathname);
 

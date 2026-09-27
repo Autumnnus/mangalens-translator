@@ -1239,3 +1239,136 @@ export const fillRoundedRect = (
     paintSpan(image, y, box.x + inset, box.x + box.w - inset, rgb);
   }
 };
+
+// ---------------------------------------------------------------------------
+// Glyph inpainting (text on artwork)
+
+/**
+ * Removes lettering printed straight on artwork. Pixels that stand out from
+ * the surroundings inside `box` (the glyphs), grown by a few pixels to take
+ * their outline stroke along, are refilled from the outside inwards with the
+ * average of their already known neighbours. On the smooth surfaces such
+ * text usually sits on (skin, sky, gradients) the result is invisible; no
+ * box or bubble is painted. Returns the number of pixels replaced.
+ */
+export const inpaintGlyphs = (image: RawImage, box: Box, lineHeight?: number) => {
+  const unit = Math.max(4, lineHeight ?? Math.min(box.w, box.h));
+  const grow = Math.max(2, Math.round(unit * 0.12));
+  const pad = grow + 3;
+  const x0 = clamp(Math.floor(box.x) - pad, 0, image.width - 1);
+  const y0 = clamp(Math.floor(box.y) - pad, 0, image.height - 1);
+  const x1 = clamp(Math.ceil(box.x + box.w) + pad, x0 + 1, image.width);
+  const y1 = clamp(Math.ceil(box.y + box.h) + pad, y0 + 1, image.height);
+  const width = x1 - x0;
+  const height = y1 - y0;
+  const ring = sampleRingColor(image, box, 0.12);
+  const at = (x: number, y: number) => ((y0 + y) * image.width + x0 + x) * image.channels;
+
+  // Glyph pixels: far from the surrounding surface, inside the box.
+  const mask = new Uint8Array(width * height);
+  const bx0 = Math.floor(box.x) - x0;
+  const by0 = Math.floor(box.y) - y0;
+  const bx1 = Math.ceil(box.x + box.w) - x0;
+  const by1 = Math.ceil(box.y + box.h) - y0;
+  for (let y = Math.max(0, by0); y < Math.min(height, by1); y += 1) {
+    for (let x = Math.max(0, bx0); x < Math.min(width, bx1); x += 1) {
+      const o = at(x, y);
+      const value = luminance(image.data[o], image.data[o + 1], image.data[o + 2]);
+      if (Math.abs(value - ring.luma) > 60) mask[y * width + x] = 1;
+    }
+  }
+  // Artwork crossing the box (a panel line, a contour) reaches its edge and
+  // is bigger than a letter; it stays.
+  {
+    const seen = new Uint8Array(width * height);
+    const queue = new Int32Array(width * height);
+    const letter = unit * 1.6;
+    for (let start = 0; start < mask.length; start += 1) {
+      if (!mask[start] || seen[start]) continue;
+      let head = 0;
+      let tail = 0;
+      queue[tail++] = start;
+      seen[start] = 1;
+      let minX = width;
+      let maxX = -1;
+      let minY = height;
+      let maxY = -1;
+      while (head < tail) {
+        const index = queue[head++];
+        const x = index % width;
+        const y = (index - x) / width;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        for (const next of [x > 0 ? index - 1 : -1, x < width - 1 ? index + 1 : -1, y > 0 ? index - width : -1, y < height - 1 ? index + width : -1]) {
+          if (next >= 0 && mask[next] && !seen[next]) {
+            seen[next] = 1;
+            queue[tail++] = next;
+          }
+        }
+      }
+      const touchesBox = minX <= bx0 || minY <= by0 || maxX >= bx1 - 1 || maxY >= by1 - 1;
+      const oversized = maxX - minX + 1 > letter * 4 || maxY - minY + 1 > letter;
+      if (touchesBox && oversized) {
+        for (let i = 0; i < tail; i += 1) mask[queue[i]] = 0;
+      }
+    }
+  }
+  // Grow to swallow anti-aliasing and the white/black outline of the letters.
+  const grown = new Uint8Array(width * height);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (!mask[y * width + x]) continue;
+      for (let dy = -grow; dy <= grow; dy += 1) {
+        const ny = y + dy;
+        if (ny < 0 || ny >= height) continue;
+        for (let dx = -grow; dx <= grow; dx += 1) {
+          const nx = x + dx;
+          if (nx >= 0 && nx < width) grown[ny * width + nx] = 1;
+        }
+      }
+    }
+  }
+  // Onion-peel fill from the known border inwards.
+  const channels = Math.min(3, image.channels);
+  let unknown = grown.reduce((sum, value) => sum + value, 0);
+  const total = unknown;
+  for (let pass = 0; unknown > 0 && pass < width + height; pass += 1) {
+    const fillNow: [number, number, number, number][] = [];
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (!grown[y * width + x]) continue;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        let n = 0;
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            const nx = x + dx;
+            const ny = y + dy;
+            if ((dx === 0 && dy === 0) || nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+            if (grown[ny * width + nx]) continue;
+            const o = at(nx, ny);
+            r += image.data[o];
+            g += image.data[o + 1];
+            b += image.data[o + 2];
+            n += 1;
+          }
+        }
+        if (n > 0) fillNow.push([x, y, 0, 0], [r / n, g / n, b / n, 0]);
+      }
+    }
+    if (fillNow.length === 0) break;
+    for (let i = 0; i < fillNow.length; i += 2) {
+      const [x, y] = fillNow[i];
+      const [r, g, b] = fillNow[i + 1];
+      const o = at(x, y);
+      const rgb = [r, g, b];
+      for (let c = 0; c < channels; c += 1) image.data[o + c] = rgb[c];
+      grown[y * width + x] = 0;
+      unknown -= 1;
+    }
+  }
+  return total;
+};

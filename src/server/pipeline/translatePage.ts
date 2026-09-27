@@ -1,96 +1,48 @@
 import { db } from "@/db";
 import { images } from "@/db/schema";
 import { createLayout, createRegion } from "@/layout/defaults";
-import { legacyBoxToPixels } from "@/layout/legacy";
-import { PageLayout, pageLayoutSchema, Region, RegionKind } from "@/layout/types";
-import { combineUsage, GeminiCallError } from "@/server/gemini/common";
-import { detectTextBlocks, TextBlock } from "@/server/detect/textDetector";
-import { DetectedRegion, detectRegions, ParsedDetection } from "@/server/gemini/detect";
-import {
-  buildNumberedOverlay,
-  NumberedOverlay,
-  readRegions,
-} from "@/server/gemini/readRegions";
-import { refineRegions } from "@/server/gemini/refine";
-import { isRetryableGeminiError } from "@/server/gemini/keys";
-import { runWithKeyPool } from "@/server/gemini/runWithKeys";
-import {
-  translateItems,
-  TranslationContext,
-  TranslationItem,
-} from "@/server/gemini/translateText";
-import {
-  loadOriginal,
-  OwnedImage,
-  readDimensions,
-  renderImage,
-  RenderResult,
-} from "@/server/pages/layoutService";
-import {
-  LocalOcrBubble,
-  DEFAULT_GEMINI_FALLBACK_MODEL,
-  DEFAULT_GEMINI_MODEL,
-  isSupportedGeminiModel,
-  ProcessingMetadata,
-  TranslationSettings,
-  UsageBreakdown,
-  UsageMetadata,
-} from "@/types";
-import { calculateGeminiCost } from "@/utils/cost";
+import { PageLayout, pageLayoutSchema, Region } from "@/layout/types";
+import { detectTextBlocks } from "@/server/detect/textDetector";
+import { resolveAiSettings } from "@/server/llm/settings";
+import { combineUsage } from "@/server/llm/usage";
+import { loadOriginal, OwnedImage, readDimensions, renderImage, RenderResult } from "@/server/pages/layoutService";
+import { AiSettings, TranslationSettings, UsageBreakdown, UsageMetadata } from "@/types";
+import { calculateUsageCost } from "@/utils/cost";
 import { eq } from "drizzle-orm";
-import { ModelImage, prepareModelImage } from "./prepareImage";
+import { DetectedRegion, readBlocks } from "./read";
+import { TranslationContext, translateItems } from "./translate";
 
 /**
- * The page pipeline: detect -> translate -> render. Detection providers
- * (Gemini Vision, the local OCR worker) only produce regions with source
- * text; everything after that is shared and runs on the server.
+ * The page pipeline:
+ *
+ *   detect  pixel text detector -> blocks of lettering with exact boxes
+ *   read    vision model transcribes each block from its own crop
+ *   translate  text model translates every item of the page in one call
+ *   render  cleaning + typesetting from the layout document (no model)
+ *
+ * Coordinates only ever come from pixels; models only supply text. The
+ * provider behind each model stage is whatever the user configured.
  */
 
-export interface PipelineSettings {
+export interface PageSettings {
+  ai: AiSettings;
   targetLanguage: string;
   customInstructions?: string;
-  model: string;
-  fallbackModel: string;
-  enableQualityFallback: boolean;
 }
 
-export const resolvePipelineSettings = (
+export interface PageOverrides {
+  targetLanguage?: string;
+  customInstructions?: string;
+}
+
+export const resolvePageSettings = (
   stored: Partial<TranslationSettings>,
-  overrides: Partial<PipelineSettings> = {},
-): PipelineSettings => {
-  const model = isSupportedGeminiModel(overrides.model)
-    ? overrides.model
-    : isSupportedGeminiModel(stored.model)
-      ? stored.model
-      : DEFAULT_GEMINI_MODEL;
-  const fallbackModel = isSupportedGeminiModel(overrides.fallbackModel)
-    ? overrides.fallbackModel
-    : isSupportedGeminiModel(stored.fallbackModel)
-      ? stored.fallbackModel
-      : DEFAULT_GEMINI_FALLBACK_MODEL;
-
-  return {
-    targetLanguage:
-      overrides.targetLanguage || stored.targetLanguage || "Turkish",
-    customInstructions:
-      overrides.customInstructions ?? stored.customInstructions ?? undefined,
-    model,
-    fallbackModel,
-    enableQualityFallback:
-      overrides.enableQualityFallback ?? stored.enableQualityFallback ?? true,
-  };
-};
-
-export interface DetectorInfo {
-  provider: ProcessingMetadata["detection"]["provider"];
-  model: string;
-  workerId?: string;
-  device?: string;
-  durationMs?: number;
-  mangaOcrEnabled?: boolean;
-  usageEntries?: UsageBreakdown[];
-  fallbackUsed?: boolean;
-}
+  overrides: PageOverrides = {},
+): PageSettings => ({
+  ai: resolveAiSettings(stored),
+  targetLanguage: overrides.targetLanguage || stored.targetLanguage || "Turkish",
+  customInstructions: overrides.customInstructions ?? stored.customInstructions ?? undefined,
+});
 
 export interface CompletedPage {
   render: RenderResult;
@@ -115,60 +67,9 @@ export class PipelineCancelledError extends Error {
 }
 
 const checkpoint = async (hooks: PipelineHooks | undefined, stage: PipelineStage) => {
-  if (hooks?.shouldContinue && !(await hooks.shouldContinue())) {
-    throw new PipelineCancelledError();
-  }
+  if (hooks?.shouldContinue && !(await hooks.shouldContinue())) throw new PipelineCancelledError();
   await hooks?.onStage?.(stage);
 };
-
-// ---------------------------------------------------------------------------
-// Region construction
-
-export const regionsFromDetection = (
-  detected: DetectedRegion[],
-  source: Region["source"],
-  pageLanguage?: string,
-): Region[] =>
-  detected.map((item, index) =>
-    createRegion({
-      id: `${source === "ocr" ? "o" : "g"}_${index + 1}`,
-      kind: item.kind,
-      order: item.order ?? index,
-      textBox: item.textBox,
-      bubbleBox: item.bubbleBox,
-      sourceText: item.sourceText,
-      translatedText: "",
-      source,
-      confidence: item.confidence,
-      textBoxPrecise: item.precise,
-      sourceLineHeight: item.lineHeight,
-      pageLanguage,
-    }),
-  );
-
-const KIND_BY_OCR_TYPE: Record<string, RegionKind> = {
-  speech: "speech",
-  dialogue: "speech",
-  caption: "caption",
-  sfx: "sfx",
-  environmental: "sfx",
-  label: "label",
-};
-
-export const detectedFromLocalOcr = (
-  bubbles: LocalOcrBubble[],
-  width: number,
-  height: number,
-): DetectedRegion[] =>
-  bubbles.map((bubble, index) => ({
-    kind: KIND_BY_OCR_TYPE[String(bubble.type)] || "speech",
-    textBox: legacyBoxToPixels(bubble.box_2d, width, height),
-    sourceText: bubble.original_text,
-    confidence: bubble.confidence,
-    order: index,
-    // The worker's boxes come from PaddleOCR's pixel detector.
-    precise: true,
-  }));
 
 const boxIou = (a: Region["textBox"], b: Region["textBox"]) => {
   const iw = Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x));
@@ -181,447 +82,133 @@ const boxIou = (a: Region["textBox"], b: Region["textBox"]) => {
  * Manual edits survive re-translation: locked regions from the stored layout
  * are kept and any freshly detected region that overlaps them is dropped.
  */
-export const mergeWithLocked = (
-  existing: PageLayout | null,
-  detected: Region[],
-): Region[] => {
+export const mergeWithLocked = (existing: PageLayout | null, detected: Region[]): Region[] => {
   const locked = existing?.regions.filter((region) => region.locked) || [];
   if (locked.length === 0) return detected;
   const kept = detected.filter(
-    (region) =>
-      !locked.some((lockedRegion) => boxIou(lockedRegion.textBox, region.textBox) > 0.35),
+    (region) => !locked.some((lockedRegion) => boxIou(lockedRegion.textBox, region.textBox) > 0.35),
   );
   return [...locked, ...kept].sort((a, b) => a.order - b.order);
 };
 
-// ---------------------------------------------------------------------------
-// Translation stage
+export const regionsFromReading = (detected: DetectedRegion[], pageLanguage?: string): Region[] =>
+  detected.map((item, index) =>
+    createRegion({
+      id: `r_${index + 1}`,
+      kind: item.kind,
+      order: item.order ?? index,
+      textBox: item.textBox,
+      sourceText: item.sourceText,
+      translatedText: "",
+      source: "ai",
+      confidence: item.confidence,
+      textBoxPrecise: true,
+      sourceLineHeight: item.lineHeight,
+      pageLanguage,
+    }),
+  );
 
+/** Translates every unlocked region that has source text. */
 export const translateRegions = async ({
-  userId,
-  keys,
   settings,
   context,
   regions,
-  usageEntries,
+  usage,
 }: {
-  userId: string;
-  keys: string[];
-  settings: PipelineSettings;
+  settings: PageSettings;
   context?: TranslationContext;
   regions: Region[];
-  usageEntries: UsageBreakdown[];
-}): Promise<{ regions: Region[]; modelUsed: string; fallbackUsed: boolean }> => {
-  const items: TranslationItem[] = regions
+  usage: UsageBreakdown[];
+}) => {
+  const items = regions
     .filter((region) => !region.locked && region.sourceText.trim())
-    .map((region) => ({
-      id: region.id,
-      kind: region.kind,
-      text: region.sourceText,
-    }));
-  if (items.length === 0) {
-    return { regions, modelUsed: settings.model, fallbackUsed: false };
-  }
-
-  const attempt = (modelName: string) =>
-    runWithKeyPool({
-      userId,
-      keys,
-      modelName,
-      usageEntries,
-      run: async (apiKey) => {
-        const result = await translateItems({
-          apiKey,
-          modelName,
-          targetLanguage: settings.targetLanguage,
-          customInstructions: settings.customInstructions,
-          context,
-          items,
-        });
-        return { value: result.translations, usage: result.usage };
-      },
-    });
-
-  let translations: Map<string, string>;
-  let modelUsed = settings.model;
-  let fallbackUsed = false;
-  try {
-    translations = await attempt(settings.model);
-  } catch (error) {
-    const canFallback =
-      settings.enableQualityFallback &&
-      settings.fallbackModel !== settings.model &&
-      !isRetryableGeminiError(error);
-    if (!canFallback) throw error;
-    translations = await attempt(settings.fallbackModel);
-    modelUsed = settings.fallbackModel;
-    fallbackUsed = true;
-  }
-
-  return {
-    regions: regions.map((region) =>
-      translations.has(region.id)
-        ? { ...region, translatedText: translations.get(region.id)! }
-        : region,
-    ),
-    modelUsed,
-    fallbackUsed,
-  };
-};
-
-// ---------------------------------------------------------------------------
-// Completion shared by every detection provider
-
-export const completeDetectedPage = async ({
-  image,
-  userId,
-  keys,
-  settings,
-  requestedPipeline,
-  detected,
-  detector,
-  context,
-  original,
-  sourceLanguage,
-  hooks,
-}: {
-  image: OwnedImage;
-  userId: string;
-  keys: string[];
-  settings: PipelineSettings;
-  requestedPipeline: ProcessingMetadata["requestedPipeline"];
-  detected: DetectedRegion[];
-  detector: DetectorInfo;
-  context?: TranslationContext;
-  original?: Buffer;
-  sourceLanguage?: string;
-  hooks?: PipelineHooks;
-}): Promise<CompletedPage> => {
-  await checkpoint(hooks, "translating");
-  const bytes = original || (await loadOriginal(image));
-  const { width, height } = await readDimensions(bytes);
-  const existing = image.layout
-    ? pageLayoutSchema.safeParse(image.layout)
-    : null;
-  const existingLayout = existing?.success ? existing.data : null;
-
-  const source: Region["source"] =
-    detector.provider === "paddleocr" ? "ocr" : "gemini";
-  const usageEntries: UsageBreakdown[] = [...(detector.usageEntries || [])];
-  const merged = mergeWithLocked(
-    existingLayout,
-    regionsFromDetection(detected, source, sourceLanguage || context?.sourceLanguage || undefined),
-  );
-  const translated = await translateRegions({
-    userId,
-    keys,
-    settings,
-    context: { ...context, sourceLanguage: sourceLanguage || context?.sourceLanguage },
-    regions: merged,
-    usageEntries,
-  });
-
-  const layout = createLayout(width, height, translated.regions, {
-    source,
-    detector: `${detector.provider}:${detector.model}`,
+    .map((region) => ({ id: region.id, kind: region.kind, text: region.sourceText }));
+  const { translations, model } = await translateItems({
+    ai: settings.ai,
     targetLanguage: settings.targetLanguage,
-    createdAt: existingLayout?.meta.createdAt,
-  });
-
-  await checkpoint(hooks, "rendering");
-  const render = await renderImage(image, layout, { apply: true, original: bytes });
-
-  const fallbackUsed = !!detector.fallbackUsed || translated.fallbackUsed;
-  const usage = combineUsage(usageEntries, translated.modelUsed, fallbackUsed);
-  usage.processing = {
-    requestedPipeline,
-    actualPipeline: detector.provider === "paddleocr" ? "local_ocr" : "gemini_vision",
-    detection: {
-      provider: detector.provider,
-      model: detector.model,
-      workerId: detector.workerId,
-      device: detector.device,
-      durationMs: detector.durationMs,
-      regions: detected.length,
-      mangaOcrEnabled: detector.mangaOcrEnabled,
-    },
-    translation: {
-      provider: "gemini",
-      model: translated.modelUsed,
-      inputMode: "text",
-      fallbackUsed: translated.fallbackUsed,
-    },
-    completedAt: new Date().toISOString(),
-  };
-  const cost = calculateGeminiCost(usage, settings.model);
-  await db
-    .update(images)
-    .set({ usage, cost, updatedAt: new Date() })
-    .where(eq(images.id, image.id));
-
-  return { render, usage, cost };
-};
-
-// ---------------------------------------------------------------------------
-// Gemini Vision detection
-
-export const detectWithGemini = async ({
-  userId,
-  keys,
-  settings,
-  modelImage,
-  usageEntries,
-}: {
-  userId: string;
-  keys: string[];
-  settings: PipelineSettings;
-  modelImage: ModelImage;
-  usageEntries: UsageBreakdown[];
-}): Promise<{ parsed: ParsedDetection; modelUsed: string; fallbackUsed: boolean }> => {
-  const attempt = (modelName: string) =>
-    runWithKeyPool({
-      userId,
-      keys,
-      modelName,
-      usageEntries,
-      run: async (apiKey) => {
-        const result = await detectRegions({
-          apiKey,
-          modelName,
-          base64Image: modelImage.base64,
-          mimeType: modelImage.mimeType,
-          width: modelImage.width,
-          height: modelImage.height,
-        });
-        return { value: result.parsed, usage: result.usage };
-      },
-    });
-
-  const fallbackAllowed =
-    settings.enableQualityFallback && settings.fallbackModel !== settings.model;
-
-  let parsed: ParsedDetection;
-  try {
-    parsed = await attempt(settings.model);
-  } catch (primaryError) {
-    if (!fallbackAllowed || isRetryableGeminiError(primaryError)) {
-      throw primaryError;
-    }
-    // A safety block on the primary is very likely to repeat; let the caller
-    // route it to the local worker instead of paying for a second image call.
-    if ((primaryError as GeminiCallError).isSafetyBlocked) throw primaryError;
-    return {
-      parsed: await attempt(settings.fallbackModel),
-      modelUsed: settings.fallbackModel,
-      fallbackUsed: true,
-    };
-  }
-
-  if (fallbackAllowed && parsed.shouldFallback) {
-    try {
-      const better = await attempt(settings.fallbackModel);
-      if (better.regions.length > 0 || parsed.regions.length === 0) {
-        return { parsed: better, modelUsed: settings.fallbackModel, fallbackUsed: true };
-      }
-    } catch (error) {
-      console.warn("Detection fallback failed; keeping primary result", error);
-    }
-  }
-  return { parsed, modelUsed: settings.model, fallbackUsed: false };
-};
-
-/**
- * Second pass over the detector's boxes: one call with a zoomed crop per
- * region. Failures here are not fatal; the page continues with the coarse
- * boxes and the pixel-level snapping.
- */
-export const refineDetectedRegions = async ({
-  userId,
-  keys,
-  modelName,
-  original,
-  width,
-  height,
-  regions,
-  usageEntries,
-}: {
-  userId: string;
-  keys: string[];
-  modelName: string;
-  original: Buffer;
-  width: number;
-  height: number;
-  regions: DetectedRegion[];
-  usageEntries: UsageBreakdown[];
-}): Promise<DetectedRegion[]> => {
-  if (regions.length === 0) return regions;
-  try {
-    return await runWithKeyPool({
-      userId,
-      keys,
-      modelName,
-      usageEntries,
-      run: async (apiKey) => {
-        const result = await refineRegions({ apiKey, modelName, original, width, height, regions });
-        return { value: result.regions, usage: result.usage };
-      },
-    });
-  } catch (error) {
-    console.warn("Box refinement failed; using detector boxes", error);
-    return regions;
-  }
-};
-
-export interface DetectionOutcome {
-  regions: DetectedRegion[];
-  modelUsed: string;
-  fallbackUsed: boolean;
-  /** How the boxes were obtained. */
-  detector: "ppocr+gemini" | "gemini";
-  sourceLanguage?: string;
-  blocks?: TextBlock[];
-  overlay?: NumberedOverlay;
-}
-
-/**
- * Detection for a page. Preferred path: the local text detector finds every
- * line, Gemini reads the numbered boxes. If the detector finds nothing (or is
- * unavailable) the model's own full-page boxes are used, refined by crops.
- */
-export const detectPage = async ({
-  userId,
-  keys,
-  settings,
-  original,
-  width,
-  height,
-  usageEntries,
-}: {
-  userId: string;
-  keys: string[];
-  settings: PipelineSettings;
-  original: Buffer;
-  width: number;
-  height: number;
-  usageEntries: UsageBreakdown[];
-}): Promise<DetectionOutcome> => {
-  let blocks: TextBlock[] = [];
-  try {
-    blocks = (await detectTextBlocks(original)).blocks;
-  } catch (error) {
-    console.warn("Text detector failed; falling back to model boxes", error);
-  }
-
-  if (blocks.length > 0) {
-    const overlay = await buildNumberedOverlay(original, width, height, blocks);
-    const attempt = (modelName: string) =>
-      runWithKeyPool({
-        userId,
-        keys,
-        modelName,
-        usageEntries,
-        run: async (apiKey) => {
-          const result = await readRegions({ apiKey, modelName, overlay, blocks });
-          return { value: result.result, usage: result.usage };
-        },
-      });
-    const fallbackAllowed =
-      settings.enableQualityFallback && settings.fallbackModel !== settings.model;
-    try {
-      const read = await attempt(settings.model);
-      return {
-        regions: read.regions,
-        modelUsed: settings.model,
-        fallbackUsed: false,
-        detector: "ppocr+gemini",
-        sourceLanguage: read.sourceLanguage,
-        blocks,
-        overlay,
-      };
-    } catch (error) {
-      if (!fallbackAllowed || isRetryableGeminiError(error) || (error as GeminiCallError).isSafetyBlocked) {
-        throw error;
-      }
-      const read = await attempt(settings.fallbackModel);
-      return {
-        regions: read.regions,
-        modelUsed: settings.fallbackModel,
-        fallbackUsed: true,
-        detector: "ppocr+gemini",
-        sourceLanguage: read.sourceLanguage,
-        blocks,
-        overlay,
-      };
-    }
-  }
-
-  const modelImage = await prepareModelImage(original);
-  const detection = await detectWithGemini({ userId, keys, settings, modelImage, usageEntries });
-  const refined = await refineDetectedRegions({
-    userId,
-    keys,
-    modelName: detection.modelUsed,
-    original,
-    width,
-    height,
-    regions: detection.parsed.regions,
-    usageEntries,
+    customInstructions: settings.customInstructions,
+    context,
+    items,
+    usage,
   });
   return {
-    regions: refined,
-    modelUsed: detection.modelUsed,
-    fallbackUsed: detection.fallbackUsed,
-    detector: "gemini",
-    sourceLanguage: detection.parsed.sourceLanguage,
+    model,
+    regions: regions.map((region) =>
+      translations.has(region.id) ? { ...region, translatedText: translations.get(region.id)! } : region,
+    ),
   };
 };
 
-export const translatePageWithGemini = async ({
+const providerName = (ai: AiSettings, providerId: string) =>
+  ai.providers.find((provider) => provider.id === providerId)?.name || providerId;
+
+export const translatePage = async ({
   image,
-  userId,
-  keys,
   settings,
-  requestedPipeline,
   context,
   hooks,
 }: {
   image: OwnedImage;
-  userId: string;
-  keys: string[];
-  settings: PipelineSettings;
-  requestedPipeline: ProcessingMetadata["requestedPipeline"];
+  settings: PageSettings;
   context?: TranslationContext;
   hooks?: PipelineHooks;
 }): Promise<CompletedPage> => {
   await checkpoint(hooks, "detecting");
   const original = await loadOriginal(image);
   const { width, height } = await readDimensions(original);
-  const usageEntries: UsageBreakdown[] = [];
-  const detection = await detectPage({
-    userId,
-    keys,
+  const usage: UsageBreakdown[] = [];
+
+  const detection = await detectTextBlocks(original);
+  const reading =
+    detection.blocks.length > 0
+      ? await readBlocks({ ai: settings.ai, original, width, height, blocks: detection.blocks, usage })
+      : { regions: [] as DetectedRegion[], sourceLanguage: undefined, model: settings.ai.reader.model, fallbackUsed: false };
+
+  await checkpoint(hooks, "translating");
+  const existing = image.layout ? pageLayoutSchema.safeParse(image.layout) : null;
+  const existingLayout = existing?.success ? existing.data : null;
+  const regions = mergeWithLocked(existingLayout, regionsFromReading(reading.regions, reading.sourceLanguage));
+  const translated = await translateRegions({
     settings,
-    original,
-    width,
-    height,
-    usageEntries,
+    context: { ...context, sourceLanguage: reading.sourceLanguage || context?.sourceLanguage },
+    regions,
+    usage,
   });
-  return completeDetectedPage({
-    image,
-    userId,
-    keys,
-    settings,
-    requestedPipeline,
-    detected: detection.regions,
-    detector: {
-      provider: "gemini",
-      model: `${detection.detector === "ppocr+gemini" ? "ppocr-det+" : ""}${detection.modelUsed}`,
-      usageEntries,
-      fallbackUsed: detection.fallbackUsed,
+
+  const layout = createLayout(width, height, translated.regions, {
+    source: "ai",
+    detector: `ppocr-det+${reading.model}`,
+    targetLanguage: settings.targetLanguage,
+    createdAt: existingLayout?.meta.createdAt,
+  });
+
+  await checkpoint(hooks, "rendering");
+  const render = await renderImage(image, layout, { apply: true, original });
+
+  const result = combineUsage(usage, translated.model, reading.fallbackUsed);
+  result.processing = {
+    requestedPipeline: "ai",
+    actualPipeline: "ai",
+    detection: {
+      provider: "ppocr-det",
+      model: "ppocr-v4-det",
+      durationMs: detection.durationMs,
+      regions: reading.regions.length,
     },
-    context,
-    original,
-    sourceLanguage: detection.sourceLanguage,
-    hooks,
-  });
+    reading: {
+      provider: providerName(settings.ai, reading.fallbackUsed && settings.ai.readerFallback ? settings.ai.readerFallback.providerId : settings.ai.reader.providerId),
+      model: reading.model,
+      fallbackUsed: reading.fallbackUsed,
+    },
+    translation: {
+      provider: providerName(settings.ai, settings.ai.translator.providerId),
+      model: translated.model,
+      inputMode: "text",
+      fallbackUsed: false,
+    },
+    completedAt: new Date().toISOString(),
+  };
+  const cost = calculateUsageCost(result);
+  await db.update(images).set({ usage: result, cost, updatedAt: new Date() }).where(eq(images.id, image.id));
+  return { render, usage: result, cost };
 };

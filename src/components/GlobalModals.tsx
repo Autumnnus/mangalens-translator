@@ -281,7 +281,9 @@ const GlobalModals: React.FC = () => {
             ) : null
           }
         >
-          <div className="flex min-h-0 flex-1 flex-col">
+          {/* min-w-0: without it Swiper's measured width feeds back into this
+              flex item and grows until the browser clamps it (black screen). */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ReaderImageArea
               images={images}
               currentIndex={selectedIndex}

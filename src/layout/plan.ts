@@ -251,6 +251,16 @@ export const baseAreaFor = (region: Region, layout: PageLayout): Box => {
       const body = interiorTextArea(region.mask.points, centreOf(region.textBox));
       if (body) return clampBox(shareRoom(region, body, layout), layout.width, layout.height);
     }
+    // Floating text: where the source line was, with room to stay on one
+    // line even though the translation is usually longer.
+    if (region.mask.type === "inpaint") {
+      const t = region.textBox;
+      const horizontal = t.w >= t.h;
+      const grown = horizontal
+        ? { x: t.x - t.w * 0.3, y: t.y - t.h * 0.1, w: t.w * 1.6, h: t.h * 1.2 }
+        : { x: t.x - t.w * 0.1, y: t.y - t.h * 0.3, w: t.w * 1.2, h: t.h * 1.6 };
+      return clampBox(grown, layout.width, layout.height);
+    }
     const bounds = maskBounds(region.mask);
     if (bounds) return clampBox(shareRoom(region, bounds, layout), layout.width, layout.height);
     // Not cleaned: the text goes over the artwork where the source was, or
@@ -304,6 +314,9 @@ export const planRegion = (
     minFontSize: bounds.min,
     maxFontSize: bounds.max,
     locale: localeForLanguage(layout.meta.targetLanguage),
+    sourceLines: region.sourceLineHeight
+      ? Math.max(1, Math.round(region.textBox.h / region.sourceLineHeight))
+      : undefined,
   });
 
   const cleaned =
@@ -314,7 +327,7 @@ export const planRegion = (
     facts.surfaceLuma ?? (cleaned ? 255 : isContainerKind(region.kind) ? 255 : 128);
   const textColor =
     style.color === "auto" ? contrastingText(surfaceLuma) : style.color;
-  const overArtwork = !cleaned;
+  const overArtwork = !cleaned || region.mask.type === "inpaint";
   const strokeColor =
     style.strokeColor === "none"
       ? "none"

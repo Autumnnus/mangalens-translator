@@ -1,17 +1,10 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { RegionKind } from "@/layout/types";
-import { UsageBreakdown } from "@/types";
-import {
-  SAFETY_SETTINGS,
-  thinkingConfigFor,
-  toGeminiCallError,
-  usageFromResponse,
-} from "./common";
+import { callModel } from "@/server/llm/run";
+import { AiSettings, UsageBreakdown } from "@/types";
 
 /**
- * Stage 2: text-only translation. Works on already transcribed regions, so it
- * costs a few hundred tokens per page, can be re-run without the image, and is
- * shared by the Gemini Vision and local OCR paths.
+ * Translation stage: text only, one call per page with every item in reading
+ * order, so it is cheap to re-run and works with any text model.
  */
 
 export interface TranslationItem {
@@ -29,17 +22,14 @@ export interface TranslationContext {
   glossary?: string | null;
 }
 
-const RESPONSE_SCHEMA = {
-  type: Type.OBJECT,
+const TRANSLATION_SCHEMA = {
+  type: "object",
   properties: {
     translations: {
-      type: Type.ARRAY,
+      type: "array",
       items: {
-        type: Type.OBJECT,
-        properties: {
-          id: { type: Type.STRING },
-          text: { type: Type.STRING },
-        },
+        type: "object",
+        properties: { id: { type: "string" }, text: { type: "string" } },
         required: ["id", "text"],
       },
     },
@@ -86,72 +76,57 @@ export const buildTranslationPrompt = ({
 };
 
 export const translateItems = async ({
-  apiKey,
-  modelName,
+  ai,
   targetLanguage,
   customInstructions,
   context,
   items,
+  usage,
 }: {
-  apiKey: string;
-  modelName: string;
+  ai: AiSettings;
   targetLanguage: string;
   customInstructions?: string | null;
   context?: TranslationContext;
   items: TranslationItem[];
-}): Promise<{ translations: Map<string, string>; usage: UsageBreakdown }> => {
-  if (items.length === 0) {
-    return {
-      translations: new Map(),
-      usage: {
-        model: modelName,
-        billingMode: "standard",
-        promptTokenCount: 0,
-        candidatesTokenCount: 0,
-        thoughtsTokenCount: 0,
-        totalTokenCount: 0,
-      },
-    };
-  }
-  const client = new GoogleGenAI({ apiKey });
-  const response = await client.models.generateContent({
-    model: modelName,
-    contents: buildTranslationPrompt({
-      targetLanguage,
-      customInstructions,
-      context,
-      items,
-    }),
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: RESPONSE_SCHEMA,
-      temperature: 0.2,
-      topP: 0.9,
-      maxOutputTokens: 8192,
-      thinkingConfig: thinkingConfigFor(modelName),
-      safetySettings: SAFETY_SETTINGS,
-    },
-  });
-  const usage = usageFromResponse(response, modelName, "standard");
-  try {
-    if (!response.text) throw new Error("Gemini returned an empty translation");
-    const decoded = JSON.parse(response.text) as {
-      translations?: Array<{ id?: unknown; text?: unknown }>;
-    };
+  usage: UsageBreakdown[];
+}): Promise<{ translations: Map<string, string>; model: string }> => {
+  if (items.length === 0) return { translations: new Map(), model: ai.translator.model };
+  const prompt = buildTranslationPrompt({ targetLanguage, customInstructions, context, items });
+  const read = (answer: unknown) => {
+    const decoded = (answer || {}) as { translations?: Array<{ id?: unknown; text?: unknown }> };
     const translations = new Map<string, string>();
     for (const entry of decoded.translations || []) {
       const id = String(entry.id || "");
       const text = String(entry.text || "").replace(/\s+/g, " ").trim();
       if (id && text) translations.set(id, text);
     }
-    const missing = items.filter((item) => !translations.has(item.id));
-    if (missing.length > 0) {
-      throw new Error(
-        `Translation is missing ${missing.length} of ${items.length} items`,
-      );
-    }
-    return { translations, usage };
-  } catch (error) {
-    throw toGeminiCallError(error, response, usage, "Translation failed");
+    return translations;
+  };
+  const answer = await callModel({
+    ai,
+    choice: ai.translator,
+    request: { parts: [{ type: "text", text: prompt }], schema: TRANSLATION_SCHEMA, temperature: 0.2 },
+    usage,
+  });
+  const translations = read(answer.json);
+  const missing = items.filter((item) => !translations.has(item.id));
+  if (missing.length > 0) {
+    // One retry for just the missing items keeps a single dropped line from failing the page.
+    const retry = await callModel({
+      ai,
+      choice: ai.translator,
+      request: {
+        parts: [{ type: "text", text: buildTranslationPrompt({ targetLanguage, customInstructions, context, items: missing }) }],
+        schema: TRANSLATION_SCHEMA,
+        temperature: 0.2,
+      },
+      usage,
+    });
+    for (const [id, text] of read(retry.json)) translations.set(id, text);
   }
+  const stillMissing = items.filter((item) => !translations.has(item.id));
+  if (stillMissing.length > 0) {
+    throw new Error(`Translation is missing ${stillMissing.length} of ${items.length} items`);
+  }
+  return { translations, model: answer.model };
 };

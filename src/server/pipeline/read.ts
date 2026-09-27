@@ -1,23 +1,46 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { Box, RegionKind, REGION_KINDS } from "@/layout/types";
 import { TextBlock } from "@/server/detect/textDetector";
-import { UsageBreakdown } from "@/types";
+import { callModel } from "@/server/llm/run";
+import { ModelRequest, MessagePart } from "@/server/llm/types";
+import { AiSettings, UsageBreakdown } from "@/types";
 import sharp from "sharp";
-import {
-  clamp,
-  normalizeConfidence,
-  SAFETY_SETTINGS,
-  thinkingConfigFor,
-  toGeminiCallError,
-  usageFromResponse,
-} from "./common";
-import { DetectedRegion } from "./detect";
 
 /**
- * Stage 1 (detector-assisted): the page is sent with numbered boxes drawn on
- * it and Gemini transcribes and classifies each number. Coordinates come from
- * the detector, never from the model.
+ * Reading stage. The local detector has already found every block of
+ * lettering; a vision model only transcribes and classifies them. It gets
+ * the whole page with numbered boxes (for context: balloon shapes, reading
+ * order, sound effects) and then every block as its own close-up crop, in
+ * order, each introduced by its number. The text is read from the crop, so
+ * the answer cannot drift to a neighbouring box, and small lettering is
+ * legible because crops are upscaled. Coordinates never come from the model.
  */
+
+export interface DetectedRegion {
+  kind: RegionKind;
+  /** Where the source text sits, in original image pixels. */
+  textBox: Box;
+  sourceText: string;
+  confidence: number;
+  order: number;
+  /** Median height of the block's detector lines. */
+  lineHeight?: number;
+  /** The box comes from the pixel detector (always true for this stage). */
+  precise?: boolean;
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const normalizeConfidence = (value: unknown) => {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0.5;
+  return clamp(numeric > 1 ? numeric / 100 : numeric, 0, 1);
+};
+
+const isKind = (value: unknown): value is RegionKind =>
+  typeof value === "string" && (REGION_KINDS as readonly string[]).includes(value);
+
+const OVERLAY_MAX_EDGE = 1568;
+const OVERLAY_MIN_EDGE = 1400;
 
 export interface NumberedOverlay {
   base64: string;
@@ -26,11 +49,6 @@ export interface NumberedOverlay {
   height: number;
 }
 
-const OVERLAY_MAX_EDGE = 1568;
-const OVERLAY_MIN_EDGE = 1400;
-
-const isKind = (value: unknown): value is RegionKind =>
-  typeof value === "string" && (REGION_KINDS as readonly string[]).includes(value);
 
 const intersection = (a: Box, b: Box) =>
   Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) *
@@ -124,55 +142,6 @@ export const buildNumberedOverlay = async (
     .toBuffer();
   return { base64: image.toString("base64"), mimeType: "image/jpeg", width: outW, height: outH };
 };
-
-export const buildReadPrompt = (count: number) =>
-  [
-    `This comic page has ${count} numbered red boxes marking detected text regions. Each number sits on a red tag touching its own box, usually at its top-left corner; never read a tag as belonging to a neighbouring box.`,
-    "For every box number return:",
-    "- index: the box number.",
-    "- is_text: false if the box does not contain readable lettering (artwork, a stray mark). Otherwise true.",
-    '- kind: "speech" for spoken balloons, "thought" for cloud or dashed balloons, "caption" for narration boxes, "sfx" for onomatopoeia drawn as artwork, "label" for signs, screens and small labels.',
-    "- text: the exact text inside the box, lines joined with single spaces, punctuation kept. Read vertical Japanese top-to-bottom, right-to-left. Do not translate.",
-    "- same_balloon_as: only when this box and another numbered box lie inside the very same balloon outline (the detector split one balloon's lines), give that box's number. A sentence that continues in a different balloon is NOT the same balloon; leave it out.",
-    "- confidence: 0-100.",
-    "Return the items in the natural reading order of the page (right-to-left, top-to-bottom for manga).",
-    'Also report has_text, page_confidence (0-100) and source_language as a BCP-47 tag such as "ja", "en" or "ko".',
-  ].join("\n");
-
-export const READ_RESPONSE_SCHEMA = {
-  type: Type.OBJECT,
-  properties: {
-    has_text: { type: Type.BOOLEAN },
-    page_confidence: { type: Type.INTEGER },
-    source_language: { type: Type.STRING },
-    items: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          index: { type: Type.INTEGER },
-          is_text: { type: Type.BOOLEAN },
-          kind: { type: Type.STRING, enum: [...REGION_KINDS] },
-          text: { type: Type.STRING },
-          same_balloon_as: { type: Type.INTEGER },
-          confidence: { type: Type.INTEGER },
-        },
-        required: ["index", "is_text", "kind", "text", "confidence"],
-      },
-    },
-  },
-  required: ["has_text", "page_confidence", "items"],
-};
-
-export const buildReadConfig = (modelName: string) => ({
-  responseMimeType: "application/json",
-  responseSchema: READ_RESPONSE_SCHEMA,
-  temperature: 0.1,
-  topP: 0.9,
-  maxOutputTokens: 8192,
-  thinkingConfig: thinkingConfigFor(modelName),
-  safetySettings: SAFETY_SETTINGS,
-});
 
 export interface ReadResult {
   regions: DetectedRegion[];
@@ -270,7 +239,7 @@ const repairMisnumberedTexts = (drafts: Map<number, ReadDraft>, blocks: TextBloc
 };
 
 /** Turns the model's per-box answers into regions with the detector's boxes. */
-export const parseReadResponse = (text: string, blocks: TextBlock[]): ReadResult => {
+export const parseReadAnswer = (answer: unknown, blocks: TextBlock[]): ReadResult => {
   type RawItem = {
     index?: unknown;
     is_text?: unknown;
@@ -279,7 +248,7 @@ export const parseReadResponse = (text: string, blocks: TextBlock[]): ReadResult
     same_balloon_as?: unknown;
     confidence?: unknown;
   };
-  const decoded = JSON.parse(text) as {
+  const decoded = (answer || {}) as {
     has_text?: unknown;
     page_confidence?: unknown;
     source_language?: unknown;
@@ -374,35 +343,123 @@ export const parseReadResponse = (text: string, blocks: TextBlock[]): ReadResult
   };
 };
 
-export const readRegions = async ({
-  apiKey,
-  modelName,
-  overlay,
-  blocks,
-  billingMode = "standard",
-}: {
-  apiKey: string;
-  modelName: string;
-  overlay: NumberedOverlay;
-  blocks: TextBlock[];
-  billingMode?: UsageBreakdown["billingMode"];
-}): Promise<{ result: ReadResult; usage: UsageBreakdown }> => {
-  const client = new GoogleGenAI({ apiKey });
-  const response = await client.models.generateContent({
-    model: modelName,
-    contents: {
-      parts: [
-        { text: buildReadPrompt(blocks.length) },
-        { inlineData: { mimeType: overlay.mimeType, data: overlay.base64 } },
-      ],
+
+// ---------------------------------------------------------------------------
+// Crops
+
+const CROP_MAX_EDGE = 900;
+/** Glyph line height the model sees in a crop. */
+const CROP_LINE_TARGET = 44;
+
+/** One close-up per block, upscaled so its lettering is comfortably legible. */
+export const buildBlockCrops = async (original: Buffer, width: number, height: number, blocks: TextBlock[]) => {
+  const page = sharp(original, { limitInputPixels: 120_000_000 }).rotate().flatten({ background: "#ffffff" });
+  const decoded = await page.png().toBuffer();
+  return Promise.all(
+    blocks.map(async (block) => {
+      const margin = Math.max(6, Math.min(block.box.w, block.box.h) * 0.25);
+      const left = Math.max(0, Math.floor(block.box.x - margin));
+      const top = Math.max(0, Math.floor(block.box.y - margin));
+      const right = Math.min(width, Math.ceil(block.box.x + block.box.w + margin));
+      const bottom = Math.min(height, Math.ceil(block.box.y + block.box.h + margin));
+      const w = Math.max(1, right - left);
+      const h = Math.max(1, bottom - top);
+      const lineHeight = Math.min(...block.lines.map((line) => Math.min(line.box.w, line.box.h)));
+      const scale = clamp(CROP_LINE_TARGET / Math.max(1, lineHeight), 1, 4);
+      const outScale = Math.min(scale, CROP_MAX_EDGE / Math.max(w, h));
+      const crop = await sharp(decoded)
+        .extract({ left, top, width: w, height: h })
+        .resize(Math.max(1, Math.round(w * outScale)), Math.max(1, Math.round(h * outScale)), {
+          kernel: "lanczos3",
+        })
+        .jpeg({ quality: 90 })
+        .toBuffer();
+      return crop.toString("base64");
+    }),
+  );
+};
+
+export const READ_SYSTEM = [
+  "You transcribe lettering in comic, manga and webtoon pages for a translation tool.",
+  "You never translate, summarise or censor; you copy the text exactly as printed.",
+].join(" ");
+
+export const buildReadInstructions = (count: number) =>
+  [
+    `The first image is the whole page with ${count} numbered red boxes, one per detected block of lettering. It is only context: balloon shapes, speakers, reading order.`,
+    `After it come ${count} close-up crops, one per box, each introduced by "Crop N". Crop N shows box N; read its text from the crop, not from the page.`,
+    "Return one item per crop:",
+    "- index: the crop number N.",
+    "- is_text: false when the crop has no readable lettering (artwork, texture, a stray mark, censor bars). Otherwise true.",
+    '- kind: "speech" (spoken balloon), "thought" (cloud or dashed balloon), "caption" (narration box), "sfx" (onomatopoeia drawn as artwork), "label" (signs, screens, notes).',
+    "- text: the exact lettering of that box only, lines joined with single spaces, punctuation kept. Read vertical Japanese top-to-bottom, right-to-left. A crop may show pieces of neighbouring balloons at its edges; ignore them.",
+    "- same_balloon_as: only when this box and another box lie inside the very same balloon outline (the detector split one balloon), that box's number. A sentence continuing in another balloon is not the same balloon.",
+    "- confidence: 0-100.",
+    "List items in the natural reading order of the page (right-to-left for manga).",
+    'Also give has_text, page_confidence (0-100) and source_language as a BCP-47 tag such as "ja", "en" or "ko".',
+  ].join("\n");
+
+export const READ_SCHEMA = {
+  type: "object",
+  properties: {
+    has_text: { type: "boolean" },
+    page_confidence: { type: "integer" },
+    source_language: { type: "string" },
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          index: { type: "integer" },
+          is_text: { type: "boolean" },
+          kind: { type: "string", enum: [...REGION_KINDS] },
+          text: { type: "string" },
+          same_balloon_as: { type: "integer" },
+          confidence: { type: "integer" },
+        },
+        required: ["index", "is_text", "kind", "text", "confidence"],
+      },
     },
-    config: buildReadConfig(modelName),
+  },
+  required: ["has_text", "page_confidence", "items"],
+};
+
+/** The request for a page; exported so previews and tests can inspect it. */
+export const buildReadRequest = async (
+  original: Buffer,
+  width: number,
+  height: number,
+  blocks: TextBlock[],
+): Promise<ModelRequest> => {
+  const overlay = await buildNumberedOverlay(original, width, height, blocks);
+  const crops = await buildBlockCrops(original, width, height, blocks);
+  const parts: MessagePart[] = [
+    { type: "text", text: buildReadInstructions(blocks.length) },
+    { type: "image", mimeType: "image/jpeg", data: overlay.base64 },
+  ];
+  crops.forEach((data, index) => {
+    parts.push({ type: "text", text: `Crop ${index + 1}` });
+    parts.push({ type: "image", mimeType: "image/jpeg", data });
   });
-  const usage = usageFromResponse(response, modelName, billingMode);
-  try {
-    if (!response.text) throw new Error("Gemini returned an empty reading response");
-    return { result: parseReadResponse(response.text, blocks), usage };
-  } catch (error) {
-    throw toGeminiCallError(error, response, usage, "Gemini reading response could not be parsed");
-  }
+  return { system: READ_SYSTEM, parts, schema: READ_SCHEMA, temperature: 0.1, maxOutputTokens: 8192 };
+};
+
+export const readBlocks = async ({
+  ai,
+  original,
+  width,
+  height,
+  blocks,
+  usage,
+}: {
+  ai: AiSettings;
+  original: Buffer;
+  width: number;
+  height: number;
+  blocks: TextBlock[];
+  usage: UsageBreakdown[];
+}): Promise<ReadResult & { model: string; fallbackUsed: boolean }> => {
+  const request = await buildReadRequest(original, width, height, blocks);
+  const answer = await callModel({ ai, choice: ai.reader, fallback: ai.readerFallback, request, usage });
+  return { ...parseReadAnswer(answer.json, blocks), model: answer.model, fallbackUsed: answer.fallbackUsed };
 };

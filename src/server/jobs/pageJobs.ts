@@ -1,14 +1,14 @@
 import { db } from "@/db";
-import { images, localOcrJobs, pageJobs, series, users } from "@/db/schema";
-import { combineUsage, GeminiCallError, isEligibleAdultSafetyError } from "@/server/gemini/common";
-import { isRetryableGeminiError, resolveActiveGeminiKeys } from "@/server/gemini/keys";
-import { buildLocalOcrRequestKey, enqueueLocalOcrJob } from "@/server/local-ocr/jobs";
+import { images, pageJobs, series, users } from "@/db/schema";
+import { aiSettingsProblem } from "@/server/llm/settings";
+import { isRetryable, ModelCallError } from "@/server/llm/types";
+import { combineUsage } from "@/server/llm/usage";
 import { getOwnedImage } from "@/server/pages/layoutService";
 import {
   PipelineCancelledError,
   PipelineHooks,
-  resolvePipelineSettings,
-  translatePageWithGemini,
+  resolvePageSettings,
+  translatePage,
 } from "@/server/pipeline/translatePage";
 import {
   PageJobOptions,
@@ -21,21 +21,25 @@ import {
 import { and, asc, desc, eq, gt, inArray, lt, notInArray, or } from "drizzle-orm";
 
 /**
- * The single job model behind every translation path. A page job is created
- * by the UI (interactive), by a Gemini Batch submission or by a local OCR
- * enqueue; providers advance its stage and the UI only polls this table.
+ * The single job model behind every translation. The UI creates a page job
+ * and polls this table; an in-process runner with a small concurrency limit
+ * executes them, so "Translate All" keeps going after the tab is closed.
  *
- * Gemini interactive jobs are executed by an in-process runner with a small
- * concurrency limit, so "Translate All" keeps going after the tab is closed.
+ * Providers "ai" (current), "migration" (free legacy re-typeset) are run.
+ * "gemini" rows from before the provider-neutral pipeline run the same way;
+ * "gemini_batch" and "local_ocr" rows are history only.
  */
+
+/** Job providers the runner executes. */
+const RUNNABLE_PROVIDERS = ["ai", "gemini", "migration"];
 
 export type PageJobRow = typeof pageJobs.$inferSelect;
 
 export const ACTIVE_STAGES: PageJobStage[] = ["queued", "detecting", "translating", "rendering"];
 export const isActiveStage = (stage: string) => (ACTIVE_STAGES as string[]).includes(stage);
 
-const GEMINI_CONCURRENCY = 2;
-const MAX_ATTEMPTS = 6;
+const CONCURRENCY = 2;
+const MAX_ATTEMPTS = 3;
 const STALE_MS = 10 * 60 * 1000;
 const RECENT_MS = 10 * 60 * 1000;
 
@@ -57,7 +61,6 @@ export const toPageJobSummary = (job: PageJobRow): PageJobSummary => ({
   attempts: job.attempts,
   error: job.error || undefined,
   cost: job.cost ?? undefined,
-  waitingForWorker: job.provider === "local_ocr" && job.stage === "detecting",
   createdAt: job.createdAt.toISOString(),
   updatedAt: job.updatedAt.toISOString(),
   completedAt: job.completedAt?.toISOString(),
@@ -80,7 +83,7 @@ export const createPageJob = async ({
   seriesId: string;
   imageId: string;
   provider: PageJobProvider;
-  requestedPipeline: "auto" | "gemini_vision" | "local_ocr";
+  requestedPipeline: string;
   providerRef?: string;
   options?: PageJobOptions;
   stage?: PageJobStage;
@@ -171,12 +174,6 @@ export const cancelPageJob = async (jobId: string, userId: string) => {
     .where(and(eq(pageJobs.id, jobId), eq(pageJobs.userId, userId), inArray(pageJobs.stage, ACTIVE_STAGES)))
     .returning();
   if (!job) return null;
-  if (job.provider === "local_ocr" && job.providerRef) {
-    await db
-      .update(localOcrJobs)
-      .set({ status: "cancelled", leaseOwner: null, leaseExpiresAt: null, updatedAt: now })
-      .where(and(eq(localOcrJobs.id, job.providerRef), inArray(localOcrJobs.status, ["queued", "leased", "translating"])));
-  }
   const image = await db.query.images.findFirst({
     where: eq(images.id, job.imageId),
     columns: { translatedKey: true },
@@ -188,8 +185,24 @@ export const cancelPageJob = async (jobId: string, userId: string) => {
   return job;
 };
 
-/** Interactive jobs that stopped advancing (server restart) are failed so the UI does not wait forever. */
+/**
+ * Jobs that stopped advancing (server restart) are failed so the UI does not
+ * wait forever. Jobs of removed providers (Gemini Batch, local OCR worker)
+ * can no longer finish and are cancelled; their pages keep what they had.
+ */
 export const sweepStalePageJobs = async () => {
+  const retired = await db
+    .update(pageJobs)
+    .set({ stage: "cancelled", error: "This translation path was removed. Translate the page again.", updatedAt: new Date(), completedAt: new Date() })
+    .where(and(notInArray(pageJobs.provider, RUNNABLE_PROVIDERS), inArray(pageJobs.stage, ACTIVE_STAGES)))
+    .returning({ imageId: pageJobs.imageId });
+  for (const { imageId } of retired) {
+    const image = await db.query.images.findFirst({ where: eq(images.id, imageId), columns: { translatedKey: true } });
+    await db
+      .update(images)
+      .set({ status: image?.translatedKey ? "completed" : "idle", updatedAt: new Date() })
+      .where(and(eq(images.id, imageId), eq(images.status, "processing")));
+  }
   const cutoff = new Date(Date.now() - STALE_MS);
   const runningIds = [...runner.running];
   const stale = await db
@@ -202,7 +215,7 @@ export const sweepStalePageJobs = async () => {
     })
     .where(
       and(
-        inArray(pageJobs.provider, ["gemini", "migration"]),
+        inArray(pageJobs.provider, RUNNABLE_PROVIDERS),
         inArray(pageJobs.stage, ["detecting", "translating", "rendering"]),
         lt(pageJobs.updatedAt, cutoff),
         runningIds.length ? notInArray(pageJobs.id, runningIds) : undefined,
@@ -243,7 +256,7 @@ const claimQueuedJob = async (jobId: string) => {
   return job || null;
 };
 
-const executeGeminiJob = async (jobId: string) => {
+const executeAiJob = async (jobId: string) => {
   const job = await claimQueuedJob(jobId);
   if (!job) return;
 
@@ -254,10 +267,10 @@ const executeGeminiJob = async (jobId: string) => {
   }
   const user = await db.query.users.findFirst({ where: eq(users.id, job.userId) });
   const stored = (user?.settings || {}) as Partial<TranslationSettings>;
-  const settings = resolvePipelineSettings(stored, job.options || {});
-  const keys = resolveActiveGeminiKeys(stored);
-  if (keys.length === 0) {
-    await failPageJob(job.id, "No Gemini API key configured");
+  const settings = resolvePageSettings(stored, job.options || {});
+  const problem = aiSettingsProblem(settings.ai);
+  if (problem) {
+    await failPageJob(job.id, problem);
     return;
   }
   const seriesRow = await db.query.series.findFirst({
@@ -269,7 +282,6 @@ const executeGeminiJob = async (jobId: string) => {
     originalTitle: seriesRow?.originalTitle,
     author: seriesRow?.author,
   };
-  const requestedPipeline = job.requestedPipeline as "auto" | "gemini_vision";
   const hooks: PipelineHooks = {
     onStage: (stage) => setPageJobStage(job.id, stage),
     shouldContinue: () => isPageJobActive(job.id),
@@ -279,75 +291,26 @@ const executeGeminiJob = async (jobId: string) => {
   for (;;) {
     try {
       await db.update(pageJobs).set({ attempts: attempt, updatedAt: new Date() }).where(eq(pageJobs.id, job.id));
-      const completed = await translatePageWithGemini({
-        image,
-        userId: job.userId,
-        keys,
-        settings,
-        requestedPipeline,
-        context,
-        hooks,
-      });
+      const completed = await translatePage({ image, settings, context, hooks });
       await completePageJob(job.id, { usage: completed.usage, cost: completed.cost });
       return;
     } catch (error) {
       if (error instanceof PipelineCancelledError) return;
       if (!(await isPageJobActive(job.id))) return;
-
-      if (requestedPipeline === "auto" && isEligibleAdultSafetyError(error)) {
-        const failedUsage = (error as GeminiCallError).usage;
-        const local = await enqueueLocalOcrJob({
-          requestKey: buildLocalOcrRequestKey({
-            userId: job.userId,
-            imageId: job.imageId,
-            targetLanguage: settings.targetLanguage,
-            customInstructions: settings.customInstructions,
-            primaryModel: settings.model,
-            fallbackModel: settings.fallbackModel,
-            pipeline: "auto",
-          }),
-          userId: job.userId,
-          seriesId: job.seriesId,
-          imageId: job.imageId,
-          targetLanguage: settings.targetLanguage,
-          customInstructions: settings.customInstructions,
-          primaryModel: settings.model,
-          fallbackModel: settings.fallbackModel,
-          initialUsage: combineUsage(failedUsage ? [failedUsage] : [], settings.model, false),
-          requireVerifiedAdult: true,
-          pipeline: "auto",
-        });
-        if (local) {
-          await setPageJobStage(job.id, "detecting", {
-            provider: "local_ocr",
-            providerRef: local.id,
-            error: null,
-          });
-          return;
-        }
-      }
-
-      if (isRetryableGeminiError(error) && attempt < MAX_ATTEMPTS) {
-        const suggested = (error as GeminiCallError).retryAfterMs || 5000;
-        const wait = Math.min(60_000, Math.max(5_000, suggested));
+      // The model runner already retried inside the call; a second round
+      // after a pause covers longer outages.
+      if (isRetryable(error) && attempt < MAX_ATTEMPTS) {
+        const wait = Math.min(60_000, Math.max(10_000, (error as ModelCallError).retryAfterMs || 20_000));
         await setPageJobStage(job.id, "detecting", {
           attempts: attempt,
-          error: `Gemini is busy; retrying in ${Math.round(wait / 1000)} s`,
+          error: `The AI provider is busy; retrying in ${Math.round(wait / 1000)} s`,
         });
         await sleep(wait);
         if (!(await isPageJobActive(job.id))) return;
         attempt += 1;
         continue;
       }
-
-      const callError = error as GeminiCallError;
-      const message =
-        callError?.isSafetyBlocked === true
-          ? "Gemini rejected this page for safety reasons. Local OCR needs a running worker and a series marked as verified adult content."
-          : error instanceof Error
-            ? error.message
-            : "Translation failed";
-      await failPageJob(job.id, message);
+      await failPageJob(job.id, error instanceof Error ? error.message : "Translation failed");
       return;
     }
   }
@@ -373,16 +336,16 @@ const executeMigrationJob = async (jobId: string) => {
   }
 };
 
-/** Starts queued Gemini and migration jobs up to the concurrency limit. Safe to call often. */
+/** Starts queued jobs up to the concurrency limit. Safe to call often. */
 export const pumpPageJobs = async () => {
   if (runner.pumping) return;
   runner.pumping = true;
   try {
-    while (runner.running.size < GEMINI_CONCURRENCY) {
+    while (runner.running.size < CONCURRENCY) {
       const runningIds = [...runner.running];
       const next = await db.query.pageJobs.findFirst({
         where: and(
-          inArray(pageJobs.provider, ["gemini", "migration"]),
+          inArray(pageJobs.provider, RUNNABLE_PROVIDERS),
           eq(pageJobs.stage, "queued"),
           runningIds.length ? notInArray(pageJobs.id, runningIds) : undefined,
         ),
@@ -391,7 +354,7 @@ export const pumpPageJobs = async () => {
       });
       if (!next) break;
       runner.running.add(next.id);
-      const execute = next.provider === "migration" ? executeMigrationJob : executeGeminiJob;
+      const execute = next.provider === "migration" ? executeMigrationJob : executeAiJob;
       void execute(next.id)
         .catch((error) => {
           console.error("Page job runner crashed", next.id, error);
@@ -409,7 +372,7 @@ export const pumpPageJobs = async () => {
   }
 };
 
-/** Periodic tick: resumes queued jobs after a restart and polls batch jobs. */
+/** Periodic tick: resumes queued jobs after a restart and sweeps stale ones. */
 export const startPageJobScheduler = (tick: () => Promise<void>, intervalMs = 20_000) => {
   if (runner.timer) return;
   runner.timer = setInterval(() => {

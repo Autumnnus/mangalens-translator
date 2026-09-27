@@ -1,10 +1,11 @@
 # MangaLens Translator
 
-MangaLens Translator is an advanced, AI-powered web application designed to translate manga and comic pages seamlessly. Using Google's Gemini AI, it detects text bubbles, translates content, and attempts to reconstruct the image with translated text, providing a streamlined workflow for scanlation teams and enthusiasts.
+MangaLens Translator is an advanced, AI-powered web application designed to translate manga and comic pages seamlessly. A pixel text detector finds the lettering, a vision model of your choice reads it, a text model translates it and the server re-letters the page, providing a streamlined workflow for scanlation teams and enthusiasts.
 
 ## 🚀 Features
 
-- **Text detection on the server**: a PaddleOCR detection model (ONNX, WebAssembly) finds every text line pixel-accurately; Gemini then reads, classifies and translates the numbered boxes, so the model never has to output coordinates. A local OCR worker can do the detection instead.
+- **Text detection on the server**: a PaddleOCR detection model (ONNX, WebAssembly) finds every text line pixel-accurately. Models never output coordinates: the reader gets each block as its own close-up crop and only transcribes it.
+- **Any AI provider**: Google Gemini natively, and any OpenAI-compatible API (OpenAI, OpenRouter, DeepSeek, Zhipu GLM, Alibaba Qwen, local servers). Reading and translation can use different models; keys rotate on rate limits.
 - **Server-side Typesetting**: Bubbles are cleaned and re-lettered on the server from an editable per-page layout document, with bundled Turkish-capable fonts, so results are identical for every viewer and can be corrected later.
 - **Smart Editor**:
   - Visual editor with zoom, pan, and comparison tools.
@@ -26,14 +27,14 @@ MangaLens Translator is an advanced, AI-powered web application designed to tran
 - **ORM**: [Drizzle ORM](https://orm.drizzle.team/)
 - **Authentication**: [NextAuth.js (v5)](https://authjs.dev/)
 - **State Management**: [Zustand](https://zustand-demo.pmnd.rs/) + [TanStack Query](https://tanstack.com/query/latest)
-- **AI Model**: Google Gemini (via `@google/genai`)
+- **AI**: provider-neutral layer (`src/server/llm`), Gemini via `@google/genai`, others over the OpenAI chat completions API
 - **Storage**: AWS SDK (S3 compatible)
 
 ## ⚙️ Prerequisites
 
 - Node.js 20+
 - Docker & Docker Compose (for local Database and Object Storage)
-- Google Gemini API Key
+- An API key for at least one AI provider (a vision model is needed for reading)
 
 ## 📦 Installation
 
@@ -62,12 +63,9 @@ MangaLens Translator is an advanced, AI-powered web application designed to tran
     DATABASE_URL=postgresql://postgres:postgres@localhost:5432/mangalens
     MINIO_ENDPOINT=http://localhost:9000
 
-    NEXT_PUBLIC_GEMINI_API_KEY=
+    # Optional server-wide Gemini key, used until a user adds providers in Settings.
+    GEMINI_API_KEY=
     AUTH_SECRET="your-secret-key"
-
-    # Optional: enables the outbound local OCR worker for verified-adult series.
-    # Generate with: openssl rand -hex 32
-    LOCAL_OCR_WORKER_TOKEN=
    ```
 
 4. **Start Infrastructure (DB & MinIO)**
@@ -103,18 +101,27 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 `models/ppocr-v4-det.onnx` (PaddleOCR PP-OCRv4 mobile detector, Apache-2.0)
 runs through `onnxruntime-web` on the server. Detection takes well under a
-second per page and costs nothing. If the model or runtime is unavailable the
-pipeline falls back to Gemini's own boxes, which are far less accurate on real
-scans. `scripts/pipeline-preview.ts --debug` writes the numbered overlay that
-Gemini reads next to the output image.
+second per page and costs nothing. `scripts/pipeline-preview.ts --debug`
+writes the numbered overlay the reader sees next to the output image; the
+script runs the whole pipeline on a local file without the database and works
+with any provider (`--provider openai --base-url … --model …`).
+
+## Rendering guarantees
+
+- Balloon interiors are found from the pixels and painted with their own
+  colour; text with no closed container gets a painted bubble behind it.
+- After cleaning, any glyph-sized ink left on the cleaned surface is painted
+  over, so no source lettering stays visible.
+- A translation that does not fit shrinks to 75% of the minimum size; if it
+  still does not fit, a clean backing is painted behind it. Text is never
+  drawn over artwork.
 
 ## Translation Jobs
 
 Every translation request becomes a row in `page_jobs` (stages: queued,
-detecting, translating, rendering, completed, failed, cancelled) whichever
-provider performs detection: interactive Gemini, Gemini Batch or the local OCR
-worker. Interactive jobs are executed by an in-process runner (two at a time,
-rate-limit retries on the server) that also resumes queued jobs after a
+detecting, translating, rendering, completed, failed, cancelled). Jobs are
+executed by an in-process runner (two at a time, rate-limit retries and key
+rotation on the server) that also resumes queued jobs after a
 restart, so "Translate All" keeps running when the browser tab is closed. The
 UI polls `GET /api/jobs?seriesId=` and can cancel a job with
 `POST /api/jobs/:id/cancel`. The runner is started from
@@ -129,7 +136,7 @@ Pages translated before the layout system keep their flattened render
 
 - **Tümünü taşı** re-typesets every old page from its stored bubbles on the
   server. No model call, no cost. The old render is kept aside.
-- **Gemini ile yeniden tespit** runs the full pipeline for pages whose old
+- **Translate again** runs the full pipeline for pages whose old
   boxes are poor or that have no bubble data (costs tokens).
 - The review panel compares old and new renders page by page; each page can be
   reverted, opened in the editor, or accepted (old file deleted). "Eski
@@ -161,17 +168,14 @@ canvas and inspector from URLs (disabled in production builds):
 `scripts/fixtures/make-test-page.mjs` generates a synthetic page and its
 legacy bubbles for this purpose.
 
-## Local OCR Worker
+## Old data
 
-When Gemini returns an adjustable sexually-explicit safety block for a series
-explicitly marked `adult_verified`, a Mac can perform OCR without exposing a
-local port. The worker polls this server over outbound HTTPS and returns only
-the detected text regions. The server then runs the same text translation,
-bubble cleaning and typesetting pipeline that Gemini Vision pages go through.
-
-See [local-worker/README.md](local-worker/README.md) for installation and token
-configuration. The fallback remains disabled when `LOCAL_OCR_WORKER_TOKEN` is
-unset, for standard series, and for `OTHER` or `PROHIBITED_CONTENT` blocks.
+Nothing is dropped. Pages translated earlier keep their stored render and
+layout and display as before; they only change when translated again.
+Accounts that only had Gemini keys are mapped onto a Gemini provider
+automatically. The `local_ocr_jobs` and `translation_jobs` tables stay in the
+database as history; jobs of those removed paths that were still running are
+cancelled on start-up and their pages keep their previous translation.
 
 ### Default Login Credentials
 

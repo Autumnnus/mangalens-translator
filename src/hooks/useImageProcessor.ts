@@ -3,7 +3,6 @@ import { useCallback } from "react";
 import {
   cancelPageJob,
   startPageJob,
-  submitBatch,
 } from "../services/translation.service";
 import { useSeriesStore } from "../stores/useSeriesStore";
 import { useSettingsStore } from "../stores/useSettingsStore";
@@ -35,12 +34,8 @@ export const useImageProcessor = () => {
 
   const jobOptions = useCallback(
     () => ({
-      pipeline: settings.translationPipeline || "auto",
       targetLanguage: settings.targetLanguage,
       customInstructions: settings.customInstructions,
-      model: settings.model,
-      fallbackModel: settings.fallbackModel,
-      enableQualityFallback: settings.enableQualityFallback,
     }),
     [settings],
   );
@@ -53,11 +48,9 @@ export const useImageProcessor = () => {
         old?.map((img) => (img.id === image.id ? { ...img, status: "processing" } : img)) || [],
       );
       try {
-        const { job, existing } = await startPageJob(image.id, jobOptions());
+        const { existing } = await startPageJob(image.id, jobOptions());
         if (existing) {
           showToast(`${image.fileName}: already in progress.`, "info", 3000);
-        } else if (job.waitingForWorker) {
-          showToast(`${image.fileName}: queued for local OCR.`, "info", 4000);
         }
         refresh(activeSeriesId);
         return true;
@@ -97,29 +90,8 @@ export const useImageProcessor = () => {
       return;
     }
 
-    const useBatch = settings.useGeminiBatch && settings.translationPipeline !== "local_ocr";
     let queued = 0;
-    const leftovers: ProcessedImage[] = [];
-    if (useBatch) {
-      const chunkSize = Math.min(10, Math.max(1, settings.batchSize || 10));
-      for (let index = 0; index < pending.length; index += chunkSize) {
-        const chunk = pending.slice(index, index + chunkSize);
-        try {
-          const result = await submitBatch(activeSeriesId, chunk.map((img) => img.id));
-          queued += result.pageJobs.length;
-          for (const id of result.rejectedImageIds) {
-            const image = chunk.find((img) => img.id === id);
-            if (image) leftovers.push(image);
-          }
-        } catch (error) {
-          console.warn("Gemini Batch unavailable; queueing pages interactively", error);
-          leftovers.push(...chunk);
-        }
-      }
-    } else {
-      leftovers.push(...pending);
-    }
-    for (const image of leftovers) {
+    for (const image of pending) {
       if (await processImage(image)) queued += 1;
     }
     showToast(
@@ -129,7 +101,7 @@ export const useImageProcessor = () => {
     );
     refresh(activeSeriesId);
     void refetch();
-  }, [activeSeriesId, byImage, images, processImage, refetch, refresh, settings, showToast]);
+  }, [activeSeriesId, byImage, images, processImage, refetch, refresh, showToast]);
 
   return { processImage, processAll, cancelProcessing, isProcessingAll: hasActive };
 };

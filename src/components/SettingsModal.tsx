@@ -11,9 +11,11 @@ import {
   Switch,
   Textarea,
 } from "@/components/ui";
-import { ArrowDown, ArrowUp, Plus, Trash2 } from "lucide-react";
-import React, { useState } from "react";
-import { GEMINI_MODELS, NamedApiKey, TranslationSettings } from "../types";
+import { catalogModel, presetById, PROVIDER_PRESETS } from "@/lib/aiCatalog";
+import { useSettingsStore } from "@/stores/useSettingsStore";
+import { Plus, Trash2 } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { AiModelChoice, AiProviderConfig, AiSettings, TranslationSettings } from "../types";
 
 /* ----------------------------------------------------------------------------
    Account: password change
@@ -135,80 +137,168 @@ const Section: React.FC<{
   </section>
 );
 
-interface RadioCardProps {
-  selected: boolean;
-  onSelect: () => void;
-  title: string;
-  description: string;
-  trailing?: React.ReactNode;
-}
+/* ----------------------------------------------------------------------------
+   AI providers and models
+   --------------------------------------------------------------------------- */
 
-const RadioCard: React.FC<RadioCardProps> = ({
-  selected,
-  onSelect,
-  title,
-  description,
-  trailing,
-}) => (
-  <button
-    type="button"
-    role="radio"
-    aria-checked={selected}
-    onClick={onSelect}
-    className={`w-full rounded-control border p-3 text-left transition-colors duration-120 ${
-      selected ? "border-action bg-npb" : "border-line hover:border-ink-3"
-    }`}
-  >
-    <span className="flex items-center justify-between gap-3">
-      <span className="text-sm font-medium text-ink">{title}</span>
-      {trailing}
-    </span>
-    <span className="mt-1 block text-xs leading-relaxed text-ink-2">{description}</span>
-  </button>
-);
+const SYSTEM_PROVIDER_ID = "system-gemini";
 
-const RangeField: React.FC<{
-  label: string;
-  value: number;
-  display: string;
-  min: number;
-  max: number;
-  step: number;
-  onChange: (value: number) => void;
-  minLabel: string;
-  maxLabel: string;
-  hint: React.ReactNode;
-}> = ({ label, value, display, min, max, step, onChange, minLabel, maxLabel, hint }) => (
-  <Field
-    label={
-      <span className="flex items-center justify-between gap-3">
-        <span>{label}</span>
-        <Mono className="text-xs text-ink">{display}</Mono>
-      </span>
-    }
-    hint={hint}
-  >
-    {({ id, describedBy }) => (
-      <div className="flex flex-col gap-1">
-        <input
-          id={id}
-          type="range"
-          min={min}
-          max={max}
-          step={step}
-          value={value}
-          aria-describedby={describedBy}
-          onChange={(e) => onChange(parseInt(e.target.value, 10))}
-          className="w-full accent-action"
+const newId = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID().slice(0, 12)
+    : `p-${Date.now().toString(36)}`;
+
+const ProviderCard: React.FC<{
+  provider: AiProviderConfig;
+  onChange: (provider: AiProviderConfig) => void;
+  onRemove?: () => void;
+}> = ({ provider, onChange, onRemove }) => {
+  const preset = presetById(provider.preset);
+  const isSystem = provider.id === SYSTEM_PROVIDER_ID;
+  return (
+    <li className="flex flex-col gap-2 rounded-control border border-line p-3">
+      <div className="flex items-center gap-2">
+        <Input
+          inputSize="sm"
+          aria-label="Provider name"
+          value={provider.name}
+          onChange={(e) => onChange({ ...provider, name: e.target.value })}
+          className="min-w-0 flex-1"
         />
-        <div className="flex justify-between text-xs text-ink-3">
-          <span>{minLabel}</span>
-          <span>{maxLabel}</span>
-        </div>
+        <Chip tone="neutral">{preset?.label || provider.preset}</Chip>
+        {onRemove && (
+          <IconButton size="sm" variant="danger" label="Remove provider" onClick={onRemove}>
+            <Trash2 />
+          </IconButton>
+        )}
       </div>
-    )}
-  </Field>
-);
+      {provider.kind === "openai" && (
+        <Input
+          inputSize="sm"
+          mono
+          aria-label="Base URL"
+          placeholder="https://…/v1"
+          value={provider.baseUrl ?? preset?.baseUrl ?? ""}
+          onChange={(e) => onChange({ ...provider, baseUrl: e.target.value })}
+        />
+      )}
+      <Textarea
+        aria-label="API keys"
+        className="min-h-16 font-mono text-xs"
+        placeholder={
+          isSystem
+            ? "Empty: the server's Gemini key is used. Add your own keys, one per line."
+            : `API keys, one per line (${preset?.keyHint || "…"}). Rotated on rate limits.`
+        }
+        value={provider.apiKeys.join("\n")}
+        onChange={(e) =>
+          onChange({ ...provider, apiKeys: e.target.value.split("\n").map((key) => key.trim()).filter(Boolean) })
+        }
+      />
+    </li>
+  );
+};
+
+const ModelPicker: React.FC<{
+  label: string;
+  hint: string;
+  providers: AiProviderConfig[];
+  value?: AiModelChoice;
+  optional?: boolean;
+  needsVision?: boolean;
+  onChange: (choice?: AiModelChoice) => void;
+}> = ({ label, hint, providers, value, optional, needsVision, onChange }) => {
+  const provider = providers.find((entry) => entry.id === value?.providerId);
+  const preset = provider ? presetById(provider.preset) : undefined;
+  const models = (preset?.models || []).filter((model) => !needsVision || model.vision);
+  const known = value ? catalogModel(value.model) : undefined;
+  const listId = `models-${label.replace(/\W+/g, "-")}`;
+  return (
+    <Field label={label} hint={hint}>
+      {() => (
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <Select
+              aria-label={`${label} provider`}
+              value={value?.providerId || ""}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (!next) return onChange(undefined);
+                const nextPreset = presetById(providers.find((entry) => entry.id === next)?.preset || "");
+                const first = nextPreset?.models.find((model) => !needsVision || model.vision);
+                onChange({ providerId: next, model: first?.id || value?.model || "" });
+              }}
+              className="w-44 shrink-0"
+            >
+              {optional && <option value="">None</option>}
+              {providers.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </Select>
+            <Input
+              mono
+              aria-label={`${label} model`}
+              list={listId}
+              placeholder="model id"
+              disabled={!value}
+              value={value?.model || ""}
+              onChange={(e) => value && onChange({ ...value, model: e.target.value })}
+              className="min-w-0 flex-1"
+            />
+            <datalist id={listId}>
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.label}
+                  {model.inputPer1M !== undefined ? ` · $${model.inputPer1M}/$${model.outputPer1M} per 1M` : ""}
+                </option>
+              ))}
+            </datalist>
+          </div>
+          {value && !known && (
+            <div className="flex items-center gap-2 text-xs text-ink-3">
+              <span>Price per 1M tokens (for cost tracking):</span>
+              <Input
+                inputSize="sm"
+                mono
+                type="number"
+                min={0}
+                step="0.01"
+                aria-label="Input price"
+                placeholder="input"
+                value={value.inputPer1M ?? ""}
+                onChange={(e) =>
+                  onChange({ ...value, inputPer1M: e.target.value === "" ? undefined : Number(e.target.value) })
+                }
+                className="w-24"
+              />
+              <Input
+                inputSize="sm"
+                mono
+                type="number"
+                min={0}
+                step="0.01"
+                aria-label="Output price"
+                placeholder="output"
+                value={value.outputPer1M ?? ""}
+                onChange={(e) =>
+                  onChange({ ...value, outputPer1M: e.target.value === "" ? undefined : Number(e.target.value) })
+                }
+                className="w-24"
+              />
+            </div>
+          )}
+          {value && known && known.inputPer1M !== undefined && (
+            <Mono className="text-xs text-ink-3">
+              ${known.inputPer1M} in · ${known.outputPer1M} out per 1M tokens{known.note ? ` · ${known.note}` : ""}
+            </Mono>
+          )}
+        </div>
+      )}
+    </Field>
+  );
+};
 
 /* ----------------------------------------------------------------------------
    Settings modal
@@ -218,191 +308,86 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   settings: TranslationSettings;
-  onSettingsChange: (settings: TranslationSettings) => void;
+  onSettingsChange?: (settings: TranslationSettings) => void;
 }
-
-type LocalOcrStatus = {
-  configured: boolean;
-  online: boolean;
-  workerId: string | null;
-  lastSeenAt: string | null;
-  queuedJobs: number;
-  activeJobs: number;
-};
-
-const PIPELINES: Array<{
-  id: NonNullable<TranslationSettings["translationPipeline"]>;
-  title: string;
-  description: string;
-}> = [
-  {
-    id: "auto",
-    title: "Automatic",
-    description:
-      "Use Gemini Vision first and switch to local OCR only for an eligible safety rejection.",
-  },
-  {
-    id: "gemini_vision",
-    title: "Gemini Vision",
-    description:
-      "Always send the page to Gemini for detection and translation; local OCR is disabled.",
-  },
-  {
-    id: "local_ocr",
-    title: "Local OCR + text translation",
-    description:
-      "Detect text on your Mac, then send only the OCR text to Gemini. Uses fewer input tokens but still needs a working Gemini key.",
-  },
-];
 
 const TARGET_LANGUAGES = ["Turkish", "English", "Spanish", "Japanese", "French", "German"];
 
-const SettingsModal: React.FC<Props> = ({
-  isOpen,
-  onClose,
-  settings,
-  onSettingsChange,
-}) => {
-  const [localSettings, setLocalSettings] =
-    useState<TranslationSettings>(settings);
-  const [ocrStatus, setOcrStatus] = useState<LocalOcrStatus | null>(null);
+const SettingsModal: React.FC<Props> = ({ isOpen, onClose, settings }) => {
+  const initializeSettings = useSettingsStore((state) => state.initializeSettings);
+  const [local, setLocal] = useState<TranslationSettings>(settings);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [newPreset, setNewPreset] = useState("openai");
 
-  const createApiKeyId = () =>
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `key-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-  // Sync with store/props when modal opens or settings change in store
-  React.useEffect(() => {
-    if (isOpen) {
-      const migratedNamedKeys =
-        settings.namedApiKeys && settings.namedApiKeys.length > 0
-          ? settings.namedApiKeys
-          : (settings.customApiKeyPool || "")
-              .split(/[\n,]/g)
-              .map((item) => item.trim())
-              .filter((item) => item.length > 0)
-              .map((key, index) => ({
-                id: createApiKeyId(),
-                name: `Key ${index + 1}`,
-                key,
-                enabled: true,
-              }));
-
-      setLocalSettings({
-        ...settings,
-        namedApiKeys: migratedNamedKeys,
-      });
-    }
+  useEffect(() => {
+    if (!isOpen) return;
+    setError(null);
+    // Always edit the server's view: it carries the resolved providers.
+    void fetch("/api/settings", { cache: "no-store", credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((fresh: TranslationSettings | null) => setLocal(fresh || settings))
+      .catch(() => setLocal(settings));
   }, [isOpen, settings]);
 
-  React.useEffect(() => {
-    if (!isOpen) return;
-    let active = true;
-    const refresh = async () => {
-      try {
-        const response = await fetch("/api/local-ocr/status", {
-          cache: "no-store",
-        });
-        if (!response.ok) throw new Error("OCR status unavailable");
-        const status = (await response.json()) as LocalOcrStatus;
-        if (active) setOcrStatus(status);
-      } catch {
-        if (active) setOcrStatus(null);
-      }
+  const ai: AiSettings | undefined = local.ai;
+  const setAi = (next: AiSettings) => setLocal((prev) => ({ ...prev, ai: next }));
+
+  const addProvider = () => {
+    if (!ai) return;
+    const preset = presetById(newPreset);
+    if (!preset) return;
+    const provider: AiProviderConfig = {
+      id: newId(),
+      name: preset.label,
+      preset: preset.id,
+      kind: preset.kind,
+      baseUrl: preset.kind === "openai" ? preset.baseUrl : undefined,
+      apiKeys: [],
     };
-    void refresh();
-    const timer = window.setInterval(refresh, 5000);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-    };
-  }, [isOpen]);
-
-  const handleChange = (
-    key: keyof TranslationSettings,
-    value: string | number | boolean,
-  ) => {
-    setLocalSettings((prev) => ({ ...prev, [key]: value }));
+    setAi({ ...ai, providers: [...ai.providers, provider] });
   };
 
-  const handleSave = () => {
-    const preparedNamedKeys = (localSettings.namedApiKeys || []).map((item) => ({
-      ...item,
-      name: item.name.trim() || "Untitled Key",
-      key: item.key.trim(),
-      enabled: item.enabled ?? true,
-    }));
-
-    const preparedSettings: TranslationSettings = {
-      ...localSettings,
-      namedApiKeys: preparedNamedKeys,
-      customApiKeyPool: preparedNamedKeys.map((item) => item.key).join("\n"),
-    };
-
-    onSettingsChange(preparedSettings);
-    onClose();
-  };
-
-  const setNamedKeys = (updater: (prev: NamedApiKey[]) => NamedApiKey[]) => {
-    setLocalSettings((prev) => ({
-      ...prev,
-      namedApiKeys: updater(prev.namedApiKeys || []),
-    }));
-  };
-
-  const addNamedKey = () => {
-    setNamedKeys((prev) => [
-      ...prev,
-      {
-        id: createApiKeyId(),
-        name: `Key ${prev.length + 1}`,
-        key: "",
-        enabled: true,
-      },
-    ]);
-  };
-
-  const updateNamedKey = (
-    id: string,
-    field: "name" | "key" | "enabled",
-    value: string | boolean,
-  ) => {
-    setNamedKeys((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
-    );
-  };
-
-  const removeNamedKey = (id: string) => {
-    setNamedKeys((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const moveNamedKey = (id: string, direction: -1 | 1) => {
-    setNamedKeys((prev) => {
-      const index = prev.findIndex((item) => item.id === id);
-      const nextIndex = index + direction;
-      if (index < 0 || nextIndex < 0 || nextIndex >= prev.length) return prev;
-      const copy = [...prev];
-      const [item] = copy.splice(index, 1);
-      copy.splice(nextIndex, 0, item);
-      return copy;
+  const removeProvider = (id: string) => {
+    if (!ai) return;
+    const providers = ai.providers.filter((provider) => provider.id !== id);
+    const fallbackChoice = (choice?: AiModelChoice) =>
+      choice && choice.providerId === id ? undefined : choice;
+    const first = providers[0];
+    setAi({
+      ...ai,
+      providers,
+      reader: fallbackChoice(ai.reader) || { providerId: first.id, model: "" },
+      translator: fallbackChoice(ai.translator) || { providerId: first.id, model: "" },
+      readerFallback: fallbackChoice(ai.readerFallback),
     });
   };
 
-  const namedKeys = localSettings.namedApiKeys || [];
-  const useCustomApiKey = localSettings.useCustomApiKey === true;
-  const batchSize = localSettings.batchSize || 10;
-  const batchDelay = localSettings.batchDelay || 0;
-
-  const ocrChip = ocrStatus?.online ? (
-    <Chip tone="ok">
-      Online · <Mono>{ocrStatus.workerId}</Mono>
-    </Chip>
-  ) : ocrStatus?.configured ? (
-    <Chip tone="warn">Worker offline</Chip>
-  ) : (
-    <Chip tone="neutral">No worker configured</Chip>
-  );
+  const handleSave = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({
+          targetLanguage: local.targetLanguage,
+          customInstructions: local.customInstructions || "",
+          developerMode: local.developerMode === true,
+          ai: local.ai,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Settings could not be saved");
+      initializeSettings(data as TranslationSettings);
+      onClose();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <Modal
@@ -410,27 +395,27 @@ const SettingsModal: React.FC<Props> = ({
       onClose={onClose}
       size="lg"
       title="Settings"
-      description="Translation engine, keys and account"
+      description="Translation, AI providers and account"
       footer={
         <>
+          {error && <span className="mr-auto text-xs text-shu">{error}</span>}
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button variant="primary" onClick={handleSave}>
+          <Button variant="primary" onClick={handleSave} loading={saving}>
             Save changes
           </Button>
         </>
       }
     >
       <div className="flex flex-col gap-4">
-        {/* Translation */}
         <Section label="Translation" first>
           <Field label="Target language">
             {({ id }) => (
               <Select
                 id={id}
-                value={localSettings.targetLanguage}
-                onChange={(e) => handleChange("targetLanguage", e.target.value)}
+                value={local.targetLanguage}
+                onChange={(e) => setLocal((prev) => ({ ...prev, targetLanguage: e.target.value }))}
               >
                 {TARGET_LANGUAGES.map((language) => (
                   <option key={language} value={language}>
@@ -440,229 +425,102 @@ const SettingsModal: React.FC<Props> = ({
               </Select>
             )}
           </Field>
-        </Section>
-
-        {/* Text detection */}
-        <Section
-          label="Text detection"
-          aside={
-            <>
-              {ocrStatus?.configured && (
-                <Mono className="text-xs text-ink-3">
-                  Queue {ocrStatus.queuedJobs} · Active {ocrStatus.activeJobs}
-                </Mono>
-              )}
-              {ocrChip}
-            </>
-          }
-        >
-          <div role="radiogroup" aria-label="Text detection pipeline" className="flex flex-col gap-2">
-            {PIPELINES.map((pipeline) => (
-              <RadioCard
-                key={pipeline.id}
-                selected={(localSettings.translationPipeline || "auto") === pipeline.id}
-                onSelect={() => handleChange("translationPipeline", pipeline.id)}
-                title={pipeline.title}
-                description={pipeline.description}
-              />
-            ))}
-          </div>
-        </Section>
-
-        {/* Model */}
-        <Section label="Model">
-          <div role="radiogroup" aria-label="Gemini model" className="flex flex-col gap-2">
-            {GEMINI_MODELS.map((model) => (
-              <RadioCard
-                key={model.id}
-                selected={localSettings.model === model.id}
-                onSelect={() => handleChange("model", model.id)}
-                title={model.name}
-                description={model.description}
-                trailing={
-                  <Chip tone="neutral" className="font-mono tabular">
-                    {model.inputCostPer1k === 0 ? "Free" : `$${model.inputCostPer1k}/1k`}
-                  </Chip>
-                }
-              />
-            ))}
-          </div>
-        </Section>
-
-        {/* Gemini API keys */}
-        <Section
-          label="Gemini API keys"
-          aside={
-            useCustomApiKey && (
-              <Button size="sm" variant="secondary" icon={<Plus />} onClick={addNamedKey}>
-                Add key
-              </Button>
-            )
-          }
-        >
-          <Switch
-            checked={useCustomApiKey}
-            onChange={(checked) => handleChange("useCustomApiKey", checked)}
-            label="Use my own keys"
-            description="Off: the server's default key is used. On: requests rotate through the keys below, in order."
-          />
-
-          {useCustomApiKey && (
-            <div className="flex flex-col gap-2">
-              {namedKeys.length === 0 ? (
-                <p className="rounded-control border border-dashed border-line px-3 py-4 text-center text-xs text-ink-3">
-                  No keys yet. Add a key to start the list.
-                </p>
-              ) : (
-                <ul className="divide-y divide-line rounded-control border border-line">
-                  {namedKeys.map((item, index) => (
-                    <li key={item.id} className="flex items-center gap-2 p-2">
-                      <Mono className="w-5 shrink-0 text-center text-xs text-ink-3">
-                        {index + 1}
-                      </Mono>
-                      <Input
-                        inputSize="sm"
-                        aria-label={`Key ${index + 1} name`}
-                        placeholder="Name"
-                        value={item.name}
-                        onChange={(e) => updateNamedKey(item.id, "name", e.target.value)}
-                        className="w-32 shrink-0"
-                      />
-                      <Input
-                        inputSize="sm"
-                        mono
-                        type="password"
-                        autoComplete="off"
-                        aria-label={`Key ${index + 1} value`}
-                        placeholder="AIza…"
-                        value={item.key}
-                        onChange={(e) => updateNamedKey(item.id, "key", e.target.value)}
-                        className="min-w-0 flex-1"
-                      />
-                      <IconButton
-                        size="sm"
-                        label="Move up"
-                        disabled={index === 0}
-                        onClick={() => moveNamedKey(item.id, -1)}
-                      >
-                        <ArrowUp />
-                      </IconButton>
-                      <IconButton
-                        size="sm"
-                        label="Move down"
-                        disabled={index === namedKeys.length - 1}
-                        onClick={() => moveNamedKey(item.id, 1)}
-                      >
-                        <ArrowDown />
-                      </IconButton>
-                      <IconButton
-                        size="sm"
-                        variant="danger"
-                        label="Remove key"
-                        onClick={() => removeNamedKey(item.id)}
-                      >
-                        <Trash2 />
-                      </IconButton>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <p className="text-xs leading-relaxed text-ink-3">
-                Keys are tried top to bottom. A rate-limited key is skipped and the next one is
-                used; cooldowns follow the model limits (RPM, RPD, TPM). Get keys from{" "}
-                <a
-                  href="https://aistudio.google.com/app/apikey"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-action underline-offset-2 hover:underline"
-                >
-                  Google AI Studio
-                </a>
-                .
-              </p>
-            </div>
-          )}
-        </Section>
-
-        {/* Batching */}
-        <Section label="Batching">
-          <div className="flex flex-col gap-3">
-            <Switch
-              checked={localSettings.useGeminiBatch !== false}
-              onChange={(checked) => handleChange("useGeminiBatch", checked)}
-              label="Gemini batch pricing"
-              description="Paid Gemini tiers run asynchronous jobs at half price; unsupported and free tiers fall back to normal requests."
-            />
-            <Switch
-              checked={localSettings.enableQualityFallback !== false}
-              onChange={(checked) => handleChange("enableQualityFallback", checked)}
-              label="Quality fallback"
-              description="Uncertain Flash-Lite pages are retried with Gemini 2.5 Flash."
-            />
-            <Switch
-              checked={localSettings.developerMode === true}
-              onChange={(checked) => handleChange("developerMode", checked)}
-              label="Developer mode"
-              description="Show pipeline, OCR engine, model, timing, token and fallback details on each page."
-            />
-          </div>
-
-          <RangeField
-            label="Batch size"
-            value={batchSize}
-            display={`${batchSize} ${batchSize === 1 ? "page" : "pages"}`}
-            min={1}
-            max={10}
-            step={1}
-            onChange={(value) => handleChange("batchSize", value)}
-            minLabel="1 · safest"
-            maxLabel="10 · fastest"
-            hint="Pages translated in parallel. The free Gemini tier allows about 15 requests per minute; 1 to 3 is safe there."
-          />
-
-          <RangeField
-            label="Delay between batches"
-            value={batchDelay}
-            display={`${batchDelay} ms`}
-            min={0}
-            max={5000}
-            step={500}
-            onChange={(value) => handleChange("batchDelay", value)}
-            minLabel="0 ms"
-            maxLabel="5 s"
-            hint="A pause between batches helps avoid 429 rate-limit errors on free accounts."
-          />
-        </Section>
-
-        {/* Prompt guidelines */}
-        <Section label="Prompt guidelines">
-          <Field
-            label="Extra rules for the model"
-            hint="Each line becomes a strict rule for the model."
-          >
+          <Field label="Extra rules for the translator" hint="Names, tone, terms to keep. Each line is a rule.">
             {({ id, describedBy }) => (
               <Textarea
                 id={id}
                 aria-describedby={describedBy}
-                className="min-h-28"
-                value={localSettings.customInstructions || ""}
-                onChange={(e) => handleChange("customInstructions", e.target.value)}
-                placeholder="Example: keep sound effects in Japanese and add a small translation below them."
+                className="min-h-24"
+                value={local.customInstructions || ""}
+                onChange={(e) => setLocal((prev) => ({ ...prev, customInstructions: e.target.value }))}
               />
             )}
           </Field>
         </Section>
 
-        {/* Typesetting */}
-        <Section label="Typesetting">
-          <p className="text-sm leading-relaxed text-ink-2">
-            Fonts, sizes, colours and bubble cleaning are decided per balloon by the server
-            renderer and stored with each page. Correct them in the layout editor instead of
-            through a global setting.
-          </p>
+        {ai && (
+          <Section
+            label="AI providers"
+            aside={
+              <>
+                <Select
+                  aria-label="Provider type"
+                  value={newPreset}
+                  onChange={(e) => setNewPreset(e.target.value)}
+                  className="w-48"
+                >
+                  {PROVIDER_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </Select>
+                <Button size="sm" variant="secondary" icon={<Plus />} onClick={addProvider}>
+                  Add
+                </Button>
+              </>
+            }
+          >
+            <ul className="flex flex-col gap-2">
+              {ai.providers.map((provider) => (
+                <ProviderCard
+                  key={provider.id}
+                  provider={provider}
+                  onChange={(next) =>
+                    setAi({
+                      ...ai,
+                      providers: ai.providers.map((entry) => (entry.id === next.id ? next : entry)),
+                    })
+                  }
+                  onRemove={ai.providers.length > 1 ? () => removeProvider(provider.id) : undefined}
+                />
+              ))}
+            </ul>
+            <p className="text-xs leading-relaxed text-ink-3">
+              Text boxes are always found from the page pixels; models only read and translate. Any
+              OpenAI-compatible API works (OpenAI, OpenRouter, DeepSeek, GLM, Qwen, local servers).
+            </p>
+          </Section>
+        )}
+
+        {ai && (
+          <Section label="Models">
+            <ModelPicker
+              label="Reading"
+              hint="Reads the lettering from page crops. Needs a vision model."
+              providers={ai.providers}
+              value={ai.reader}
+              needsVision
+              onChange={(choice) => choice && setAi({ ...ai, reader: choice })}
+            />
+            <ModelPicker
+              label="Translation"
+              hint="Translates the transcribed text. Any text model."
+              providers={ai.providers}
+              value={ai.translator}
+              onChange={(choice) => choice && setAi({ ...ai, translator: choice })}
+            />
+            <ModelPicker
+              label="Reading fallback"
+              hint="Used when the reading model keeps failing (outage, rate limits)."
+              providers={ai.providers}
+              value={ai.readerFallback}
+              optional
+              needsVision
+              onChange={(choice) => setAi({ ...ai, readerFallback: choice })}
+            />
+          </Section>
+        )}
+
+        <Section label="Display">
+          <Switch
+            checked={local.developerMode === true}
+            onChange={(checked) => setLocal((prev) => ({ ...prev, developerMode: checked }))}
+            label="Developer details"
+            description="Show models, tokens, cost and timing on each page."
+          />
         </Section>
 
-        {/* Account */}
         <Section label="Account">
           <PasswordChangeForm />
         </Section>

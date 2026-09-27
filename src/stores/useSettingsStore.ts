@@ -1,11 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import {
-  DEFAULT_GEMINI_FALLBACK_MODEL,
-  DEFAULT_GEMINI_MODEL,
-  GEMINI_MODELS,
-  TranslationSettings,
-} from "../types";
+import { TranslationSettings } from "../types";
 
 export type Theme = "dark" | "light";
 
@@ -30,37 +25,14 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       settings: {
         targetLanguage: "Turkish",
-        translationPipeline: "auto",
         developerMode: false,
         customInstructions: "",
-        model: DEFAULT_GEMINI_MODEL,
-        fallbackModel: DEFAULT_GEMINI_FALLBACK_MODEL,
-        enableQualityFallback: true,
-        useGeminiBatch: true,
-        batchSize: 10,
-        batchDelay: 0,
-        useCustomApiKey: false,
-        customApiKeyPool: "",
-        namedApiKeys: [],
       },
       isViewOnly: process.env.NODE_ENV === "production",
       theme: "dark",
 
       updateSettings: (newSettings, syncWithDb = true) => {
-        const validModelIds = new Set(GEMINI_MODELS.map((m) => m.id));
-
-        set((state) => ({
-          settings: {
-            ...state.settings,
-            ...newSettings,
-            model: validModelIds.has(String(newSettings.model))
-              ? String(newSettings.model)
-              : state.settings.model,
-            fallbackModel: validModelIds.has(String(newSettings.fallbackModel))
-              ? String(newSettings.fallbackModel)
-              : state.settings.fallbackModel,
-          },
-        }));
+        set((state) => ({ settings: { ...state.settings, ...newSettings } }));
 
         if (syncWithDb) {
           void fetch("/api/settings", {
@@ -76,19 +48,7 @@ export const useSettingsStore = create<SettingsState>()(
         }
       },
       initializeSettings: (dbSettings) => {
-        const validModelIds = new Set(GEMINI_MODELS.map((m) => m.id));
-        set((state) => ({
-          settings: {
-            ...state.settings,
-            ...dbSettings,
-            model: validModelIds.has(dbSettings.model)
-              ? dbSettings.model
-              : state.settings.model,
-            fallbackModel: validModelIds.has(String(dbSettings.fallbackModel))
-              ? dbSettings.fallbackModel
-              : state.settings.fallbackModel,
-          },
-        }));
+        set((state) => ({ settings: { ...state.settings, ...dbSettings } }));
       },
       toggleViewOnly: () => set((state) => ({ isViewOnly: !state.isViewOnly })),
       setViewOnly: (value) => set({ isViewOnly: value }),
@@ -96,7 +56,11 @@ export const useSettingsStore = create<SettingsState>()(
     }),
     {
       name: "mangalens_settings",
-      partialize: (state) => ({ settings: state.settings, theme: state.theme }),
+      // API keys are never cached in the browser; the server is the source.
+      partialize: (state) => ({
+        settings: { ...state.settings, ai: undefined },
+        theme: state.theme,
+      }),
       // Rehydrated on mount by <ThemeApplier /> so server and client render
       // the same defaults first (no hydration mismatch on persisted values).
       skipHydration: true,

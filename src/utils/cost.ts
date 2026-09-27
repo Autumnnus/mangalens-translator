@@ -1,50 +1,23 @@
-import { GEMINI_MODELS, UsageBreakdown, UsageMetadata } from "../types";
+import { catalogModel } from "@/lib/aiCatalog";
+import { UsageBreakdown, UsageMetadata } from "../types";
 
-const getModel = (modelId: string) =>
-  GEMINI_MODELS.find((model) => model.id === modelId) || GEMINI_MODELS[0];
-
-const calculateEntryCost = (entry: UsageBreakdown) => {
-  const model = getModel(entry.model);
-  const isBatch = entry.billingMode === "batch";
-  const inputRate = isBatch
-    ? model.batchInputCostPer1k
-    : model.inputCostPer1k;
-  const outputRate = isBatch
-    ? model.batchOutputCostPer1k
-    : model.outputCostPer1k;
-
+/**
+ * Cost of a page. New usage entries carry the price computed when the call
+ * was made; older, Gemini-only entries are priced from the catalog (batch
+ * calls at half price, as Gemini Batch billed them).
+ */
+const entryCost = (entry: UsageBreakdown) => {
+  if (typeof entry.costUsd === "number") return entry.costUsd;
+  const model = catalogModel(entry.model);
+  if (!model) return 0;
+  const discount = entry.billingMode === "batch" ? 0.5 : 1;
   return (
-    (entry.promptTokenCount / 1000) * inputRate +
-    ((entry.candidatesTokenCount + entry.thoughtsTokenCount) / 1000) *
-      outputRate
+    ((entry.promptTokenCount * (model.inputPer1M || 0) +
+      (entry.candidatesTokenCount + entry.thoughtsTokenCount) * (model.outputPer1M || 0)) /
+      1_000_000) *
+    discount
   );
 };
 
-export const calculateGeminiCost = (
-  usage: UsageMetadata,
-  fallbackModelId: string,
-) => {
-  if (usage.breakdown && usage.breakdown.length > 0) {
-    return usage.breakdown.reduce(
-      (total, entry) => total + calculateEntryCost(entry),
-      0,
-    );
-  }
-
-  const inferredThoughts = Math.max(
-    0,
-    usage.totalTokenCount -
-      usage.promptTokenCount -
-      usage.candidatesTokenCount,
-  );
-
-  return calculateEntryCost({
-    model: usage.modelUsed || fallbackModelId,
-    billingMode: "standard",
-    promptTokenCount: usage.promptTokenCount,
-    candidatesTokenCount: usage.candidatesTokenCount,
-    thoughtsTokenCount: usage.thoughtsTokenCount ?? inferredThoughts,
-    totalTokenCount: usage.totalTokenCount,
-  });
-};
-
+export const calculateUsageCost = (usage: UsageMetadata) =>
+  (usage.breakdown || []).reduce((total, entry) => total + entryCost(entry), 0);

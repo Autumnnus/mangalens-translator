@@ -3,15 +3,13 @@ import { auth } from "@/auth";
 import { db } from "@/db";
 import { images, series, users } from "@/db/schema";
 import { pageLayoutSchema } from "@/layout/types";
-import { combineUsage } from "@/server/gemini/common";
-import { parseGeminiStatusCode, resolveActiveGeminiKeys } from "@/server/gemini/keys";
+import { aiSettingsProblem } from "@/server/llm/settings";
+import { ModelCallError } from "@/server/llm/types";
+import { combineUsage } from "@/server/llm/usage";
 import { getOwnedImage } from "@/server/pages/layoutService";
-import {
-  resolvePipelineSettings,
-  translateRegions,
-} from "@/server/pipeline/translatePage";
+import { resolvePageSettings, translateRegions } from "@/server/pipeline/translatePage";
 import { TranslationSettings, UsageBreakdown } from "@/types";
-import { calculateGeminiCost } from "@/utils/cost";
+import { calculateUsageCost } from "@/utils/cost";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -52,11 +50,9 @@ export async function POST(request: Request, context: Context) {
   try {
     const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
     const stored = (user?.settings || {}) as Partial<TranslationSettings>;
-    const settings = resolvePipelineSettings(stored);
-    const keys = resolveActiveGeminiKeys(stored);
-    if (keys.length === 0) {
-      return NextResponse.json({ error: "No Gemini API key available" }, { status: 400 });
-    }
+    const settings = resolvePageSettings(stored);
+    const problem = aiSettingsProblem(settings.ai);
+    if (problem) return NextResponse.json({ error: problem }, { status: 400 });
     const seriesRow = await db.query.series.findFirst({
       where: eq(series.id, image.seriesId),
       columns: { name: true, originalTitle: true, author: true },
@@ -70,13 +66,11 @@ export async function POST(request: Request, context: Context) {
       )
       .map((region) => ({ ...region, locked: false }));
     if (targets.length === 0) {
-      return NextResponse.json({ layout, usage: combineUsage([], settings.model, false), cost: 0 });
+      return NextResponse.json({ layout, usage: combineUsage([], settings.ai.translator.model, false), cost: 0 });
     }
 
     const usageEntries: UsageBreakdown[] = [];
     const translated = await translateRegions({
-      userId,
-      keys,
       settings,
       context: {
         seriesTitle: seriesRow?.name,
@@ -85,7 +79,7 @@ export async function POST(request: Request, context: Context) {
         sourceLanguage: null,
       },
       regions: targets,
-      usageEntries,
+      usage: usageEntries,
     });
     const byId = new Map(translated.regions.map((region) => [region.id, region.translatedText]));
     const nextLayout = {
@@ -96,14 +90,14 @@ export async function POST(request: Request, context: Context) {
       meta: { ...layout.meta, updatedAt: new Date().toISOString() },
     };
 
-    const usage = combineUsage(usageEntries, translated.modelUsed, translated.fallbackUsed);
-    const cost = calculateGeminiCost(usage, settings.model);
+    const usage = combineUsage(usageEntries, translated.model, false);
+    const cost = calculateUsageCost(usage);
     // Bill the page: append to its usage record.
     const previous = image.usage as typeof usage | null;
     const merged = combineUsage(
       [...(previous?.breakdown || []), ...usageEntries],
-      translated.modelUsed,
-      !!previous?.fallbackUsed || translated.fallbackUsed,
+      translated.model,
+      !!previous?.fallbackUsed,
     );
     merged.processing = previous?.processing;
     await db
@@ -114,7 +108,7 @@ export async function POST(request: Request, context: Context) {
     return NextResponse.json({ layout: nextLayout, usage, cost });
   } catch (error) {
     console.error("Text translation failed", image.id, error);
-    const statusCode = parseGeminiStatusCode(error);
+    const statusCode = (error as ModelCallError).status;
     return NextResponse.json(
       { error: describeError(error, "Translation failed") },
       { status: typeof statusCode === "number" && statusCode >= 400 ? statusCode : 500 },

@@ -171,6 +171,8 @@ export interface TypesetOptions {
   maxFontSize: number;
   /** Turkish needs locale-aware casing ("i" -> "İ"). */
   locale?: string;
+  /** Lines the source lettering used; a translation stacked far taller gets compacted. */
+  sourceLines?: number;
 }
 
 const LOCALE_BY_LANGUAGE: Record<string, string> = {
@@ -604,6 +606,33 @@ export const typesetText = (options: TypesetOptions): TypesetResult | null => {
   if (split && (!unsplit || split.fontSize > unsplit.fontSize * 1.35)) {
     return split;
   }
-  if (unsplit) return unsplit;
+  if (unsplit) return compact(unsplit, paragraphs, options, min);
   return layoutAtSize(paragraphs, min, options, true, longestWord >= MIN_SPLIT_LETTERS);
+};
+
+const singleWordShare = (result: TypesetResult) =>
+  result.lines.filter((line) => !line.text.includes(" ")).length / Math.max(1, result.lines.length);
+
+/**
+ * The largest size is not always the best: in a narrow box it can leave one
+ * word per line ("BU / HİS / DE / NE"), a tall column that reads badly and
+ * looks nothing like the original lettering. When the translation needs more
+ * lines than the source had and most of them hold a single word, the largest
+ * size down to 72% that saves at least two lines wins.
+ */
+const compact = (
+  largest: TypesetResult,
+  paragraphs: string[][],
+  options: TypesetOptions,
+  min: number,
+): TypesetResult => {
+  const lines = largest.lines.length;
+  const taller = options.sourceLines === undefined || lines > options.sourceLines + 1;
+  if (lines < 4 || !taller || singleWordShare(largest) < 0.5) return largest;
+  const floor = Math.max(min, largest.fontSize * 0.72);
+  for (let size = largest.fontSize * 0.95; size >= floor; size *= 0.95) {
+    const attempt = layoutAtSize(paragraphs, size, options, false, false);
+    if (attempt && attempt.lines.length <= lines - 2) return attempt;
+  }
+  return largest;
 };

@@ -69,7 +69,7 @@ export const setRegionTextArea = (
 export const setRegionMaskType = (
   layout: PageLayout,
   regionId: string,
-  type: "auto" | "none" | "rect" | "ellipse",
+  type: "auto" | "none" | "inpaint" | "rect" | "ellipse",
   area: Box,
 ): PageLayout =>
   replaceRegion(layout, regionId, (region) => {
@@ -78,6 +78,9 @@ export const setRegionMaskType = (
     }
     if (type === "none") {
       return { ...region, mask: { type: "none" }, maskSource: "manual" };
+    }
+    if (type === "inpaint") {
+      return { ...region, mask: { type: "inpaint" }, maskSource: "manual", render: undefined };
     }
     const box = region.textArea || area;
     return {

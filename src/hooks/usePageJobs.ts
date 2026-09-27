@@ -77,8 +77,6 @@ export const STAGE_LABELS: Record<PageJobStage, string> = {
 };
 
 export const describeJob = (job: PageJobSummary) => {
-  if (job.waitingForWorker) return "Waiting for OCR worker";
-  if (job.provider === "gemini_batch" && job.stage === "detecting") return "Detecting (batch)";
   if (job.provider === "migration" && isActiveJob(job)) return "Migrating";
   return STAGE_LABELS[job.stage];
 };

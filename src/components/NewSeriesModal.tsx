@@ -264,7 +264,7 @@ const NewSeriesModal: React.FC<Props> = ({
           checked={adultVerified}
           onChange={(event) => setAdultVerified(event.target.checked)}
           label="Verified adult content"
-          description="I confirm that the sexual content in this series depicts adults only. Local OCR safety fallback stays disabled for standard or age-ambiguous content."
+          description="I confirm that the sexual content in this series depicts adults only."
         />
 
         {!isAddingCategory ? (

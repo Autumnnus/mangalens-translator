@@ -73,7 +73,7 @@ const MODE_OPTIONS: Array<{ value: ViewMode; label: string }> = [
 
 /**
  * Migration panel for a series: moves flattened v1 pages to layout v2 (free,
- * from stored bubbles, or with Gemini re-detection), then lets the user
+ * from stored bubbles, or with a fresh translation), then lets the user
  * compare old and new renders page by page, revert, or drop the old files.
  */
 const MigrationModal: React.FC = () => {
@@ -100,7 +100,7 @@ const MigrationModal: React.FC = () => {
   const migratedPages = useMemo(() => images.filter(isMigratedPage), [images]);
   const freeCount = legacyPages.filter((image) => image.hasLegacyBubbles).length;
   const needsRedetect = legacyPages.length - freeCount;
-  const migrationJobs = activeJobs.filter((job) => job.provider === "migration" || job.provider === "gemini");
+  const migrationJobs = activeJobs.filter((job) => job.provider === "migration" || job.provider === "ai" || job.provider === "gemini");
 
   const reviewList = useMemo(
     () => [...migratedPages, ...legacyPages].sort((a, b) => a.sequenceNumber - b.sequenceNumber),
@@ -152,7 +152,7 @@ const MigrationModal: React.FC = () => {
     if (freeCount === 0) return;
     confirm({
       title: "Migrate legacy pages",
-      message: `${pages(freeCount)} will be re-typeset from the stored bubble data. No Gemini call is made, so this is free. The old renders are kept for review.`,
+      message: `${pages(freeCount)} will be re-typeset from the stored bubble data. No AI call is made, so this is free. The old renders are kept for review.`,
       type: "warning",
       onConfirm: () => void runStart("legacy"),
     });
@@ -162,8 +162,8 @@ const MigrationModal: React.FC = () => {
     const count = imageIds ? imageIds.length : legacyPages.length;
     if (count === 0) return;
     confirm({
-      title: "Re-detect with Gemini",
-      message: `${pages(count)} will be detected and translated again with Gemini Vision. This uses tokens and costs money. The old renders are kept for review.`,
+      title: "Translate again",
+      message: `${pages(count)} will be detected and translated again with the configured AI models. This uses tokens and costs money. The old renders are kept for review.`,
       type: "warning",
       onConfirm: () => void runStart("redetect", imageIds),
     });
@@ -270,7 +270,7 @@ const MigrationModal: React.FC = () => {
             }
           >
             <span>
-              Re-detect with Gemini (<Mono>{legacyPages.length}</Mono>)
+              Translate again (<Mono>{legacyPages.length}</Mono>)
             </span>
           </Button>
           <Button

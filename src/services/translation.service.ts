@@ -3,12 +3,8 @@ import { PageJobSummary } from "@/types";
 /** Client wrapper for the server-side page job model. */
 
 export interface TranslatePageOptions {
-  pipeline: "auto" | "gemini_vision" | "local_ocr";
   targetLanguage?: string;
   customInstructions?: string;
-  model?: string;
-  fallbackModel?: string;
-  enableQualityFallback?: boolean;
 }
 
 export type TranslateRequestError = Error & { status?: number };
@@ -45,16 +41,3 @@ export const cancelPageJob = (jobId: string) =>
     method: "POST",
     credentials: "same-origin",
   }).then((response) => parse<{ job: PageJobSummary }>(response, "Job could not be cancelled"));
-
-export const submitBatch = (seriesId: string, imageIds: string[]) =>
-  fetch("/api/gemini/batch", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ seriesId, imageIds }),
-  }).then((response) =>
-    parse<{ pageJobs: PageJobSummary[]; rejectedImageIds: string[] }>(
-      response,
-      "Gemini Batch job could not be created",
-    ),
-  );

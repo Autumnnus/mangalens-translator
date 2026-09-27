@@ -32,7 +32,7 @@ interface Props {
   onPatch: (patch: Partial<Region>) => void;
   onStylePatch: (patch: Partial<Region["style"]>) => void;
   onKindChange: (kind: RegionKind) => void;
-  onMaskType: (type: "auto" | "none" | "rect" | "ellipse") => void;
+  onMaskType: (type: "auto" | "none" | "inpaint" | "rect" | "ellipse") => void;
   onResetArea: () => void;
   onDragTarget: (target: DragTarget) => void;
   onTranslate: () => void;
@@ -331,13 +331,14 @@ const RegionInspector: React.FC<Props> = ({
               onChange={(event) => {
                 const value = event.target.value;
                 if (value === "polygon") return;
-                onMaskType(value as "auto" | "none" | "rect" | "ellipse");
+                onMaskType(value as "auto" | "none" | "inpaint" | "rect" | "ellipse");
               }}
             >
               <option value="auto">Automatic (inside balloon)</option>
               {maskType === "polygon" && <option value="polygon">Detected polygon</option>}
               <option value="rect">Rectangle (text area)</option>
               <option value="ellipse">Ellipse (text area)</option>
+              <option value="inpaint">Letters only (text on artwork)</option>
               <option value="none">No cleaning</option>
             </Select>
           )}

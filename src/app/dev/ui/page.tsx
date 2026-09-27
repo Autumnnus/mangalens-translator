@@ -98,10 +98,9 @@ const makeJob = (
   id: `job-${imageId}`,
   imageId,
   seriesId: "series-1",
-  provider: "gemini",
+  provider: "ai",
   stage,
   attempts: 1,
-  waitingForWorker: false,
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   ...extra,
@@ -138,8 +137,8 @@ export default function UiGalleryPage() {
     () =>
       new Map<string, PageJobSummary>([
         ["img-2", makeJob("img-2", "translating")],
-        ["img-3", makeJob("img-3", "queued", { waitingForWorker: true })],
-        ["img-4", makeJob("img-4", "failed", { error: "Gemini is busy; retrying in 30 s" })],
+        ["img-3", makeJob("img-3", "queued")],
+        ["img-4", makeJob("img-4", "failed", { error: "The AI provider is busy; retrying in 30 s" })],
       ]),
     [],
   );

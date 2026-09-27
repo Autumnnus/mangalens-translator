@@ -54,8 +54,12 @@ const DeveloperMeta: React.FC<{ image: ProcessedImage }> = ({ image }) => {
   const processing = usage.processing;
   const rows: Array<[string, string]> = [
     [
-      "Pipeline",
-      processing ? `${processing.requestedPipeline} → ${processing.actualPipeline}` : "unknown",
+      "Reading",
+      processing?.reading
+        ? `${processing.reading.provider} · ${processing.reading.model}${processing.reading.fallbackUsed ? " (fallback)" : ""}`
+        : processing
+          ? `${processing.requestedPipeline ?? "?"} → ${processing.actualPipeline ?? "?"}`
+          : "unknown",
     ],
     [
       "Detection",
@@ -66,7 +70,7 @@ const DeveloperMeta: React.FC<{ image: ProcessedImage }> = ({ image }) => {
     [
       "Translation",
       processing
-        ? `${processing.translation.model} · ${processing.translation.inputMode}`
+        ? `${processing.translation.provider} · ${processing.translation.model}`
         : usage.modelUsed || "unknown",
     ],
     [
@@ -74,7 +78,7 @@ const DeveloperMeta: React.FC<{ image: ProcessedImage }> = ({ image }) => {
       `${formatInt(usage.promptTokenCount)} in · ${formatInt(usage.candidatesTokenCount)} out`,
     ],
     [
-      "OCR",
+      "Detector",
       processing?.detection.durationMs
         ? `${formatInt(processing.detection.durationMs)} ms · ${processing.detection.regions || 0} regions`
         : "n/a",

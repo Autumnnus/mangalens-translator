@@ -18,7 +18,8 @@ export const REGION_KINDS = [
 ] as const;
 export type RegionKind = (typeof REGION_KINDS)[number];
 
-export const REGION_SOURCES = ["gemini", "ocr", "manual", "legacy"] as const;
+// "gemini" and "ocr" mark regions created before the provider-neutral pipeline.
+export const REGION_SOURCES = ["ai", "gemini", "ocr", "manual", "legacy"] as const;
 export type RegionSource = (typeof REGION_SOURCES)[number];
 
 const finite = z.number().finite();
@@ -44,6 +45,12 @@ export const maskSchema = z.discriminatedUnion("type", [
   /** Resolved from the image at render time, then replaced by the result. */
   z.object({ type: z.literal("auto") }),
   z.object({ type: z.literal("none") }),
+  /**
+   * Lettering sits on artwork with no container: only the glyphs are
+   * removed and filled from the surrounding pixels, the translation is
+   * stroked on top. Resolved from the pixels at every render.
+   */
+  z.object({ type: z.literal("inpaint") }),
   z.object({
     type: z.literal("rect"),
     box: boxSchema,
@@ -158,7 +165,9 @@ export const pageLayoutSchema = z.object({
   height: z.number().int().min(1).max(50_000),
   regions: z.array(regionSchema).max(500),
   meta: z.object({
-    createdAt: z.string(),
+    // Pages translated between 2026-09-06 and 2026-09-27 could be stored
+    // without createdAt; they still load.
+    createdAt: z.string().default("1970-01-01T00:00:00.000Z"),
     updatedAt: z.string(),
     source: z.enum(REGION_SOURCES).optional(),
     /** e.g. "gemini:gemini-3-flash-preview", "paddleocr", "legacy-bubbles". */

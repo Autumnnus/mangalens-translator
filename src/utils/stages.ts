@@ -39,15 +39,6 @@ export const describePageStatus = (
   job?: PageJobSummary | null,
 ): PageStatusView => {
   if (job && ACTIVE_STAGES.has(job.stage)) {
-    if (job.waitingForWorker) {
-      return {
-        stages: all("queued"),
-        label: "Waiting for OCR worker",
-        tone: "warn",
-        active: true,
-        error: job.error,
-      };
-    }
     if (job.provider === "migration") {
       return {
         stages: { detect: "done", translate: "done", render: "running" },

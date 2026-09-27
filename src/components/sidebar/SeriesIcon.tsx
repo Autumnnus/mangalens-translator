@@ -19,9 +19,29 @@ interface SeriesIconProps {
   imageCount?: number;
 }
 
+const PREVIEW_COUNT = 5;
+
 /**
- * Three stacked page thumbnails. Click opens a modal quick preview with
- * arrow-key and touch navigation.
+ * First and last page plus random pages from the middle, in reading order.
+ * Short series are returned whole.
+ */
+const samplePreview = (urls: string[]): string[] => {
+  if (urls.length <= PREVIEW_COUNT) return urls;
+  const middle = urls.slice(1, -1).map((url, index) => ({ url, index }));
+  for (let i = middle.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [middle[i], middle[j]] = [middle[j], middle[i]];
+  }
+  const picked = middle
+    .slice(0, PREVIEW_COUNT - 2)
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.url);
+  return [urls[0], ...picked, urls[urls.length - 1]];
+};
+
+/**
+ * Three stacked page thumbnails. Click opens a modal quick preview of
+ * PREVIEW_COUNT pages with arrow-key and touch navigation.
  */
 const SeriesIcon: React.FC<SeriesIconProps> = ({
   seriesId,
@@ -51,6 +71,13 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
     [fullSeriesImages, images, previewImages],
   );
 
+  // Re-sampled on every open; stable while the modal stays open, except that
+  // it refreshes once the full page list finishes loading.
+  const previewSample = useMemo(
+    () => (isExpanded ? samplePreview(displayImages) : []),
+    [displayImages, isExpanded],
+  );
+
   useEffect(() => {
     if (!isExpanded) return;
 
@@ -60,14 +87,14 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
       }
       if (event.key === "ArrowRight") {
         setActivePreviewIndex((index) =>
-          Math.min(displayImages.length - 1, index + 1),
+          Math.min(previewSample.length - 1, index + 1),
         );
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [displayImages.length, isExpanded]);
+  }, [previewSample.length, isExpanded]);
 
   if (displayImages.length === 0) {
     return (
@@ -86,6 +113,7 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
   };
 
   const pageCount = imageCount || displayImages.length;
+  const sampled = previewSample.length < pageCount;
   const theaterButton =
     "text-theater-ink-2 hover:bg-theater-hover hover:text-theater-ink disabled:hover:bg-transparent";
 
@@ -129,18 +157,18 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
         layer="lightbox"
         presentation="modal"
         title={seriesName}
-        subtitle={`${isLoadingFullSeries ? "Loading pages… · " : "Quick preview · "}${pageCount} page${pageCount === 1 ? "" : "s"}`}
+        subtitle={`${isLoadingFullSeries ? "Loading pages… · " : "Quick preview · "}${sampled ? `${previewSample.length} of ` : ""}${pageCount} page${pageCount === 1 ? "" : "s"}`}
         icon={<ImageIcon />}
         closeLabel="Close preview (Esc)"
         actions={
           <Mono className="text-xs text-theater-ink-2">
-            {activePreviewIndex + 1} / {displayImages.length}
+            {activePreviewIndex + 1} / {previewSample.length}
           </Mono>
         }
       >
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <main
-            className="relative flex min-h-0 flex-1 items-center justify-center p-4 sm:p-8"
+            className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-4 sm:p-8"
             style={{ touchAction: "pan-y" }}
             onTouchStart={(event) => {
               touchStartX.current = event.changedTouches[0]?.clientX ?? null;
@@ -155,7 +183,7 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
               if (Math.abs(deltaX) < 40) return;
               if (deltaX < 0) {
                 setActivePreviewIndex((index) =>
-                  Math.min(displayImages.length - 1, index + 1),
+                  Math.min(previewSample.length - 1, index + 1),
                 );
               } else {
                 setActivePreviewIndex((index) => Math.max(0, index - 1));
@@ -172,7 +200,7 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
               <ChevronLeft />
             </IconButton>
             <img
-              src={displayImages[activePreviewIndex]}
+              src={previewSample[activePreviewIndex]}
               alt={`${seriesName} preview ${activePreviewIndex + 1}`}
               className="max-h-full max-w-full select-none object-contain"
               draggable={false}
@@ -180,7 +208,7 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
             <IconButton
               label="Next page"
               size="lg"
-              disabled={activePreviewIndex === displayImages.length - 1}
+              disabled={activePreviewIndex === previewSample.length - 1}
               onClick={() => setActivePreviewIndex((index) => index + 1)}
               className={cn("absolute right-3 z-10 sm:right-6", theaterButton)}
             >
@@ -189,8 +217,8 @@ const SeriesIcon: React.FC<SeriesIconProps> = ({
           </main>
 
           <footer className="shrink-0 border-t border-theater-line bg-theater px-4 py-3 sm:px-8">
-            <div className="mx-auto flex max-w-4xl gap-2 overflow-x-auto pb-1">
-              {displayImages.map((url, index) => (
+            <div className="mx-auto flex w-fit max-w-full gap-2 overflow-x-auto overscroll-x-contain pb-1">
+              {previewSample.map((url, index) => (
                 <button
                   type="button"
                   key={url}

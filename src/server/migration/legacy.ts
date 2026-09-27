@@ -29,7 +29,7 @@ export const migrateLegacyPage = async (
 ): Promise<RenderResult> => {
   const loaded = await loadOrBuildLayout(image);
   if (loaded.origin === "empty") {
-    throw new Error("Bu sayfada eski baloncuk verisi yok; Gemini ile yeniden tespit gerekir.");
+    throw new Error("Bu sayfada eski baloncuk verisi yok; sayfayı yeniden çevirin.");
   }
   return renderImage(image, loaded.layout, { apply: options.apply, original: loaded.original });
 };
@@ -136,8 +136,8 @@ export const startSeriesMigration = async ({
       userId,
       seriesId,
       imageId: row.id,
-      provider: strategy === "legacy" ? "migration" : "gemini",
-      requestedPipeline: "auto",
+      provider: strategy === "legacy" ? "migration" : "ai",
+      requestedPipeline: strategy === "legacy" ? "migration" : "ai",
     });
     queued += 1;
   }

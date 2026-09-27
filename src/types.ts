@@ -12,6 +12,10 @@ export interface TextBubble {
 
 export interface UsageBreakdown {
   model: string;
+  /** Provider account name; absent on usage recorded before providers existed. */
+  provider?: string;
+  /** Priced when the call was made; absent on old Gemini-only usage. */
+  costUsd?: number;
   billingMode: "standard" | "batch";
   promptTokenCount: number;
   candidatesTokenCount: number;
@@ -30,11 +34,12 @@ export interface UsageMetadata {
   processing?: ProcessingMetadata;
 }
 
+/** How a page was processed. Older records carry Gemini/local-OCR values. */
 export interface ProcessingMetadata {
-  requestedPipeline: "auto" | "gemini_vision" | "local_ocr";
-  actualPipeline: "gemini_vision" | "local_ocr";
+  requestedPipeline?: string;
+  actualPipeline?: string;
   detection: {
-    provider: "gemini" | "paddleocr" | "legacy";
+    provider: string;
     model: string;
     workerId?: string;
     device?: string;
@@ -42,8 +47,10 @@ export interface ProcessingMetadata {
     regions?: number;
     mangaOcrEnabled?: boolean;
   };
+  /** The model that read the lettering (provider-neutral pipeline). */
+  reading?: { provider: string; model: string; fallbackUsed: boolean };
   translation: {
-    provider: "gemini";
+    provider: string;
     model: string;
     inputMode: "image" | "text";
     fallbackUsed: boolean;
@@ -85,11 +92,8 @@ export interface LocalOcrBubble {
   type?: TextBubble["type"] | "thought";
 }
 
-export type PageJobProvider =
-  | "gemini"
-  | "gemini_batch"
-  | "local_ocr"
-  | "migration";
+/** "gemini_batch" and "local_ocr" appear only on jobs from before they were removed. */
+export type PageJobProvider = "ai" | "migration" | "gemini" | "gemini_batch" | "local_ocr";
 export type PageJobStage =
   | "queued"
   | "detecting"
@@ -99,26 +103,10 @@ export type PageJobStage =
   | "failed"
   | "cancelled";
 
-/** Per-job overrides of the user's stored settings. */
+/** Per-job overrides of the user's stored settings. Older rows may carry more fields. */
 export interface PageJobOptions {
   targetLanguage?: string;
   customInstructions?: string;
-  model?: string;
-  fallbackModel?: string;
-  enableQualityFallback?: boolean;
-  /** Batch jobs: detector blocks the numbered overlay was built from. */
-  detection?: {
-    mode: "read" | "detect";
-    blocks?: Array<{
-      box: { x: number; y: number; w: number; h: number };
-      lines: Array<{
-        box: { x: number; y: number; w: number; h: number };
-        score: number;
-      }>;
-      score: number;
-      separatedFrom?: number[];
-    }>;
-  };
 }
 
 export interface PageJobSummary {
@@ -130,8 +118,6 @@ export interface PageJobSummary {
   attempts: number;
   error?: string;
   cost?: number;
-  /** Local OCR: nothing happens until the Mac worker claims the page. */
-  waitingForWorker: boolean;
   createdAt: string;
   updatedAt: string;
   completedAt?: string;
@@ -158,114 +144,53 @@ export interface ProcessedImage {
   renderedAt?: string | Date | null;
 }
 
-export interface GeminiModel {
+/** One configured AI provider account. */
+export interface AiProviderConfig {
   id: string;
   name: string;
-  inputCostPer1k: number;
-  outputCostPer1k: number;
-  batchInputCostPer1k: number;
-  batchOutputCostPer1k: number;
-  description: string;
+  /** Catalog preset this account was created from (gemini, openai, deepseek, …). */
+  preset: string;
+  kind: "gemini" | "openai";
+  /** OpenAI-compatible providers only. */
+  baseUrl?: string;
+  /** Rotated on rate limits. */
+  apiKeys: string[];
 }
 
-// Paid-tier prices per 1K tokens from ai.google.dev/gemini-api/docs/pricing
-// (September 2026). Batch is half price. 3.6-3.8 Flash prices are promotional
-// until 2026-12-31 and double on 2027-01-01; 3.1 Pro doubles input above 200k
-// prompt tokens.
-export const GEMINI_MODELS: GeminiModel[] = [
-  {
-    id: "gemini-3.1-flash-lite",
-    name: "Gemini 3.1 Flash-Lite",
-    inputCostPer1k: 0.00025,
-    outputCostPer1k: 0.0015,
-    batchInputCostPer1k: 0.000125,
-    batchOutputCostPer1k: 0.00075,
-    description: "Cheapest model for high-volume translation.",
-  },
-  {
-    id: "gemini-3.5-flash-lite",
-    name: "Gemini 3.5 Flash-Lite",
-    inputCostPer1k: 0.0003,
-    outputCostPer1k: 0.0025,
-    batchInputCostPer1k: 0.00015,
-    batchOutputCostPer1k: 0.00125,
-    description: "Low-cost model, newer than 3.1 Flash-Lite.",
-  },
-  {
-    id: "gemini-3-flash-preview",
-    name: "Gemini 3 Flash (Preview)",
-    inputCostPer1k: 0.0005,
-    outputCostPer1k: 0.003,
-    batchInputCostPer1k: 0.00025,
-    batchOutputCostPer1k: 0.0015,
-    description: "Preview model with stronger output quality.",
-  },
-  {
-    id: "gemini-3.6-flash",
-    name: "Gemini 3.6 Flash",
-    inputCostPer1k: 0.00075,
-    outputCostPer1k: 0.00375,
-    batchInputCostPer1k: 0.000375,
-    batchOutputCostPer1k: 0.001875,
-    description: "Flash model; promotional price until end of 2026.",
-  },
-  {
-    id: "gemini-3.7-flash",
-    name: "Gemini 3.7 Flash",
-    inputCostPer1k: 0.00075,
-    outputCostPer1k: 0.00375,
-    batchInputCostPer1k: 0.000375,
-    batchOutputCostPer1k: 0.001875,
-    description: "Flash model; promotional price until end of 2026.",
-  },
-  {
-    id: "gemini-3.8-flash",
-    name: "Gemini 3.8 Flash",
-    inputCostPer1k: 0.00075,
-    outputCostPer1k: 0.00375,
-    batchInputCostPer1k: 0.000375,
-    batchOutputCostPer1k: 0.001875,
-    description: "Newest Flash model; promotional price until end of 2026.",
-  },
-  {
-    id: "gemini-3.5-flash",
-    name: "Gemini 3.5 Flash",
-    inputCostPer1k: 0.0015,
-    outputCostPer1k: 0.009,
-    batchInputCostPer1k: 0.00075,
-    batchOutputCostPer1k: 0.0045,
-    description: "High-quality Flash model.",
-  },
-  {
-    id: "gemini-3.1-pro-preview",
-    name: "Gemini 3.1 Pro (Preview)",
-    inputCostPer1k: 0.002,
-    outputCostPer1k: 0.012,
-    batchInputCostPer1k: 0.001,
-    batchOutputCostPer1k: 0.006,
-    description: "Most capable model; slowest and most expensive.",
-  },
-];
+/** A model picked for one pipeline stage. */
+export interface AiModelChoice {
+  providerId: string;
+  model: string;
+  /** USD per 1M tokens, for models the catalog does not price. */
+  inputPer1M?: number;
+  outputPer1M?: number;
+}
 
-export const DEFAULT_GEMINI_MODEL = "gemini-3-flash-preview";
-export const DEFAULT_GEMINI_FALLBACK_MODEL = "gemini-3.1-flash-lite";
-
-export const isSupportedGeminiModel = (
-  model: unknown,
-): model is string =>
-  typeof model === "string" && GEMINI_MODELS.some((entry) => entry.id === model);
+export interface AiSettings {
+  providers: AiProviderConfig[];
+  /** Reads the lettering from the page crops. Must accept images. */
+  reader: AiModelChoice;
+  /** Translates the transcribed text. Any text model. */
+  translator: AiModelChoice;
+  /** Tried when the reader keeps failing (rate limits, outages). */
+  readerFallback?: AiModelChoice;
+}
 
 export interface TranslationSettings {
+  ai?: AiSettings;
   targetLanguage: string;
-  translationPipeline?: "auto" | "gemini_vision" | "local_ocr";
-  developerMode?: boolean;
   customInstructions?: string;
-  model: string;
+  /** Show pipeline, model, token and timing details on each page card. */
+  developerMode?: boolean;
+  // Fields below come from accounts saved before the provider-neutral AI
+  // settings. They are read once to build `ai` and never written again.
+  translationPipeline?: string;
+  model?: string;
   fallbackModel?: string;
   enableQualityFallback?: boolean;
   useGeminiBatch?: boolean;
-  batchSize: number;
-  batchDelay: number;
+  batchSize?: number;
+  batchDelay?: number;
   useCustomApiKey?: boolean;
   customApiKeyPool?: string;
   namedApiKeys?: NamedApiKey[];

@@ -166,12 +166,16 @@ export const createLayout = (
   meta: Partial<PageLayout["meta"]> = {},
 ): PageLayout => {
   const now = new Date().toISOString();
+  // Undefined entries must not override the defaults (a first translation
+  // passes `createdAt: undefined`); JSON would drop them and the stored
+  // layout would no longer validate.
+  const given = Object.fromEntries(Object.entries(meta).filter(([, value]) => value !== undefined));
   return {
     version: LAYOUT_VERSION,
     width: Math.round(width),
     height: Math.round(height),
     regions: [...regions].sort((a, b) => a.order - b.order),
-    meta: { createdAt: now, updatedAt: now, ...meta },
+    meta: { createdAt: now, updatedAt: now, ...given },
   };
 };
 
