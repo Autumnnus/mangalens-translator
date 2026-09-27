@@ -29,6 +29,7 @@ import { calculateGeminiCost } from "../src/utils/cost";
 import { combineUsage } from "../src/server/gemini/common";
 import {
   DEFAULT_GEMINI_MODEL,
+  GEMINI_MODELS,
   isSupportedGeminiModel,
 } from "../src/types";
 
@@ -76,7 +77,7 @@ const main = async () => {
   const modelName = str("model", DEFAULT_GEMINI_MODEL);
   if (!isSupportedGeminiModel(modelName)) {
     throw new Error(
-      "Unsupported Gemini model. Use gemini-3-flash-preview or gemini-3.1-flash-lite.",
+      `Unsupported Gemini model. Use one of: ${GEMINI_MODELS.map((m) => m.id).join(", ")}.`,
     );
   }
   const targetLanguage = str("lang", "Turkish");

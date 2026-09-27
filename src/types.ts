@@ -168,15 +168,28 @@ export interface GeminiModel {
   description: string;
 }
 
+// Paid-tier prices per 1K tokens from ai.google.dev/gemini-api/docs/pricing
+// (September 2026). Batch is half price. 3.6-3.8 Flash prices are promotional
+// until 2026-12-31 and double on 2027-01-01; 3.1 Pro doubles input above 200k
+// prompt tokens.
 export const GEMINI_MODELS: GeminiModel[] = [
   {
     id: "gemini-3.1-flash-lite",
     name: "Gemini 3.1 Flash-Lite",
     inputCostPer1k: 0.00025,
-    outputCostPer1k: 0.0005,
-    batchInputCostPer1k: 0.00005,
-    batchOutputCostPer1k: 0.0002,
-    description: "Default low-cost model for high-volume comic translation.",
+    outputCostPer1k: 0.0015,
+    batchInputCostPer1k: 0.000125,
+    batchOutputCostPer1k: 0.00075,
+    description: "Cheapest model for high-volume translation.",
+  },
+  {
+    id: "gemini-3.5-flash-lite",
+    name: "Gemini 3.5 Flash-Lite",
+    inputCostPer1k: 0.0003,
+    outputCostPer1k: 0.0025,
+    batchInputCostPer1k: 0.00015,
+    batchOutputCostPer1k: 0.00125,
+    description: "Low-cost model, newer than 3.1 Flash-Lite.",
   },
   {
     id: "gemini-3-flash-preview",
@@ -186,6 +199,51 @@ export const GEMINI_MODELS: GeminiModel[] = [
     batchInputCostPer1k: 0.00025,
     batchOutputCostPer1k: 0.0015,
     description: "Preview model with stronger output quality.",
+  },
+  {
+    id: "gemini-3.6-flash",
+    name: "Gemini 3.6 Flash",
+    inputCostPer1k: 0.00075,
+    outputCostPer1k: 0.00375,
+    batchInputCostPer1k: 0.000375,
+    batchOutputCostPer1k: 0.001875,
+    description: "Flash model; promotional price until end of 2026.",
+  },
+  {
+    id: "gemini-3.7-flash",
+    name: "Gemini 3.7 Flash",
+    inputCostPer1k: 0.00075,
+    outputCostPer1k: 0.00375,
+    batchInputCostPer1k: 0.000375,
+    batchOutputCostPer1k: 0.001875,
+    description: "Flash model; promotional price until end of 2026.",
+  },
+  {
+    id: "gemini-3.8-flash",
+    name: "Gemini 3.8 Flash",
+    inputCostPer1k: 0.00075,
+    outputCostPer1k: 0.00375,
+    batchInputCostPer1k: 0.000375,
+    batchOutputCostPer1k: 0.001875,
+    description: "Newest Flash model; promotional price until end of 2026.",
+  },
+  {
+    id: "gemini-3.5-flash",
+    name: "Gemini 3.5 Flash",
+    inputCostPer1k: 0.0015,
+    outputCostPer1k: 0.009,
+    batchInputCostPer1k: 0.00075,
+    batchOutputCostPer1k: 0.0045,
+    description: "High-quality Flash model.",
+  },
+  {
+    id: "gemini-3.1-pro-preview",
+    name: "Gemini 3.1 Pro (Preview)",
+    inputCostPer1k: 0.002,
+    outputCostPer1k: 0.012,
+    batchInputCostPer1k: 0.001,
+    batchOutputCostPer1k: 0.006,
+    description: "Most capable model; slowest and most expensive.",
   },
 ];
 
